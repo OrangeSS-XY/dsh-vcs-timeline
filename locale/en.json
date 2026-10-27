@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Code Timeline",
+    "description": "Browse Git and SVN history, changes and diffs in the right sidebar, and audit the VCS operations this plugin performs."
+  },
+  "tab": {
+    "title": "Code Timeline"
+  },
+  "guide": {
+    "description": "Git/SVN history, changed files, diffs, and an audit trail of operations this plugin performed."
+  }
+}

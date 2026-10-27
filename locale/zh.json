@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "代码时间线",
+    "description": "在右侧栏浏览 Git 与 SVN 历史、变更文件与 Diff，并审计本插件执行的版本控制操作。"
+  },
+  "tab": {
+    "title": "代码时间线"
+  },
+  "guide": {
+    "description": "查看 Git/SVN 历史、变更文件与 Diff，以及本插件发起的操作审计。"
+  }
+}

@@ -1,0 +1,8 @@
+# Dependencies and local build artifacts of other tools
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local probe scratch files (see README: tests use the OS temp directory)
+.tmp/
