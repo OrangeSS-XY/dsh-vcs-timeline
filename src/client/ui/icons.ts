@@ -242,19 +242,3 @@ export const IconCollapseAll = icon('collapse-all', [
   h('path', { key: 'a', d: 'M4.6 6.6 8 3.4l3.4 3.2' }),
   h('path', { key: 'b', d: 'M4.6 12.2 8 9l3.4 3.2' }),
 ])
-
-/** Enter browser fullscreen. */
-export const IconMaximize = icon('maximize', [
-  h('path', { key: 'a', d: 'M6.2 2.4H2.4v3.8' }),
-  h('path', { key: 'b', d: 'M9.8 2.4h3.8v3.8' }),
-  h('path', { key: 'c', d: 'M13.6 9.8v3.8H9.8' }),
-  h('path', { key: 'd', d: 'M2.4 9.8v3.8h3.8' }),
-])
-
-/** Leave browser fullscreen. */
-export const IconMinimize = icon('minimize', [
-  h('path', { key: 'a', d: 'M2.4 6.2h3.8V2.4' }),
-  h('path', { key: 'b', d: 'M13.6 6.2H9.8V2.4' }),
-  h('path', { key: 'c', d: 'M9.8 13.6v-3.8h3.8' }),
-  h('path', { key: 'd', d: 'M6.2 13.6v-3.8H2.4' }),
-])

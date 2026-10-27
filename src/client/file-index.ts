@@ -13,6 +13,7 @@
  */
 
 import type { ChangedFile, FileChangeStatus, VcsEvent } from '../shared/contracts.ts'
+import { localDayKey } from './format.ts'
 
 /** One repository-relative file aggregated across the loaded history window. */
 export interface FileChangeEntry {
@@ -292,6 +293,45 @@ export function directoryPaths(nodes: readonly FileTreeNode[]): string[] {
   }
   walk(nodes)
   return paths
+}
+
+/**
+ * One calendar day of the timeline, newest first.
+ */
+export interface DayGroup {
+  /** Local calendar key, `YYYY-MM-DD`. */
+  key: string
+  /** Newest event's timestamp in this group. */
+  timestamp: string
+  /** Events of the day, newest first. */
+  events: VcsEvent[]
+}
+
+/** Local calendar key of one event timestamp, or its timestamp when invalid. */
+function dayKeyOf(timestamp: string): string {
+  return localDayKey(timestamp) ?? timestamp
+}
+
+/**
+ * Group one loaded history page into calendar days for the timeline headers.
+ *
+ * Events arrive newest first, so groups keep that order and every event stays
+ * inside exactly one group (nothing is re-sorted or dropped).
+ * @param events - history page, newest first.
+ * @returns day groups, newest day first.
+ */
+export function groupEventsByDay(events: readonly VcsEvent[]): DayGroup[] {
+  const groups: DayGroup[] = []
+  let current: DayGroup | null = null
+  for (const event of events) {
+    const key = dayKeyOf(event.timestamp)
+    if (current === null || current.key !== key) {
+      current = { key, timestamp: event.timestamp, events: [] }
+      groups.push(current)
+    }
+    current.events.push(event)
+  }
+  return groups
 }
 
 /**

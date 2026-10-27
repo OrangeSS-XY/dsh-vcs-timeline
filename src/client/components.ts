@@ -4,8 +4,8 @@
  * Owns only layout: one `<style>` element, the chrome (toolbar/tabs/filters),
  * the file-centered two-column body (tree | change timeline), the collapsible
  * diagnostics block, the status bar, and the write-operation dialog. The same
- * tree renders inside the fullscreen overlay (`mode: 'overlay'`); only the
- * frame-level controls differ.
+ * component renders as a Conversation View tab (beside 对话/轨迹/上下文) and as
+ * the right-sidebar tab; neither needs a frame-level wrapper.
  * @module dsh-vcs-timeline/client/components
  */
 
@@ -27,7 +27,6 @@ const h = React.createElement
 export function renderPanelView(props: PanelViewProps): React.ReactElement {
   const { state, deps, handlers } = props
   const locale = deps.locale ?? 'zh'
-  const overlay = props.mode === 'overlay'
   const audit = state.source === 'audit'
   // Both panes derive from the same loaded history page and filter state.
   const view = buildTimelineView(state.timeline.events, {
@@ -68,20 +67,13 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     )
 
   return h('div', {
-    className: `dvt-root${overlay ? ' dvt-root-overlay' : ''}`,
+    className: 'dvt-root',
     'data-dvt-panel': 'vcs-timeline',
-    'data-dvt-mode': overlay ? 'overlay' : 'sidebar',
     lang: locale === 'en' ? 'en' : 'zh-CN',
+    ...(props.rootRef === undefined ? {} : { ref: props.rootRef }),
   },
-  // The dock host may have already emitted the stylesheet for its own row; in
-  // that case the overlay panel reuses it instead of duplicating 17 KiB.
-  props.withStyles === false ? null : h('style', { key: 'dvt-styles' }, deps.styles ?? STYLES),
-  h('div', { key: 'chrome' }, renderChrome(state, deps, handlers, {
-    mode: overlay ? 'overlay' : 'sidebar',
-    ...(props.fullscreen === undefined ? {} : { fullscreen: props.fullscreen }),
-    ...(props.onClose === undefined ? {} : { onClose: props.onClose }),
-    ...(props.onToggleFullscreen === undefined ? {} : { onToggleFullscreen: props.onToggleFullscreen }),
-  })),
+  h('style', { key: 'dvt-styles' }, deps.styles ?? STYLES),
+  h('div', { key: 'chrome' }, renderChrome(state, deps, handlers)),
   h('div', { key: 'body', className: 'dvt-body' }, bodyElement),
   renderDiagnostics(state, deps),
   renderStatusBar(state, deps, handlers),

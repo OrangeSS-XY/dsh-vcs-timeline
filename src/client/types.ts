@@ -22,6 +22,7 @@ import type {
   VcsEventType,
   WorkingTreeStatus,
 } from '../shared/contracts.ts'
+import type * as React from 'react'
 import type { VcsClient } from './api.ts'
 import type { TranslateFn } from './i18n.ts'
 
@@ -209,26 +210,10 @@ export interface PanelDeps {
   resolveWorkspacePath?: (props: PanelProps) => string | null
 }
 
-/** Props the sidebar slot (or the fullscreen overlay) passes to the panel. */
+/** Props the sidebar slot or the Conversation View passes to the panel. */
 export interface PanelProps {
   sessionId?: string
   workspacePath?: string | null
-  /** `overlay` adds the frame-wide close/fullscreen controls to the toolbar. */
-  mode?: 'sidebar' | 'overlay'
-  /** Close the fullscreen overlay (overlay mode only). */
-  onClose?: () => void
-  /** Toggle browser fullscreen for the overlay (overlay mode only). */
-  onToggleFullscreen?: () => void
-  /** Whether the overlay is currently in browser fullscreen. */
-  fullscreen?: boolean
-  /**
-   * Emit the component stylesheet inside this panel's tree.
-   *
-   * The fullscreen overlay is hosted by the composer dock, which already emits
-   * one copy of the stylesheet for its own row; passing `false` there keeps a
-   * single copy in the document.
-   */
-  inlineStyles?: boolean
 }
 
 /** Presentational props of one full panel render. */
@@ -236,13 +221,8 @@ export interface PanelViewProps {
   state: PanelState
   deps: PanelDeps
   handlers: PanelHandlers
-  /** Layout variant; `overlay` fills a fullscreen frame. */
-  mode?: 'sidebar' | 'overlay'
-  fullscreen?: boolean
-  onClose?: () => void
-  onToggleFullscreen?: () => void
-  /** Emit the `<style>` block; the dock host passes `false` when it already did. */
-  withStyles?: boolean
+  /** Attached to the root element so the panel can size itself in a host area. */
+  rootRef?: React.Ref<HTMLDivElement>
 }
 
 /** Empty repository-history slice. */

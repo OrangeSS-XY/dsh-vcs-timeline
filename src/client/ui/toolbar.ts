@@ -17,8 +17,6 @@ import {
   IconClose,
   IconDownload,
   IconFilter,
-  IconMaximize,
-  IconMinimize,
   IconMore,
   IconRefresh,
   IconRepo,
@@ -236,25 +234,15 @@ function FilterBar(props: {
   )
 }
 
-/** Frame-level controls the fullscreen overlay adds to the toolbar. */
-export interface ChromeFrame {
-  mode?: 'sidebar' | 'overlay'
-  fullscreen?: boolean
-  onClose?: () => void
-  onToggleFullscreen?: () => void
-}
-
 /** The whole chrome: toolbar, menu, tabs and filters. */
 export function renderChrome(
   state: PanelState,
   deps: PanelDeps,
   handlers: PanelHandlers,
-  frame: ChromeFrame = {},
 ): React.ReactElement {
   const { t } = deps
   const repository = selectedRepository(state)
   const menuOpen = state.menuOpen && repository !== null
-  const overlay = frame.mode === 'overlay'
   return h('div', { className: 'dvt-chrome' },
     h('div', { className: 'dvt-toolbar' },
       h(RepositoryPicker, { state, handlers, t }),
@@ -276,20 +264,6 @@ export function renderChrome(
             else handlers.onToggleWriteMenu()
           },
         }),
-        overlay && frame.onToggleFullscreen !== undefined
-          ? h(IconButton, {
-            label: frame.fullscreen === true ? t('frame.exitFullscreen') : t('frame.fullscreen'),
-            icon: frame.fullscreen === true ? IconMinimize : IconMaximize,
-            onClick: frame.onToggleFullscreen,
-          })
-          : null,
-        overlay && frame.onClose !== undefined
-          ? h(IconButton, {
-            label: t('frame.close'),
-            icon: IconClose,
-            onClick: frame.onClose,
-          })
-          : null,
       ),
     ),
     menuOpen ? h('div', { className: 'dvt-menu-overlay', onClick: handlers.onCloseWriteMenu, 'aria-hidden': 'true' }) : null,

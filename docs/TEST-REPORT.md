@@ -1,4 +1,4 @@
-﻿# 测试报告（dsh-vcs-timeline 0.1.0）
+# 测试报告（dsh-vcs-timeline 0.1.0）
 
 本报告只记录**实际执行**过的命令、退出码与结果，以及明确标注的未验证项。
 
@@ -30,29 +30,30 @@
   `changedFilesTruncated`）；SVN 由 `svn log --xml -v` 的逐路径 action/copyfrom 映射
   （仅请求时补一次本地 `svn info` 做路径映射）。未请求时事件**完全不带** `changedFiles`
   （“未请求”≠“没有变更”）；探针失败只降级为 partial 警告，不让整页失败。
-- **Client**（`lib/client.js`，222,057 B，运行时仅 `require("react")`）：本轮改为
+- **Client**（`lib/client.js`，215,478 B，运行时仅 `require("react")`）：本轮改为
   **文件中心双栏**——左文件树（目录计数 / 状态字母 / 文件名搜索 / 状态筛选 / 展开收起）
   + 右变更时间线（单文件历史、逐提交状态与 ± 行）、34px 工具栏 + `⋯` 版本控制菜单、
   统一搜索/时间范围/作者过滤、右栏内提交详情与行号 Diff、审计列表/详情、
-  写操作确认对话框、可折叠诊断与 24px 状态栏；新增**输入框上方 dock 条 + 全屏浮层**
-  （portal、Esc/×/浏览器全屏切换）；zh/en 字典、token-only 样式。
+  写操作确认对话框、可折叠诊断与 24px 状态栏；新增**对话区页签（conversation.view）**
+  ；右栏为 IDEA 风格时间线（竖轴 + 节点、日期分组吸顶、作者头像/姓名、相对时间、
+  HEAD/分支标记、± 统计）；zh/en 字典、token-only 样式。
 - 资源：`cordis.patch.yml`、`locale/{zh,en}.json`、`icon.svg`。
 - 测试工具：`scripts/render-preview.ts` + `scripts/preview-shots.mjs`
-  （示例数据 → HTML → 无头截图；支持 400px 侧栏与 1440px 全屏两种画布）。
+  （示例数据 → HTML → 无头截图；支持 400px 侧栏与 1600px 对话区两种画布）。
 
 ## 3. 实际执行的命令与结果
 
 | # | 命令 | 退出码 | 结果 |
 | --- | --- | --- | --- |
 | 1 | `npx tsc -p tsconfig.json --noEmit` | 0 | **0 errors**（全包，含测试与预览脚本） |
-| 2 | `npm test` | 0 | **219 tests / 219 pass / 0 fail** |
-| 3 | `npm run build` | 0 | `lib/index.js` 176,379 B；`lib/client.js` 222,057 B；client bundle 唯一裸 `require` 为 `react` |
+| 2 | `npm test` | 0 | **223 tests / 223 pass / 0 fail** |
+| 3 | `npm run build` | 0 | `lib/index.js` 176,379 B；`lib/client.js` 215,478 B；client bundle 唯一裸 `require` 为 `react` |
 | 4 | `plugin_manager set_plugin include:dsh-vcs-timeline`（false → true） | 应用成功 | 两次均 `application: "applied"`；Host 行重新挂载，`/vcs/timeline` 立即返回 `changedFiles` |
 | 5 | `node scripts\verify-live.mjs http://127.0.0.1:7283` | 0 | **17/17 live checks passed**（含真实提交统计、token 单次使用、审计落盘） |
-| 6 | `node --experimental-strip-types scripts/render-preview.ts` | 0 | 16 个预览页面（侧栏 400×900、全屏 1440×900，亮/暗） |
+| 6 | `node --experimental-strip-types scripts/render-preview.ts` | 0 | 16 个预览页面（侧栏 400×900、对话区 1600×900，亮/暗） |
 | 7 | `node scripts/preview-shots.mjs` | 0 | 16 张 PNG（无头 Edge，按页面声明尺寸截图） |
 | 8 | 直接读取 `%DSH_HOME%\storages\dsh-vcs-timeline\*.jsonl` | — | `operations.jsonl` 含同 id 的 `started` + `succeeded` 两条；`events.jsonl` 含 `plugin-audit` 事件 |
-| 9 | 真实页面自动化（Playwright + Edge，3 个全新 page 会话） | — | 12 项检查全部 PASS（首轮 11/12，修复 dock 样式后复验通过） |
+| 9 | 真实页面自动化（Playwright + Edge，多轮全新 page 会话） | — | 两轮 13 项检查：首轮 9/10，修复“详情/Diff 撑高面板”后复验通过 |
 | 10 | 真实桌面端 `POST /vcs/timeline {includeFiles:true}` | 200 | 本仓库最新提交返回 65 个文件；历史全部 2 个提交均带 `changedFiles` |
 
 ### 3.1 测试套件分布（命令 2 的分解）
@@ -68,31 +69,32 @@
 | `git.integration.test.ts` | 14 | **真实临时 Git 仓库**：探针/分页/过滤、每提交统计值、**includeFiles 的逐文件状态与 ±（增/改/删/重命名/二进制）**、**无 includeFiles 时事件不带 changedFiles**、真实 merge 提交 `changedFiles: []`、name-status 探针失败降级为 partial、写计划与降级 |
 | `svn.unit.test.ts` | 65 | `svn --xml` 解析（log/info/status）、summarize、revision 注入拒绝、argv 构造、分页游标、重命名/复制、Diff 截断/二进制、update/commit 计划、缺客户端降级、路径归一回归、**log -v 逐路径映射（copy/rename/info 失败回退/205→200 截断）** |
 | `client.format.test.ts` | 17 | 时间/紧凑时间/哈希/字节、Diff 行分类与行号计算、事件统计读取（含 merge 全 0 抑制）、状态/事件/来源/操作标签、错误映射、字典键一致、插值回退 |
-| `client.fileindex.test.ts` | 8 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
+| `client.fileindex.test.ts` | 12 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
 | `client.panel.test.ts` | 7 | 写操作 draft 保留/重置、`operationParams`、preview/execute 参数一致性（token 绑定契约） |
-| `client.render.test.ts` | 29 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、单文件收窄、状态筛选、目录展开、“未提供文件清单”、全屏浮层与样式宿主**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
+| `client.render.test.ts` | 29 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、单文件收窄、状态筛选、目录展开、“未提供文件清单”、时间线日期分组/HEAD/相对时间**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
 
 ## 4. 桌面端验收
 
 | 验收项 | 结果 | 证据 |
 | --- | --- | --- |
 | DSH 发现并加载插件 | 通过 | `install_bundle` → `application: "applied"`；`Config.listConfigs(name=dsh-vcs-timeline)` 有该行 |
-| 输入框上方出现 dock 条 | 通过（真实页面） | `[data-dvt-dock="vcs-timeline"]` 在会话中唯一可见，位于 composer 上方 14px，显示仓库 / GIT / 分支 / 未提交数 / “时间线” |
-| 右侧栏页签 | 通过（注册层面） | `Slots.listSubTree` root `sidebar.right.pane.tab` occupant 含 `{key:"vcs-timeline", active:true}`；`conversation.input.dock` occupant 含 `{id:"vcs-timeline", order:90}` |
-| 点击 dock 全屏打开 | 通过（真实页面） | `[role="dialog"].dvt-ovl` aria-modal，rect 0,0,1920,1080；frame 15,15,1890×1050；工具栏/页签/过滤条/树/时间线齐全 |
-| 双栏真实数据一致 | 通过（真实页面） | 17 个目录徽标与展开后的文件行逐一相等（docs 35=35、src 50=50、src/client/ui 9=9 …）；100 行 = 头部 100 = `∗100`；`M21`/`A79` 与行一致 |
-| 单文件收窄 | 通过（真实页面） | `.gitignore` → 1 条提交、`1 / 2 次提交`、行内 A +8/−0；README.md → 2 条、逐提交 M/A 与 ±；`×` 恢复全部 |
-| 状态筛选 / 搜索 / 时间范围 | 通过（真实页面） | M 21 行、A 79 行、搜索 “client” 22 行；时间预设 4 次均触发 `/vcs/timeline` 重载且无错误 |
-| 提交详情与 Diff | 通过（真实页面） | 详情含元信息网格 + 65 文件；README.md diff 65 行、3 hunk、58 行带行号；左栏树保持可见 |
-| 关闭路径 | 通过（真实页面） | `×`/`Esc` 关闭后无残留 overlay/dialog/menu，URL 未变，焦点回到 dock；菜单打开时 Esc 先关菜单再关浮层 |
-| 1280×800 / 900×700 | 通过（真实页面） | 页面 `overflowX=0`，控件无裁切；树 274.5 / 220px，右栏自适应 |
-| 明暗主题 | 通过（真实页面） | `body[data-ds-dark-theme]` 下浮层底色 rgb(21,21,23)、文字 rgb(238,245,255)，无白底白字/不可见边框；截图后恢复“跟随系统” |
-| 控制台 | 通过（真实页面） | 3 个新会话与全部交互中 0 pageerror、0 console error/warning |
+| 对话区页签入口 | 通过（真实页面） | 顶部视图行（role=tablist，y≈50）：对话 / 轨迹 / 上下文 / 编队 / **代码时间线**（order 40，排最后）+ 宿主“…”；hero 与活动会话里均无插件 dock 条/浮层 |
+| 点击页签在对话内容区渲染 | 通过（真实页面） | `[data-dvt-panel="vcs-timeline"]` rect **280,76,1633×876**，位于 `data-conversation-content` 内；无 overlay/dialog；点「对话」恢复聊天、再点页签恢复面板，URL 不变 |
+| IDEA 风格时间线 | 通过（真实页面） | 3 行 = “3 条提交”；每行有 rail 线 + 节点（节点中心与 rail 中心对齐）、头像/作者/摘要/相对时间（title=精确时间）/7 位 hash/**HEAD 仅 1 个**/分支/±；日期头“今天 / 3 条提交”吸顶；合并空心节点与吸顶滚动因仓库无合并提交/仅 3 条提交未实测 |
+| 真实数据一致性 | 通过（真实页面） | 与 `git log` 一致（最新 26952d8 / XiaoSS / 19:01）；HEAD 唯一；3 行 = “3 条提交” |
+| 高度有界（列表/详情/Diff） | 通过（真实页面，修复后复验） | 三种状态面板均 876px；宿主滚动容器 scrollHeight == clientHeight（1004）；内部 `.dvt-scroll` 为滚动容器（723/2062、723/2421）；滚到 800px 时 toolbar y=76、面包屑 y=110、树 y=173、状态栏 y=928 全部固定 |
+| 双栏真实数据一致 | 通过（真实页面） | 110 个文件；展开全部 110 行 = 头部 110、17 个目录 0 处徽标不一致；状态 chips M60/A46/D4；单文件收窄与 × 清除 |
+| 状态筛选 / 搜索 / 时间范围 | 通过（真实页面） | M 60 行、A 46 行、搜索收窄；时间预设 4 次均触发 `/vcs/timeline` 重载且无错误 |
+| 提交详情与 Diff | 通过（真实页面） | 详情面包屑 + 6 字段元信息 + 71 文件；README.md diff 147 行（137 行带行号、6 个 hunk）；左树保持可见 |
+| 1440×800 / 1024×768 | 通过（真实页面） | 页面 overflowX = 0，控件无裁切；面板高度随视口收敛，1024 下摘要正常省略 |
+| 明暗主题 | 通过（真实页面） | 深色下时间线 rail/节点/头像/日期头可读（日期头对比度 9.54，rail 2.45）；恢复“跟随系统” |
+| 控制台 | 通过（真实页面） | 多轮全新 page 与全部交互 0 pageerror、0 console error/warning |
 | 选择仓库并显示历史 | 通过 | live check 返回 2→3 条事件；页面显示真实提交 |
 | 提交统计真实可用 | 通过 | live check：`timeline carries real commit stats — files=1 +1 -1` |
-| 逐提交文件清单 | 通过（Host + 页面） | 真实仓库最新提交 65 文件；页面树/列表均由该数据派生 |
+| 逐提交文件清单 | 通过（Host + 页面） | 真实仓库最新提交 71→65 文件；页面树/列表均由该数据派生 |
 | 查看文件列表与 Diff | 通过 | live check：`changeset`、`diff` 114 B；页面内真实 Diff 带行号 |
 | 写操作可审计 | 通过 | live check：preview→execute 真实提交成功（`exit 0`）；`op/list` 折叠 `succeeded`；JSONL 落盘 |
+| 右侧栏页签 | 注册存在，UI 不可达（已知限制） | `sidebar.right.pane.tab` occupant 含 `vcs-timeline`；但侧栏“开始”条只有 1 个页签，更多工具里也无该入口（未改动，非本轮回归） |
 | 插件重新挂载后审计可读 | 通过 | 禁用→启用后 `op/list` 仍返回折叠记录 |
 | 禁用/卸载后释放注册 | 通过 | `set_plugin:false` 后 `/vcs/*` 返回 404；重新启用后恢复 |
 | 无非预期仓库修改 | 通过 | 写操作只发生在 `%TEMP%` 临时仓库，测试后删除 |
@@ -125,29 +127,30 @@
 ### 6.1 组件渲染截图（`docs/ui-preview/`）
 
 `node --experimental-strip-types scripts/render-preview.ts` → `node scripts/preview-shots.mjs`
-（Edge 155 无头，按页面声明尺寸：400×900 侧栏 / 1440×900 全屏，亮/暗）。16 个场景：
+（Edge 155 无头，按页面声明尺寸：400×900 侧栏 / 1600×900 对话区，亮/暗）。16 个场景：
 
-- `list-light/dark`、`tree-file-light`：双栏（树 + 时间线）、单文件收窄
-- `overlay-light/dark`：全屏浮层布局
+- `list-light/dark`、`tree-file-light`：双栏（树 + IDEA 时间线）、单文件收窄
+- `wide-light/dark`：对话区宽度下的时间线
 - 详情、Diff、审计列表/详情、写操作对话框、操作菜单、诊断展开、加载中、空仓库、未初始化仓库
 
 ### 6.2 真实页面自动化（Playwright + Edge，1920×1080）
 
-12 项检查（修复后复验全部 PASS）；本轮发现并修复的缺陷：
+两轮共 13 项检查（入口/时间线/详情/Diff/筛选/尺寸/主题/关闭路径/控制台），首轮 9/10，
+发现并修复以下缺陷后复验通过：
 
 | # | 缺陷（真实页面证据） | 根因 | 修复 |
 | --- | --- | --- | --- |
-| D1 | dock 条使用浏览器默认按钮样式（inline-block、2px outset、灰色底、13.33px、文字粘连，宽 365px 而非整行） | 样式表只渲染在**面板树内部**，而 dock 位于面板之外；只有打开浮层时才有全局样式 | dock 自己渲染一份样式表，浮层面板以 `inlineStyles:false` 复用，避免重复；复验 dock 计算样式为 flex/26px/整行/11.5px |
-| D2 | 状态筛选下树头部总数显示窗口总数（100）而渲染 21 行 | 头部总数取的是未过滤集合 | 头部显示当前渲染行数，chips 计数改为“搜索后、状态前”的集合（点击后可见的数量），tooltip 保留窗口总数 |
-| D3 | 400px 侧栏行内分支标签挤压摘要与作者 | 窄栏信息优先级 | 容器查询（`@container max-width:520px`）隐藏行内分支标签/列表计数；全屏不隐藏 |
-| D4 | 全屏搜索框拉伸到 1300px+ | 侧栏与全屏共用一套 flex | 全屏限定搜索框 380px，树宽 220–300px |
+| D1 | 详情/Diff 时面板从 876px 增长到 2215/2574px，宿主滚动整页，toolbar/面包屑/树/状态栏滚走 | Conversation View 挂在聊天滚动区内，`height: 100%` 解析到内容尺寸的外层；`.dvt-scroll` 永远不滚 | 面板挂载时测量宿主滚动容器（`[data-conversation-scroll]`）：高度 = 容器 clientHeight − 面板顶部偏移 − 容器内其他“座位”（composer seat）高度，并用 ResizeObserver 跟随；右侧栏宿主无此容器，继续走 CSS `height:100%` |
+| D2 | rail 竖线对比度仅 1.9:1（浅色） | 1.5px @ 0.28 品牌色过淡 | 2px @ 0.5；深色 2.45:1，浅色约 3.9:1 |
+| D3 | `.dvt-tl-card` 的 aria-label 显示字面量“查看提交 {label}” | i18n 模板参数名是 `label`，调用方传了 `revision/summary` | 调用方改为传 `label: "hash 摘要"` |
+| D4 | 400px 侧栏行内分支标签挤压摘要/作者 | 窄栏信息优先级 | 容器查询按面板宽度隐藏行内分支标签等次要信息 |
+| D5 | 全屏/宽视图搜索框拉伸到 1300px+ | 侧栏与宽视图共用 flex | 搜索框 max-width 380px，树宽 160–300px |
 
-其余通过项：dock 唯一且位于 composer 上方、浮层覆盖视口且工具栏/树/时间线完整、
-17 个目录计数与展开行完全一致、单文件收窄与逐提交状态/±、状态筛选与搜索、
-时间预设触发真实重载、提交详情与真实 Diff、审计页签、`×`/`Esc` 关闭无残留且焦点归位、
-1280×800 与 900×700 无横向溢出、深色主题可读、0 控制台错误。
+通过项（节选）：页签唯一且排最后、无 dock/浮层、点击/切回对话正常、时间线与 `git log` 一致、
+HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致、单文件收窄、详情与真实 Diff 留在视图内、
+1440/1024 无横向溢出、深色可读、0 控制台错误。
 
-截图与原始 JSON：`E:\softData\DP_Harness\dsh-plugin\_scratch\v2\`（30 张截图 + 3 份 JSON）。
+截图与原始 JSON：`E:softDataDP_Harnessdsh-plugin_scratch6`（33 张）、`_scratch7`（高度修复复验）。
 
 ## 7. 集成期间发现并修复的缺陷（累计）
 
@@ -164,9 +167,11 @@
 | 9 | SVN summarize 与 log 路径坐标不同 | 变更列表重复 | 按 wc 前缀归一 + 回归测试 |
 | 10 | SVN `parseRevision` trim 后才校验 | `"\n5"` 被接受 | 先拒绝控制字符 |
 | 11 | merge commit 的 numstat 为空 → 全 0 统计 | 会显示误导性的 `+0 −0` | 合并提交全 0 视为“未提供”，不渲染 |
-| 12 | 窄栏/全屏共用尺寸，行内分支标签挤压摘要 | 400px 下图例不可读 | 容器查询按面板宽度收敛；全屏限定搜索框与树宽 |
-| 13 | dock 样式不在面板树内 → 真实页面 UA 按钮样式 | 主入口外观完全走样 | dock 自带样式表，浮层面板复用（`inlineStyles:false`） |
+| 12 | 窄栏/宽视图共用尺寸，行内分支标签挤压摘要 | 400px 下图例不可读 | 容器查询按面板宽度收敛；宽视图限定搜索框与树宽 |
+| 13 | （上一轮入口方案）dock 样式不在面板树内 → UA 按钮样式 | 主入口外观走样 | 本轮入口改为对话区页签后整条链路不再存在；记录保留为历史 |
 | 14 | 树头部总数与状态筛选后的行数不一致 | 计数看起来矛盾 | 头部显示渲染行数；chip 计数 = 搜索后/状态前 |
+| 15 | 详情/Diff 在对话视图中撑高面板（876→2215/2574px），宿主整页滚动 | toolbar/树/状态栏滚走，非 IDE 行为 | 挂载时按宿主滚动容器计算有界高度（减 composer seat），内部滚动；ResizeObserver 跟随 |
+| 16 | 时间线 rail 对比度 1.9:1、aria 模板参数名错误 | 可读性/a11y | rail 2px @ .5；调用方传 `label` |
 
 ## 8. 未验证内容（明确列出）
 
@@ -176,6 +181,10 @@
 4. **大数据量**：未在超大真实仓库上压测（每页额外一次 name-status 进程；文件索引窗口受分页限制）。
 5. **跨进程写入**：单进程假设，未做双进程并发写同一数据目录的验证。
 6. **人工视觉签收**：真实页面截图与 DOM/计算样式已核对，但最终“是否像 IDEA”仍由用户签发。
+7. **时间线的两个数据依赖场景**：本机仓库只有 3 条提交（同日、无 merge），
+   因此「日期头吸顶滚动」与「合并提交空心节点」只做了 DOM/CSS 与单元测试核对，未在真实滚动/合并提交上实测。
+8. **右侧栏入口**：tab 类型注册仍在，但当前桌面端侧栏没有暴露加页签入口（真实页面探针确认：
+   侧栏 begin 条只有“开始”，更多工具也无该项）；本轮未做侧栏可达性验收，主入口为对话区页签。
 
 ## 9. 已知限制 / 未实现
 
@@ -194,11 +203,11 @@
 | --- | --- |
 | 代码实现 | implemented |
 | 类型检查（0.2.1-rc.3 同版本类型包） | typechecked（`tsc --noEmit` 0 错误） |
-| 单元测试 | unit-tested（219 个测试全通过） |
+| 单元测试 | unit-tested（223 个测试全通过） |
 | 真实仓库集成测试 | integration-tested（Git 临时仓库 14 项；SVN 仅解析器级） |
 | 桌面端 Host 端到端 | desktop-verified（17/17 live checks，含真实 Git 提交、统计、逐文件清单与审计落盘） |
-| 面板视觉（组件渲染） | rendered-verified（400px/1440px、亮/暗无头截图 + 目视检查） |
-| 桌面端真实页面视觉/交互 | desktop-verified（Playwright + Edge：dock、全屏浮层、双栏、筛选、详情/Diff、关闭路径、1280/900 尺寸、深色主题） |
+| 面板视觉（组件渲染） | rendered-verified（400px/1600px、亮/暗无头截图 + 目视检查） |
+| 桌面端真实页面视觉/交互 | desktop-verified（Playwright + Edge：对话区页签、IDEA 时间线、有界高度、双栏、筛选、详情/Diff、1440/1024 尺寸、深色主题） |
 | SVN 实机 | **not-verified**（本机无客户端） |
 | 整进程重启持久化 | **not-verified**（仅验证重新挂载后读取） |
 

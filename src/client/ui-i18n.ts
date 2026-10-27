@@ -130,15 +130,14 @@ export const uiZh: Record<string, string> = {
   'timeline.matchedFiles': '涉及 {count} 个筛选文件',
   'timeline.windowNotice': '文件索引覆盖已加载的 {count} 次提交；加载更多可扩大范围。',
 
-  'frame.fullscreen': '全屏',
-  'frame.exitFullscreen': '退出全屏',
-  'frame.close': '关闭全屏时间线',
-
-  'dock.open': '时间线',
-  'dock.dirty': '{count} 项未提交',
-  'dock.conflicts': '{count} 个冲突',
-  'dock.clean': '工作区干净',
-  'dock.overlayTitle': '代码时间线',
+  'view.tab': '代码时间线',
+  'group.today': '今天',
+  'group.yesterday': '昨天',
+  'rel.justNow': '刚刚',
+  'rel.minutesAgo': '{count} 分钟前',
+  'rel.hoursAgo': '{count} 小时前',
+  'rel.daysAgo': '{count} 天前',
+  'timeline.head': 'HEAD',
 }
 
 /** English strings for the redesigned chrome. */
@@ -264,13 +263,12 @@ export const uiEn: Record<string, string> = {
   'timeline.matchedFiles': '{count} matching files',
   'timeline.windowNotice': 'The file index covers the {count} loaded commits; load more to widen it.',
 
-  'frame.fullscreen': 'Fullscreen',
-  'frame.exitFullscreen': 'Exit fullscreen',
-  'frame.close': 'Close the fullscreen timeline',
-
-  'dock.open': 'Timeline',
-  'dock.dirty': '{count} uncommitted',
-  'dock.conflicts': '{count} conflicts',
-  'dock.clean': 'Working tree clean',
-  'dock.overlayTitle': 'Code Timeline',
+  'view.tab': 'Code Timeline',
+  'group.today': 'Today',
+  'group.yesterday': 'Yesterday',
+  'rel.justNow': 'just now',
+  'rel.minutesAgo': '{count}m ago',
+  'rel.hoursAgo': '{count}h ago',
+  'rel.daysAgo': '{count}d ago',
+  'timeline.head': 'HEAD',
 }

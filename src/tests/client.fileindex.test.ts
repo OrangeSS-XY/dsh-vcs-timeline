@@ -9,6 +9,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { VcsEvent } from '../shared/contracts.ts'
+import { authorHue, authorInitials, dayLabel, localDayKey, relativeTime } from '../client/format.ts'
 import {
   aggregateChangedFiles,
   buildFileTree,
@@ -19,6 +20,7 @@ import {
   eventsForFile,
   eventsHavingFiles,
   filterFileEntries,
+  groupEventsByDay,
   reportsFiles,
   statusCounts,
 } from '../client/file-index.ts'
@@ -163,4 +165,49 @@ test('a host without file lists keeps every event visible and reports the gap', 
   assert.equal(view.filesReported, false)
   assert.equal(view.tree.length, 0)
   assert.deepEqual(view.visibleEvents.map((entry) => entry.id), ['bare'])
+})
+
+test('history groups into local calendar days, newest day first and without reordering rows', () => {
+  const groups = groupEventsByDay([newest, older])
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0]?.events[0]?.id, 'e1')
+  assert.equal(groups[1]?.events[0]?.id, 'e2')
+  assert.equal(groups[0]?.key, localDayKey('2026-01-03T00:00:00.000Z'))
+  assert.equal(groups[1]?.key, localDayKey('2026-01-02T00:00:00.000Z'))
+
+  const sameDay = older
+  const grouped = groupEventsByDay([newest, { ...sameDay, id: 'e3', timestamp: newest.timestamp }])
+  assert.equal(grouped.length, 1)
+  assert.deepEqual(grouped[0]?.events.map((entry) => entry.id), ['e1', 'e3'])
+})
+
+test('relative time answers "when" for the last week and defers older rows to a date', () => {
+  const now = Date.parse('2026-01-10T12:00:00.000Z')
+  assert.deepEqual(relativeTime('2026-01-10T11:59:40.000Z', now), { unit: 'justNow', count: 0 })
+  assert.deepEqual(relativeTime('2026-01-10T11:30:00.000Z', now), { unit: 'minutes', count: 30 })
+  assert.deepEqual(relativeTime('2026-01-10T08:00:00.000Z', now), { unit: 'hours', count: 4 })
+  assert.deepEqual(relativeTime('2026-01-08T12:00:00.000Z', now), { unit: 'days', count: 2 })
+  assert.equal(relativeTime('2025-12-01T12:00:00.000Z', now), null)
+  assert.equal(relativeTime('not-a-date', now), null)
+  assert.equal(relativeTime(undefined, now), null)
+})
+
+test('day headers say today/yesterday, otherwise a real date', () => {
+  const now = new Date('2026-01-10T12:00:00.000Z')
+  assert.equal(dayLabel('2026-01-10T08:00:00.000Z', 'zh-CN', now).kind, 'today')
+  assert.equal(dayLabel('2026-01-09T08:00:00.000Z', 'zh-CN', now).kind, 'yesterday')
+  const dated = dayLabel('2025-12-01T08:00:00.000Z', 'zh-CN', now)
+  assert.equal(dated.kind, 'date')
+  assert.ok(dated.text.length > 0)
+  assert.equal(dayLabel(undefined, 'zh-CN', now).kind, 'date')
+})
+
+test('author avatars are stable per name and never empty', () => {
+  assert.equal(authorInitials('Alice Chen'), 'AC')
+  assert.equal(authorInitials('Alice'), 'A')
+  assert.equal(authorInitials(''), '?')
+  assert.equal(authorInitials(undefined), '?')
+  assert.equal(authorHue('Alice'), authorHue('Alice'))
+  assert.ok(authorHue('Alice') >= 0 && authorHue('Alice') < 360)
+  assert.ok(authorHue('Bob') !== authorHue('Alice'))
 })

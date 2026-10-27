@@ -3,7 +3,8 @@
 ## 1. 定位与边界
 
 插件在 DSH 里提供**文件为中心**的版本视图，两个入口共用同一个面板：
-会话输入框上方的 dock 条（点击 → 全屏浮层）与右侧栏「代码时间线」页签（窄栏）。
+顶部视图行的**对话区页签**「代码时间线」（与 对话/轨迹/上下文/编队 同排，占据整个对话内容区）。
+右侧栏的 tab 类型仍保留注册（窄栏备用），但当前桌面端侧栏没有暴露该类型入口。
 统一查看 **Git / SVN 仓库历史与逐文件变更**，以及**本插件自己发起的 VCS 操作审计**。
 两类事实在数据模型和 UI 上都严格区分：
 
@@ -23,7 +24,7 @@ Client (浏览器)                          Host (DSH 主进程)
 ┌──────────────────────────┐   POST     ┌───────────────────────────────────────────┐
 │ src/client/index.ts      │  JSON      │ src/host/index.ts  (ctx.effect 生命周期)   │
 │  ├ tab 类型+标题+正文注册 │  /vcs/*    │  ├ routes.ts        13 条路由 + 传输加固    │
-│  ├ dock.ts dock 条+全屏浮层│ ─────────► │  ├ services/timeline-service.ts  只读服务   │
+│  ├ conversation.view 页签  │ ─────────► │  ├ services/timeline-service.ts  只读服务   │
 │  ├ panel.ts 状态编排      │ ◄───────── │  ├ services/operation-service.ts 写服务     │
 │  ├ file-index.ts 文件索引 │  信封      │  ├ discovery.ts     仓库发现 + 路径闸门     │
 │  ├ components.ts 纯视图   │            │  ├ adapters/git/**  Git 适配器              │
@@ -61,8 +62,9 @@ POST vcs/changeset / vcs/diff / vcs/status
   → adapter.changeSet() / diff() / status() → 文件状态、统一 diff 文本、工作区状态
 ```
 
-**dock 条**只做轻量只读：`vcs/repos/list` + `vcs/status` 得到仓库/分支/未提交数，
-按工作区缓存 20s 并与全屏浮层共享；打开浮层不等待 dock 的读取，面板自己加载完整数据。
+**对话区页签**（`conversation.view`）只负责注册一个 View 与标签；
+选中后宿主用本插件的面板替换对话内容区，面板自己按会话 cwd 加载仓库与历史。
+它与右侧栏页签渲染同一组件，区别只是可用宽度（容器查询按面板宽度收缩）。
 
 ### 3.2 写操作（预览 → 确认 → 执行）
 
@@ -141,25 +143,20 @@ beforeState / planOperation`。各自保留语义：
 颜色只来自 `--dsw-alias-*` / `--dsw-specific-*` token，因此明暗主题自动成立。
 
 ```
-入口 A：会话输入框上方 dock 条（conversation.input.dock，order 90）
-  dvt-dock > dvt-dock-btn      仓库名 · GIT/SVN · 分支 chip · N 项未提交/工作区干净 · “时间线 ⤢”
-  └─ 点击 → 全屏浮层（React portal 到 document.body）
-     dvt-ovl > dvt-ovl-backdrop + dvt-ovl-frame > 面板 (mode = overlay)
-     Esc 逐层退出：面板对话框 → 浮层；× 关闭；⛶ 切换浏览器全屏；关闭后焦点回到 dock 按钮
+入口：顶部视图行页签（conversation.view，id vcs-timeline，order 40，label 代码时间线）
+  —— 与 对话 / 轨迹 / 上下文 / 编队 同排；选中后整个对话内容区渲染本面板
+（右侧栏 sidebar.right.pane.tab 的 key vcs-timeline 仍注册，当前桌面端侧栏未暴露入口）
 
-入口 B：右侧栏页签（sidebar.right.pane.tab，key vcs-timeline）→ 同一面板 (mode = sidebar)
-
-dvt-root (flex column, 100%, overflow hidden; overlay 变体占满浮层)
+dvt-root (flex column, 100%, overflow hidden)
 ├─ <style>                     组件样式（dvt- 前缀，仅主题 token）
 ├─ dvt-chrome
 │   ├─ dvt-toolbar (34px)      仓库选择（原生 select 覆盖层）+ 分支 chip + 刷新 + “⋯”
-│   │                          （overlay 模式追加 ⛶ 全屏切换 + × 关闭）
 │   ├─ dvt-menu (popover)      Fetch / Pull / Commit / Push 分组菜单（SVN: Update / Commit）
-│   ├─ dvt-tabstrip (30px)     时间线（提交数）/ 审计（记录数）
+│   ├─ dvt-tabstrip (30px)     来源页签：时间线（提交数）/ 审计（记录数）
 │   └─ dvt-filterbar (28px)    搜索框 + 全部/提交 chip + 时间范围 select + 筛选按钮（作者输入）
 ├─ dvt-body
 │   └─ dvt-split (container-type: inline-size)   ← 双栏，容器查询按面板宽度收缩
-│      ├─ dvt-tree (150–264px) 左栏文件树
+│      ├─ dvt-tree (160–300px) 左栏文件树
 │      │   ├─ 头部             “文件 N” + 展开全部/收起全部
 │      │   ├─ 文件名搜索        （client-side，匹配路径与重命名旧路径）
 │      │   ├─ 状态筛选          ∗ 全部 / M / A / D / R，各带计数（0 计数的隐藏）
@@ -168,8 +165,11 @@ dvt-root (flex column, 100%, overflow hidden; overlay 变体占满浮层)
 │          ├─ dvt-pinned       详情/Diff 的 32px 面包屑（返回 + 标题 + 副标题 + 状态徽标）
 │          └─ dvt-scroll
 │              ├─ dvt-selection  选中文件时的 26px 路径条（状态/提交数/×）
-│              ├─ 变更时间线   graph gutter + 摘要 + ± 统计 + 底行（hash · 作者 · 时间 ·
-│              │                分支标签 · 文件数；选中文件时为该文件状态与 ± 行）
+│              ├─ 变更时间线   IDEA 风格竖轴：连续 rail + 每提交节点（合并空心）
+│              │                日期分组头（今天/昨天/日期 + 条数，吸顶）
+│              │                每行：头像(姓名首字母,按名稳定着色) + 作者 + 摘要 + ±
+│              │                第二行：相对时间(悬停精确时间) · hash · HEAD · 分支 · 文件数
+│              │                选中文件时为该文件状态与 ± 行
 │              ├─ 提交详情     hero 摘要 + 元信息网格 + 变更文件（状态字母/重命名旧路径/BIN/±行）
 │              ├─ Diff         行号槽 + 统一 diff 着色 + 底部（路径/行数/字节/截断）
 │              ├─ 审计列表     状态图标 + 操作 · 仓库 + 时间/correlation + 状态徽标
@@ -197,11 +197,12 @@ dvt-root (flex column, 100%, overflow hidden; overlay 变体占满浮层)
   与已有 numstat 流按新路径合并成 `changedFiles`（状态、±、binary，重命名带 oldPath）；
   SVN 由 `svn log --xml -v` 的逐路径 action/copyfrom 映射（A/M/D/R，复制源被删除时判为 rename）。
   merge commit 的 name-status 为空 → `changedFiles: []`，不臆造文件。
-- **dock 条是轻量入口**：只读仓库 + 工作区状态（20s 缓存），不参与面板数据；
-  打开全屏浮层不等待 dock，面板自己加载完整历史。
+- **入口是一个 View，不是浮层**：`conversation.view` 让面板像「上下文」一样占据对话内容区，
+  聊天记录与输入框不受影响；切回「对话」即恢复聊天，不存在覆盖层或焦点陷阱。
 - **容器查询而非媒体查询**：侧栏宽度与窗口宽度无关，`@container (max-width: 520px)`
-  按**面板**宽度隐藏行内分支标签等次要信息；400px 侧栏仍可读，1440px 全屏不浪费空间。
-- **密度**：列表行约 46px、树行 23px、详情文件行 26px、Diff 行 16px；控件高度统一 22/24px；
+  按**面板**宽度隐藏行内分支标签等次要信息；400px 侧栏仍可读，1600px 对话区不浪费空间。
+- **时间线优先**：竖轴 + 日期分组让"谁在什么时候做了什么"一眼可读；行高约 51px（两行），
+  树行 23px、详情文件行 26px、Diff 行 16px；控件高度统一 22/24px；
   字号层级 12 / 11.5 / 10.5 / 10px；圆角 3–8px。
 
 

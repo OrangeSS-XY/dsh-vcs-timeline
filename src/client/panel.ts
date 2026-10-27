@@ -157,6 +157,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
     const stateRef = React.useRef<PanelState>(state)
     stateRef.current = state
     const aliveRef = React.useRef<boolean>(true)
+    const rootRef = React.useRef<HTMLDivElement | null>(null)
     const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
     const repreviewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
     const timelineTokenRef = React.useRef<number>(0)
@@ -596,6 +597,51 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       })
     }
 
+    /**
+     * Fit the panel to the host's conversation area.
+     *
+     * A Conversation View is mounted inside the chat scroll region, so a plain
+     * `height: 100%` resolves against a content-sized wrapper: with a long
+     * commit list the panel would grow to that list's height and the host would
+     * scroll the whole panel, taking the toolbar, tree and status bar with it.
+     * The host's scroll element is bounded and holds the view area plus the
+     * composer seat; the panel takes what is left above the seats. The sidebar
+     * host (no such scroll element) keeps the CSS `height: 100%` path.
+     */
+    React.useLayoutEffect(() => {
+      const element = rootRef.current
+      if (element === null || typeof window === 'undefined') return undefined
+      const scroller = element.closest('[data-conversation-scroll]')
+      if (!(scroller instanceof HTMLElement)) return undefined
+      const observed: Element[] = [scroller, ...Array.from(scroller.children)]
+      const update = (): void => {
+        const scrollerRect = scroller.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        // Sibling "seats" (the composer) below the view area are not part of
+        // the panel; fixed/absolute siblings report a box but no flow space.
+        let reserved = 0
+        for (const child of Array.from(scroller.children)) {
+          if (child.contains(element)) continue
+          if (child.getBoundingClientRect().height <= 0) continue
+          const position = window.getComputedStyle(child).position
+          if (position === 'absolute' || position === 'fixed') continue
+          reserved += child.getBoundingClientRect().height
+        }
+        const offset = Math.max(0, elementRect.top - scrollerRect.top)
+        const available = Math.max(240, Math.floor(scroller.clientHeight - offset - reserved))
+        element.style.height = `${available}px`
+      }
+      update()
+      const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { update() }) : null
+      if (observer !== null) for (const target of observed) observer.observe(target)
+      window.addEventListener('resize', update)
+      return () => {
+        observer?.disconnect()
+        window.removeEventListener('resize', update)
+        element.style.height = ''
+      }
+    }, [])
+
     // Bootstrap: diagnostics + repositories.
     React.useEffect(() => {
       void reloadRepositories()
@@ -860,16 +906,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
     }
 
-    return renderPanelView({
-      state,
-      deps,
-      handlers,
-      mode: props.mode === 'overlay' ? 'overlay' : 'sidebar',
-      withStyles: props.inlineStyles !== false,
-      ...(props.fullscreen === undefined ? {} : { fullscreen: props.fullscreen }),
-      ...(props.onClose === undefined ? {} : { onClose: props.onClose }),
-      ...(props.onToggleFullscreen === undefined ? {} : { onToggleFullscreen: props.onToggleFullscreen }),
-    })
+    return renderPanelView({ state, deps, handlers, rootRef })
   }
 }
 

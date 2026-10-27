@@ -4,8 +4,8 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
 左侧文件树、右侧变更时间线、逐提交 Diff，并记录**本插件自己发起的写操作审计**。
 第一验收环境为 DSH 桌面端 `0.2.1-rc.3`（Windows）。
 
-- **输入框上方的 dock 条**：显示当前仓库、分支与未提交项数；点击即在**全屏浮层**里打开时间线，不离开对话
-- **右侧栏页签**：`代码时间线`（tab 类型 id `vcs-timeline`），同一套面板，窄栏布局
+- **对话区页签**：与「对话 / 轨迹 / 上下文 / 编队」同一行，标签 `代码时间线`；点击后整个对话内容区切换为时间线视图
+- **右侧栏页签**（备用）：`代码时间线`（tab 类型 id `vcs-timeline`）已注册；当前桌面端侧栏未暴露该入口
 - Host：仓库发现、Git/SVN CLI 调用、路径闸门、`/vcs` JSON 路由、JSONL 审计
 - Client：React 面板（仅主题 token 样式），通过 `/vcs` 路由访问 Host
 
@@ -18,8 +18,9 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
 | --- | --- |
 | 仓库发现（当前会话工作区 + 有界子目录扫描） | implemented / unit-tested / desktop-verified |
 | 手动添加仓库（校验 VCS 元数据与路径） | implemented / desktop-verified |
-| 输入框上方 dock 条（仓库 · 分支 · 未提交数）+ 全屏浮层时间线 | implemented / desktop-verified |
-| 双栏变更浏览器：文件树（目录计数、状态字母、文件名搜索、状态筛选）+ 变更时间线 | implemented / unit-tested / desktop-verified |
+| 对话区页签入口（与 对话/轨迹/上下文/编队 同排，`conversation.view`） | implemented / desktop-verified |
+| IDEA 风格提交时间线（竖轴 + 节点、日期分组、作者头像/姓名、相对时间、HEAD、分支、±） | implemented / unit-tested / desktop-verified |
+| 双栏变更浏览器：文件树（目录计数、状态字母、文件名搜索、状态筛选）+ 时间线 | implemented / unit-tested / desktop-verified |
 | 单文件变更历史（点文件后只列该文件的提交，逐提交状态与 ± 行） | implemented / unit-tested / desktop-verified |
 | Git 历史分页、关键字/作者/时间范围过滤，逐提交文件清单（name-status + numstat） | implemented / unit-tested / integration-tested / desktop-verified |
 | Commit 详情（文件状态、重命名、二进制、行数） | 同上 |
@@ -45,11 +46,11 @@ E:\softData\DP_Harness\dsh-plugin\dsh-vcs-timeline
 plugin_manager install_bundle target="E:\softData\DP_Harness\dsh-plugin\dsh-vcs-timeline"
 ```
 
-安装后：会话输入框上方出现时间线 dock 条，右侧栏出现「代码时间线」页签；
+安装后：会话顶部视图行出现「代码时间线」页签（右侧栏的 tab 类型同时注册，当前侧栏未暴露入口）；
 重启或重新挂载不需要重建代码（构建产物已提交在 `lib/`）。
 
 > 首次安装或重新构建后，请在 DSH 页面按一次 `F5` 刷新，让浏览器加载最新的前端 bundle
-> （页签与 dock 的 slot 注册是热生效的，但面板代码属于页面模块，需要刷新才能换成新版本）。
+> （页签的 slot 注册是热生效的，但面板代码属于页面模块，需要刷新才能换成新版本）。
 
 卸载：
 
@@ -62,21 +63,27 @@ plugin_manager remove_bundle target="dsh-vcs-timeline"
 
 ## 界面
 
-按 IDE 工具窗口的密度重构（JetBrains Git 工具窗口 / VS Code 的量级，不是管理后台）。
-两个入口共用同一面板：输入框上方的 dock 条（全屏）与右侧栏页签（窄栏）。
+按 IDE 工具窗口的密度重构（JetBrains Git 工具窗口 / IDEA 的 Log，不是管理后台）。
+主入口是**对话区页签**（占据整个对话内容区）。右侧栏的 tab 类型仍注册（窄栏备用），
+但当前桌面端侧栏的加页签入口没有暴露它，因此不把它算作可用入口。
 
-- **输入框上方的 dock 条**：一行 26px 状态条，显示仓库名 · `GIT/SVN` · 分支 · `N 项未提交`
-  （或“工作区干净”）· 右侧“时间线 ⤢”。点击在**全屏浮层**中打开面板：`Esc` 或右上 `×` 关闭，
-  右上另有浏览器全屏切换；关闭后焦点回到 dock 条。dock 条只读取仓库与工作区状态，不阻塞面板加载。
+- **对话区页签（主入口）**：与「对话 / 轨迹 / 上下文 / 编队」同一行，标签 `代码时间线`；
+  点击后**整个对话内容区**切换为时间线视图（与「上下文」视图同一挂载方式），再点「对话」回到聊天。
+  不再有悬浮在输入框上方的条带，也没有全屏浮层。
 - **34px 工具栏**：仓库选择（原生下拉覆盖层，键盘可用）· 分支 chip · 刷新 · `⋯` 版本控制菜单。
   Fetch / Pull / Commit / Push（SVN 为 Update / Commit）收进菜单，仍然先预览再确认。
-- **双栏主体（时间线页签）**：
+- **IDEA 风格提交时间线（右栏）**：一条连续竖轴贯穿所有提交，每个提交一个节点（合并提交为空心节点）；
+  按本地日期分组（`今天` / `昨天` / 具体日期 + 星期），分组头吸顶并显示当天提交数。
+  每行回答「**谁、做了什么、什么时候**」：
+  - 作者头像（姓名首字母、按姓名稳定着色）+ 作者名 + 提交摘要 + `+增 −删`
+  - 相对时间（刚刚 / N 分钟前 / N 小时前 / N 天前，悬停显示精确时间）+ 短 hash
+  - 当前 HEAD 提交带 `HEAD` 标记、分支标签、变更文件数（选中文件时为该文件的状态与 ± 行）
+  - 悬停行显示 `›` 进入详情
+- **双栏主体**：
   - 左栏**文件树**：目录显示其下变更文件数，文件显示 `A/M/D/R` 状态字母；
     支持展开/收起、展开全部/收起全部、文件名搜索、状态筛选（`∗/M/A/D/R`，带计数）；
     顶部“全部文件”行取消文件选择，回到整个仓库的时间线。
-  - 右栏**变更时间线**：按提交分组、时间倒序；每行展示摘要、`+增 −删`、短 hash、作者、时间、
-    分支标签、变更文件数。选中文件后每行改为**该文件在本提交中的状态与 ± 行**，
-    顶部出现路径条（状态、提交数、`×` 返回全部）。
+  - 右栏在选中文件后由时间线收窄为该文件历史，顶部出现路径条（状态、提交数、`×` 返回全部）。
   - 两栏共用同一份过滤状态与同一页已加载历史：目录计数、时间线行、状态计数永远一致。
     窗口只覆盖已加载的提交（分页加载更多会扩大范围），界面明确提示这一点。
 - **详情与 Diff 留在双栏内**：点提交 → 右栏显示 32px 面包屑 + 元信息网格 + 变更文件列表；
@@ -93,14 +100,14 @@ plugin_manager remove_bundle target="dsh-vcs-timeline"
   窄栏用容器查询按**面板宽度**收缩（而非窗口宽度），400px 侧栏仍可读。
 
 设计验证截图（示例数据渲染，非运行时截图）见 [docs/ui-preview/render.md](docs/ui-preview/render.md)：
-`npm run preview:ui` 可重新生成 400px 侧栏与 1440px 全屏浮层的明暗主题截图。
+`npm run preview:ui` 可重新生成 400px 侧栏与 1600px 对话区宽度的明暗主题截图。
 
 ## 使用
 
-1. 在任意会话中，点输入框上方的 `时间线 ⤢` dock 条 → 全屏打开；也可在右侧栏打开「代码时间线」页签。
+1. 打开任意会话，点顶部视图行的「代码时间线」页签 → 对话内容区切换为时间线；再点「对话」回到聊天。
 2. 顶部选择仓库（Git/SVN · 名称 · 当前分支或 base revision）。
-3. 左栏点目录展开、点文件 → 右栏只剩该文件的变更历史；点“全部文件”或路径条的 `×` 回到全部。
-4. 点提交看详情与文件列表；点文件看行号 Diff；`Esc` / `×` 关闭全屏浮层。
+3. 右栏按日期分组浏览提交时间线：谁、什么时候、改了什么；点提交看详情与文件列表，点文件看行号 Diff。
+4. 左栏点目录展开、点文件 → 右栏只剩该文件的变更历史；点“全部文件”或路径条的 `×` 回到全部。
 5. 「审计」查看本插件执行过的写操作（状态、退出码、前后 revision、correlationId）。
 6. 右上 `⋯` → Fetch / Pull / Push / Commit（SVN：Update / Commit）：先弹预览，
    显示将执行的确切 argv、当前分支/HEAD/干净状态/暂存数、警告；确认后才真正执行，
@@ -133,9 +140,8 @@ src/host/adapters/svn/*          无依赖 XML 读取 + SVN argv/解析（log -v
 src/host/storage/jsonl.ts        JSONL 存储（串行写、坏行容忍、轮转、索引）
 src/host/audit/*                 追加式审计写入
 src/host/security.ts             脱敏、路径规范化、游标、UTF-8 截断
-src/client/index.ts              右侧栏页签 + 输入框 dock 条注册
+src/client/index.ts              对话区页签（conversation.view）+ 右侧栏页签注册
 src/client/file-index.ts         文件中心索引：按提交聚合、目录树、共享过滤（纯函数）
-src/client/dock.ts               输入框上方 dock 条 + 全屏浮层（Esc/×/浏览器全屏）
 src/client/panel.ts              面板状态机（数据加载、写操作预览→确认→执行）
 src/client/ui/*                  纯视图：工具栏、文件树、时间线、详情、Diff、审计、对话框
 src/client/styles.ts             仅主题 token 的样式表（含容器查询窄栏适配）
@@ -153,10 +159,12 @@ docs/                            兼容性、架构、安全、测试报告
 ## 已知限制
 
 - 本机未安装 `svn` 客户端，SVN 仅完成解析器/命令行/降级路径的单元测试，未做真实仓库联调。
-- 真实页面已用 Playwright + Edge 对运行中的桌面端自动化核对（dock、全屏浮层、双栏、筛选、
+- 真实页面已用 Playwright + Edge 对运行中的桌面端自动化核对（对话区页签、时间线、双栏、筛选、
   详情/Diff、关闭路径、1280/900 尺寸、深色主题，见 [docs/TEST-REPORT.md](docs/TEST-REPORT.md) §6），
   但仍是脚本化的 DOM/计算样式/截图核对，不是人工逐像素签收。
 - 文件树与单文件时间线只覆盖**已加载的提交页**（列表底部明确提示；加载更多会扩大范围）。
 - 未做整进程重启验证（已验证插件重新挂载后审计数据仍可读）。
 - `/vcs` 路由仅接受 loopback（桌面端）；配对设备远程访问不支持。
+- 右侧栏的「代码时间线」tab 类型已注册，但当前桌面端侧栏的加页签 UI 未暴露该类型入口；
+  主入口是对话区页签（未做侧栏可达性验收）。
 - Merge/Rebase/Switch/Reset/Clean/Force-push 不实现。

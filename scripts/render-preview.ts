@@ -348,7 +348,6 @@ interface Scenario {
   name: string
   theme: 'light' | 'dark'
   state: PanelState
-  mode?: 'sidebar' | 'overlay'
   width?: number
   height?: number
 }
@@ -365,18 +364,16 @@ const scenarios: Scenario[] = [
     }),
   },
   {
-    name: 'overlay-light',
+    name: 'wide-light',
     theme: 'light',
-    mode: 'overlay',
-    width: 1440,
+    width: 1600,
     height: 900,
     state: stateWith({ expandedDirs: { src: true, 'src/client': true } }),
   },
   {
-    name: 'overlay-dark',
+    name: 'wide-dark',
     theme: 'dark',
-    mode: 'overlay',
-    width: 1440,
+    width: 1600,
     height: 900,
     state: stateWith({
       selectedFilePath: 'src/client/ui/detail.ts',
@@ -494,19 +491,10 @@ const PAGE = (
 
 await mkdir(outDir, { recursive: true })
 for (const scenario of scenarios) {
-  const overlay = scenario.mode === 'overlay'
   const panel = renderToStaticMarkup(renderPanelView({
     state: scenario.state,
     deps: { t, locale: 'zh-CN' },
     handlers: createNoopHandlers(),
-    ...(overlay
-      ? {
-        mode: 'overlay' as const,
-        fullscreen: false,
-        onClose: () => {},
-        onToggleFullscreen: () => {},
-      }
-      : {}),
   }))
   const tokens = scenario.theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
   const html = PAGE(tokens, panel, scenario.width ?? 400, scenario.height ?? 900)
@@ -517,7 +505,7 @@ await writeFile(resolve(outDir, 'render.md'), [
   '# UI 预览（设计验证用）',
   '',
   '这些页面由 `scripts/render-preview.ts` 用**固定示例数据**渲染真实的面板组件，',
-  '用于检查密度、层级与明暗主题（400px 侧栏宽度，以及 1440px 全屏浮层）。',
+  '用于检查密度、层级与明暗主题（400px 侧栏宽度，以及 1600px 对话区宽度）。',
   '它们不是运行时截图：颜色使用近似 DSH 主题 token 的调色板，实际运行时颜色来自宿主 `--dsw-*` token。',
   '',
   '重新生成：',
@@ -527,7 +515,7 @@ await writeFile(resolve(outDir, 'render.md'), [
   'node scripts/preview-shots.mjs   # 用本机 Edge 无头模式截图',
   '```',
   '',
-  '场景：文件树 + 变更时间线（亮/暗）、单文件时间线、全屏浮层（亮/暗）、提交详情、Diff、',
+  '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件时间线、提交详情、Diff、',
   '审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
 ].join('\n'), 'utf8')
 

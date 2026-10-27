@@ -265,14 +265,14 @@ test('a commit row shows summary, short hash, author, compact time, branch and r
   assert.ok(html.includes('+12'))
   assert.ok(html.includes('−4'))
   assert.ok(html.includes(t('timeline.stats.files', { count: 3 })))
-  assert.ok(html.includes('dvt-node'))
-  assert.ok(html.includes('dvt-commit'))
+  assert.ok(html.includes('dvt-tl-node'))
+  assert.ok(html.includes('dvt-tl-row'))
 })
 
 test('a merge commit renders the merge marker and never fakes 0/0 stats', () => {
   const html = render(ready({ timeline: { ...createInitialState().timeline, events: [mergeEvent] } }))
   assert.ok(html.includes(t('timeline.merge')))
-  assert.ok(html.includes('dvt-node-merge'))
+  assert.ok(html.includes('dvt-tl-node-merge'))
   assert.ok(!html.includes('+0'))
   assert.ok(!html.includes('−0'))
 })
@@ -505,8 +505,8 @@ test('the stylesheet uses theme tokens only: no literal color, no global selecto
   assert.ok(STYLES.includes('@media'))
   assert.ok(STYLES.includes('.dvt-split'), 'dual pane layout')
   assert.ok(STYLES.includes('.dvt-tree'), 'file tree pane')
-  assert.ok(STYLES.includes('.dvt-dock'), 'composer dock strip')
-  assert.ok(STYLES.includes('.dvt-ovl'), 'fullscreen overlay')
+  assert.ok(STYLES.includes('.dvt-tl'), 'vertical change timeline')
+  assert.ok(STYLES.includes('.dvt-tl-avatar'), 'author avatar')
 })
 
 test('the file-centered dual pane renders tree, all-files entry and shared filters', () => {
@@ -576,34 +576,40 @@ test('a host that reports no file lists says so instead of showing an empty tree
   assert.ok(html.includes(t('tree.unavailable.hint')))
 })
 
-test('the fullscreen overlay mode adds frame controls to the same panel', () => {
-  const state: PanelState = ready()
-  const html = renderToStaticMarkup(renderPanelView({
-    state,
-    deps: { api, t, locale: 'zh-CN', styles: STYLES },
-    handlers: createNoopHandlers(),
-    mode: 'overlay',
-    fullscreen: false,
-    onClose: () => {},
-    onToggleFullscreen: () => {},
-  })).replace(/<style[\s\S]*?<\/style>/g, '')
-  assert.ok(html.includes('dvt-root-overlay'))
-  assert.ok(html.includes(t('frame.close')))
-  assert.ok(html.includes(t('frame.fullscreen')))
-  assert.ok(html.includes('dvt-tree'), 'the dual pane also renders fullscreen')
+test('the change timeline renders a rail, day header, author avatar and "when" label', () => {
+  const recent: VcsEvent = {
+    ...event,
+    id: 'commit:recent',
+    timestamp: new Date().toISOString(),
+    actor: 'Alice Chen',
+    summary: 'fix: recent change',
+    changedFiles: [{ path: 'src/panel.ts', status: 'modified', additions: 3, deletions: 1 }],
+  }
+  const html = render(ready({ timeline: { ...createInitialState().timeline, events: [recent] } }))
+  assert.ok(html.includes('dvt-tl'), 'vertical timeline container')
+  assert.ok(html.includes('dvt-tl-rail'), 'continuous rail gutter')
+  assert.ok(html.includes('dvt-tl-node'), 'commit node on the rail')
+  assert.ok(html.includes('dvt-tl-day-label'), 'sticky day header')
+  assert.ok(html.includes(t('group.today')), 'today header for a current commit')
+  assert.ok(html.includes('dvt-tl-avatar'), 'author avatar')
+  assert.ok(html.includes('AC'), 'author initials in the avatar')
+  assert.ok(html.includes('Alice Chen'), 'author name')
+  assert.ok(html.includes(t('rel.justNow')), 'relative time ("who did it, when")')
+  assert.ok(html.includes('dvt-tl-head'), 'HEAD marker on the current revision')
 })
 
-test('a dock-hosted overlay reuses the dock stylesheet instead of emitting a second copy', () => {
-  const html = renderToStaticMarkup(renderPanelView({
-    state: ready(),
-    deps: { api, t, locale: 'zh-CN', styles: STYLES },
-    handlers: createNoopHandlers(),
-    mode: 'overlay',
-    withStyles: false,
-    onClose: () => {},
-  }))
-  assert.ok(!html.includes('<style'), 'the dock row owns the single stylesheet')
-  assert.ok(html.includes('dvt-root-overlay'))
+test('older commits are grouped into day sections, newest first', () => {
+  const day = 24 * 60 * 60 * 1000
+  const now = Date.now()
+  const events: VcsEvent[] = [
+    { ...event, id: 'commit:today', timestamp: new Date(now).toISOString(), changedFiles: [{ path: 'a.ts', status: 'modified' }] },
+    { ...event, id: 'commit:yesterday', timestamp: new Date(now - day).toISOString(), changedFiles: [{ path: 'b.ts', status: 'added' }] },
+  ]
+  const html = render(ready({ timeline: { ...createInitialState().timeline, events } }))
+  assert.ok(html.includes(t('group.today')))
+  assert.ok(html.includes(t('group.yesterday')))
+  assert.ok(html.indexOf(t('group.today')) < html.indexOf(t('group.yesterday')))
+  assert.ok(html.includes('dvt-tl-group'))
 })
 
 test('the zh and en dictionaries stay complete and non-empty', () => {
