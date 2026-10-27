@@ -12,6 +12,7 @@ import * as React from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createVcsApi } from './api.ts'
 import { createTimelinePanel } from './panel.ts'
+import { createDockEntry } from './dock.ts'
 import { en, normalizeLocale, zh } from './i18n.ts'
 import type { Locale } from './i18n.ts'
 import type { PanelProps } from './types.ts'
@@ -172,4 +173,38 @@ export function apply(ctx: ClientContext): void {
     ))
     return () => { body(); title() }
   }, 'dsh-vcs-timeline: tab body')
+
+  // The primary entry point: one strip directly above the chat composer. It
+  // opens the same panel fullscreen, so neither reading history nor auditing a
+  // write operation requires leaving the conversation. The slot is declared by
+  // the shipped conversation UI, so its absence (an older shell) degrades to
+  // "no strip" while the sidebar tab keeps working.
+  const Dock = createDockEntry({
+    api,
+    t: translate,
+    Panel,
+    resolveWorkspacePath: (props: PanelProps) => resolveCwd(ctx, sessionIdFor(props)),
+  })
+  const dockComponent = (attributes?: unknown): React.ReactElement =>
+    React.createElement(Dock, (attributes ?? {}) as unknown as PanelProps)
+
+  ctx.effect(() => {
+    const slots = services.slots!
+    let dispose: (() => void) | undefined
+    try {
+      dispose = slots.inject('conversation.input.dock', () => {
+        try {
+          return slots.register(
+            { name: 'conversation.input.dock', id: TAB_ID, order: 90, locale: NS },
+            dockComponent,
+          )
+        } catch {
+          return () => {}
+        }
+      })
+    } catch {
+      dispose = undefined
+    }
+    return () => { dispose?.() }
+  }, 'dsh-vcs-timeline: composer dock')
 }

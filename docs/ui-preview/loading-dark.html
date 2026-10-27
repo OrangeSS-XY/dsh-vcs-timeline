@@ -25,7 +25,7 @@
   .stage { width: 400px; height: 900px; display: flex; overflow: hidden; }
   .stage > * { flex: 1 1 auto; }
 </style></head>
-<body><div class="stage"><div class="dvt-root" data-dvt-panel="vcs-timeline" lang="zh-CN"><style>
+<body><div class="stage" data-stage="400x900"><div class="dvt-root" data-dvt-panel="vcs-timeline" data-dvt-mode="sidebar" lang="zh-CN"><style>
 .dvt-root {
   position: relative;
   display: flex;
@@ -455,6 +455,175 @@
 @keyframes dvt-spin { to { transform: rotate(360deg); } }
 .dvt-kbd { padding: 0 4px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 3px; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
 
+/* ---------- file-centered dual pane ---------- */
+.dvt-split { flex: 1 1 auto; display: flex; align-items: stretch; min-height: 0; min-width: 0; container-type: inline-size; }
+.dvt-tree {
+  flex: 0 0 auto; width: clamp(150px, 30%, 264px); min-width: 0;
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-specific-sidebar-fill);
+}
+.dvt-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.dvt-tree-head { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 8px; }
+.dvt-tree-title {
+  flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--dsw-alias-label-tertiary); white-space: nowrap;
+}
+.dvt-tree-total {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0; text-transform: none;
+}
+.dvt-tree-tools { flex: 0 0 auto; display: flex; gap: 1px; }
+.dvt-tree-tools .dvt-iconbtn { width: 20px; height: 20px; }
+.dvt-tree-search { position: relative; display: flex; align-items: center; flex: 0 0 auto; margin: 0 6px 4px; }
+.dvt-tree-search &gt; svg { position: absolute; left: 6px; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
+.dvt-tree-input {
+  width: 100%; height: 22px; padding: 0 6px 0 22px;
+  border: 1px solid var(--dsw-alias-border-l1); border-radius: 4px;
+  background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font-size: 11px;
+}
+.dvt-tree-input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.dvt-tree-input:focus-visible { border-color: var(--dsw-alias-brand-primary); outline: none; }
+.dvt-tree-chips { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; padding: 0 6px 4px; overflow: hidden; }
+.dvt-tree-chip {
+  display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0;
+  height: 19px; padding: 0 5px; border: 1px solid transparent; border-radius: 4px;
+  background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font-size: 10px;
+}
+.dvt-tree-chip:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
+.dvt-tree-chip[aria-pressed=&quot;true&quot;] {
+  background: var(--dsw-alias-bg-layer-2); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-primary); font-weight: 600;
+}
+.dvt-tree-chip-letter { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px; }
+.dvt-tree-chip-count { font-size: 9.5px; }
+.dvt-tree-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 4px 8px; }
+.dvt-tree-all {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding: 0 6px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--dsw-alias-label-primary);
+  font-size: 11.5px; text-align: left; cursor: pointer;
+}
+.dvt-tree-all:hover { background: var(--dsw-alias-interactive-hover); }
+.dvt-tree-all-active { background: var(--dsw-alias-interactive-selected); box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary); }
+.dvt-tree-all-label { flex: 1 1 auto; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dvt-tree-all-meta { flex: 0 0 auto; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.dvt-tree-list, .dvt-tree-children { margin: 0; padding: 0; list-style: none; }
+.dvt-tree-item { margin: 0; padding: 0; }
+.dvt-tree-row {
+  display: flex; align-items: center; gap: 4px; width: 100%; height: 23px; padding: 0 4px;
+  border: 0; border-radius: 3px; background: transparent;
+  color: var(--dsw-alias-label-secondary); font-size: 11.5px; text-align: left; cursor: pointer;
+}
+.dvt-tree-row:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
+.dvt-tree-row:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--dsw-alias-brand-primary); }
+.dvt-tree-file-selected { background: var(--dsw-alias-interactive-selected); color: var(--dsw-alias-label-primary); box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary); }
+.dvt-tree-caret { flex: 0 0 auto; display: inline-flex; width: 10px; color: var(--dsw-alias-label-tertiary); transition: transform 100ms ease; }
+.dvt-tree-caret-open { transform: rotate(90deg); }
+.dvt-tree-icon { flex: 0 0 auto; display: inline-flex; color: var(--dsw-alias-label-tertiary); }
+.dvt-tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dvt-tree-badge { flex: 0 0 auto; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-tree-changes { flex: 0 0 auto; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-tree .dvt-file-status { width: 15px; height: 15px; font-size: 9px; }
+.dvt-tree .dvt-state { padding: 18px 10px; }
+.dvt-tree .dvt-state-title { font-size: 11px; }
+.dvt-tree .dvt-state-hint { font-size: 10px; }
+
+/* Selection header above the narrowed timeline. */
+.dvt-selection {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px; height: 26px;
+  padding: 0 4px 0 8px; border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dvt-selection-path {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 10.5px; color: var(--dsw-alias-label-secondary);
+}
+.dvt-selection-name { color: var(--dsw-alias-label-primary); }
+.dvt-selection-meta { flex: 0 0 auto; font-size: 10px; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }
+.dvt-selection-clear { width: 20px; height: 20px; }
+.dvt-list-window { padding: 0 8px 8px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+
+/* A narrow split (sidebar) drops the least important row metadata before the
+   summary starts ellipsizing; an IDE keeps the summary readable and hides the
+   rest. Container queries keep this tied to the pane width, not the window. */
+@container (max-width: 520px) {
+  .dvt-commit-bottom .dvt-tag { display: none; }
+  .dvt-selection-meta { display: none; }
+  .dvt-list-count { display: none; }
+}
+
+/* Time-range control inside the filter bar. */
+.dvt-time {
+  display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; height: 22px;
+  padding: 0 3px; border-radius: 4px; color: var(--dsw-alias-label-secondary); cursor: pointer;
+}
+.dvt-time:hover { background: var(--dsw-alias-interactive-hover); }
+.dvt-time &gt; svg { flex: 0 0 auto; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
+.dvt-time-select {
+  appearance: none; max-width: 76px; border: 0; outline: none; background: transparent;
+  color: inherit; font-size: 11px; cursor: pointer;
+}
+
+/* ---------- composer dock strip ---------- */
+.dvt-dock { display: flex; align-items: center; padding: 0 2px; }
+.dvt-dock-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; padding: 0 6px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--dsw-alias-label-secondary); font-size: 11.5px; text-align: left; cursor: pointer;
+}
+.dvt-dock-btn:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
+.dvt-dock-btn:focus-visible { outline: none; box-shadow: 0 0 0 1.5px var(--dsw-alias-brand-primary); }
+.dvt-dock-icon { flex: 0 0 auto; display: inline-flex; color: var(--dsw-alias-label-tertiary); }
+.dvt-dock-name {
+  flex: 0 1 auto; min-width: 0; max-width: 200px; font-size: 12px; font-weight: 600;
+  color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dvt-dock-vcs { flex: 0 0 auto; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }
+.dvt-dock-branch {
+  display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0; max-width: 140px;
+  height: 17px; padding: 0 5px; border-radius: 3px; background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dvt-dock-dirty { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 10.5px; color: var(--dsw-alias-state-warn-primary); }
+.dvt-dock-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-state-warn-primary); }
+.dvt-dock-conflict { margin-left: 3px; color: var(--dsw-alias-state-error-primary); }
+.dvt-dock-clean { flex: 0 0 auto; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-dock-open {
+  display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; margin-left: auto;
+  font-size: 10.5px; color: var(--dsw-alias-label-tertiary); white-space: nowrap;
+}
+.dvt-dock-btn:hover .dvt-dock-open { color: var(--dsw-alias-brand-primary); }
+
+/* ---------- fullscreen overlay ---------- */
+.dvt-ovl {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px; box-sizing: border-box;
+}
+.dvt-ovl *, .dvt-ovl *::before, .dvt-ovl *::after { box-sizing: border-box; }
+.dvt-ovl-backdrop { position: absolute; inset: 0; background: var(--dsw-alias-bg-mask-drop); }
+.dvt-ovl-frame {
+  position: relative; display: flex; flex-direction: column;
+  width: 100%; height: 100%; min-width: 0; min-height: 0;
+  border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px;
+  background: var(--dsw-alias-bg-base); box-shadow: var(--dsw-shadow-lv3); overflow: hidden;
+}
+.dvt-root-overlay { width: 100%; height: 100%; border-radius: 0; }
+/* Fullscreen has room to spare: keep the search field a comfortable control
+   instead of stretching it across the whole frame. */
+.dvt-root-overlay .dvt-search { max-width: 380px; }
+.dvt-root-overlay .dvt-filterbar { gap: 6px; }
+.dvt-root-overlay .dvt-tree { width: clamp(220px, 22%, 300px); }
+@media (max-width: 720px) {
+  .dvt-ovl { padding: 0; }
+  .dvt-ovl-frame { border-radius: 0; border: 0; }
+}
+
 /* Narrow sidebars: drop optional chrome before anything can overflow. */
 @media (max-width: 380px) {
   .dvt-branch { display: none; }
@@ -469,4 +638,4 @@
   .dvt-diff-gutter { width: 54px; }
   .dvt-diff-old, .dvt-diff-new { width: 22px; }
 }
-</style><div><div class="dvt-chrome"><div class="dvt-toolbar"><label class="dvt-repo" title="未选择仓库"><span class="dvt-repo-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></span><span class="dvt-repo-name">未选择仓库</span><span class="dvt-repo-caret"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-down"><path d="M4.2 6.2 8 10l3.8-3.8"></path></svg></span><select class="dvt-repo-native" aria-label="选择仓库"><option value="" selected="">选择仓库</option></select></label><span class="dvt-toolbar-actions"><button type="button" class="dvt-iconbtn" aria-label="刷新仓库列表与数据" title="刷新仓库列表与数据" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="版本控制操作" title="版本控制操作" aria-expanded="false" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="more"><circle cx="3.4" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="12.6" cy="8" r="0.9" fill="currentColor" stroke="none"></circle></svg></button></span></div><div role="tablist" class="dvt-tabstrip" aria-label="代码时间线"><button type="button" role="tab" class="dvt-tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="timeline"><path d="M3.2 3.6v8.8"></path><circle cx="3.2" cy="4.4" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="8" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="11.6" r="1.2" fill="currentColor" stroke="none"></circle><path d="M6.4 4.4h6.4"></path><path d="M6.4 8h6.4"></path><path d="M6.4 11.6h6.4"></path></svg><span>时间线</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="audit"><path d="M8 2.2 13 4v4.2c0 2.8-2.1 4.7-5 5.6-2.9-.9-5-2.8-5-5.6V4z"></path><path d="M5.8 7.8 7.4 9.4l3-3.2"></path></svg><span>审计</span></button></div><div><div class="dvt-filterbar"><span class="dvt-search"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="search"><circle cx="7" cy="7" r="3.9"></circle><path d="M10.1 10.1 13.6 13.6"></path></svg><input class="dvt-search-input" type="search" placeholder="搜索提交说明或作者" aria-label="搜索历史" value=""/></span><span class="dvt-chips" role="group" aria-label="筛选"><button type="button" class="dvt-chip" aria-pressed="true">全部</button><button type="button" class="dvt-chip" aria-pressed="false">提交</button></span><button type="button" class="dvt-iconbtn" aria-label="筛选" title="筛选" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="filter"><path d="M2.6 3.6h10.8L9.2 8.3v4.1l-2.4-1.3V8.3z"></path></svg></button></div></div></div></div><div class="dvt-body"><div class="dvt-scroll"><div class="dvt-skeleton" aria-busy="true"><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div></div></div></div><div class="dvt-statusbar"><span class="dvt-status-item"><span class="dvt-dot dvt-dot-none" aria-hidden="true"></span><span>未选择仓库</span></span><span class="dvt-status-spacer"></span><button type="button" class="dvt-statusbtn" aria-expanded="false" aria-label="环境诊断" title="环境诊断"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="sliders"><path d="M3 4.4h10"></path><path d="M3 8h10"></path><path d="M3 11.6h10"></path><circle cx="5.6" cy="4.4" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="10.4" cy="8" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="7" cy="11.6" r="1.3" fill="currentColor" stroke="none"></circle></svg><span>诊断</span><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-right"><path d="M6.2 4.2 10 8l-3.8 3.8"></path></svg></button></div></div></div></body></html>
+</style><div><div class="dvt-chrome"><div class="dvt-toolbar"><label class="dvt-repo" title="未选择仓库"><span class="dvt-repo-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></span><span class="dvt-repo-name">未选择仓库</span><span class="dvt-repo-caret"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-down"><path d="M4.2 6.2 8 10l3.8-3.8"></path></svg></span><select class="dvt-repo-native" aria-label="选择仓库"><option value="" selected="">选择仓库</option></select></label><span class="dvt-toolbar-actions"><button type="button" class="dvt-iconbtn" aria-label="刷新仓库列表与数据" title="刷新仓库列表与数据" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="版本控制操作" title="版本控制操作" aria-expanded="false" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="more"><circle cx="3.4" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="12.6" cy="8" r="0.9" fill="currentColor" stroke="none"></circle></svg></button></span></div><div role="tablist" class="dvt-tabstrip" aria-label="代码时间线"><button type="button" role="tab" class="dvt-tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="timeline"><path d="M3.2 3.6v8.8"></path><circle cx="3.2" cy="4.4" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="8" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="11.6" r="1.2" fill="currentColor" stroke="none"></circle><path d="M6.4 4.4h6.4"></path><path d="M6.4 8h6.4"></path><path d="M6.4 11.6h6.4"></path></svg><span>时间线</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="audit"><path d="M8 2.2 13 4v4.2c0 2.8-2.1 4.7-5 5.6-2.9-.9-5-2.8-5-5.6V4z"></path><path d="M5.8 7.8 7.4 9.4l3-3.2"></path></svg><span>审计</span></button></div><div><div class="dvt-filterbar"><span class="dvt-search"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="search"><circle cx="7" cy="7" r="3.9"></circle><path d="M10.1 10.1 13.6 13.6"></path></svg><input class="dvt-search-input" type="search" placeholder="搜索提交说明或作者" aria-label="搜索历史" value=""/></span><span class="dvt-chips" role="group" aria-label="筛选"><button type="button" class="dvt-chip" aria-pressed="true">全部</button><button type="button" class="dvt-chip" aria-pressed="false">提交</button></span><label class="dvt-time"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><select class="dvt-time-select" aria-label="时间范围"><option value="all" selected="">全部时间</option><option value="24h">近 24 小时</option><option value="7d">近 7 天</option><option value="30d">近 30 天</option></select></label><button type="button" class="dvt-iconbtn" aria-label="筛选" title="筛选" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="filter"><path d="M2.6 3.6h10.8L9.2 8.3v4.1l-2.4-1.3V8.3z"></path></svg></button></div></div></div></div><div class="dvt-body"><div class="dvt-split"><aside class="dvt-tree" aria-label="变更文件"><div class="dvt-tree-head"><span class="dvt-tree-title"><span>文件</span><span class="dvt-tree-total" title="当前窗口内 0 个文件">0</span></span><span class="dvt-tree-tools"><button type="button" class="dvt-iconbtn" aria-label="展开全部目录" title="展开全部目录" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="expand-all"><path d="M4.6 3.4 8 6.6l3.4-3.2"></path><path d="M4.6 9 8 12.2 11.4 9"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="收起全部目录" title="收起全部目录" disabled=""><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="collapse-all"><path d="M4.6 6.6 8 3.4l3.4 3.2"></path><path d="M4.6 12.2 8 9l3.4 3.2"></path></svg></button></span></div><div class="dvt-tree-search"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="search"><circle cx="7" cy="7" r="3.9"></circle><path d="M10.1 10.1 13.6 13.6"></path></svg><input class="dvt-tree-input" type="search" placeholder="搜索文件名" aria-label="按文件名搜索" value=""/></div><div class="dvt-tree-chips" role="group" aria-label="按文件状态筛选"><button type="button" class="dvt-tree-chip" aria-pressed="true" aria-label="全部（0）" title="全部"><span class="dvt-tree-chip-letter" aria-hidden="true">∗</span><span class="dvt-tree-chip-count">0</span></button></div><div class="dvt-tree-scroll"><button type="button" class="dvt-tree-all dvt-tree-all-active" aria-pressed="true"><span class="dvt-tree-all-label">全部文件</span><span class="dvt-tree-all-meta">0 次提交</span></button><div class="dvt-state"><span class="dvt-state-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="file"><path d="M4 2.2h5l3 3v8.6H4z"></path><path d="M9 2.2v3.2h3"></path></svg></span><span class="dvt-state-title">数据源未提供文件列表</span><span class="dvt-state-hint">Host 未返回逐提交文件清单（例如 SVN 适配器或旧版 Host），请以右侧提交列表为准。</span></div></div></aside><div class="dvt-pane"><div class="dvt-scroll"><div class="dvt-skeleton" aria-busy="true"><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div><div class="dvt-skel-row"><span class="dvt-skel-dot"></span><span class="dvt-skel-line"></span><span class="dvt-skel-line short"></span></div></div></div></div></div></div><div class="dvt-statusbar"><span class="dvt-status-item"><span class="dvt-dot dvt-dot-none" aria-hidden="true"></span><span>未选择仓库</span></span><span class="dvt-status-spacer"></span><button type="button" class="dvt-statusbtn" aria-expanded="false" aria-label="环境诊断" title="环境诊断"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="sliders"><path d="M3 4.4h10"></path><path d="M3 8h10"></path><path d="M3 11.6h10"></path><circle cx="5.6" cy="4.4" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="10.4" cy="8" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="7" cy="11.6" r="1.3" fill="currentColor" stroke="none"></circle></svg><span>诊断</span><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-right"><path d="M6.2 4.2 10 8l-3.8 3.8"></path></svg></button></div></div></div></body></html>

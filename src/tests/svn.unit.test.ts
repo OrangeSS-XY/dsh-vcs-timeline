@@ -16,7 +16,7 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { ApiError } from '../shared/contracts.ts'
-import { isChangeSet } from '../shared/contracts.ts'
+import { MAX_EVENT_FILES, isChangeSet } from '../shared/contracts.ts'
 import type { AdapterResult, OperationParams, RunResult, Runner } from '../host/adapters/types.ts'
 import { createSvnAdapter } from '../host/adapters/svn/adapter.ts'
 import {
@@ -768,6 +768,90 @@ test('history: maps timeout, auth, connect and non-working-copy failures to stab
   const missing = svnAdapter(() => success(''), null)
   assert.equal(expectErr(await missing.adapter.history(WC_ROOT, REPOSITORY_ID, { limit: 5 })).code, 'vcs-not-installed')
   assert.equal(missing.calls.length, 0)
+})
+
+test('history: includeFiles maps each revision\'s log paths into changed files', async () => {
+  const mixedLogXml = `<?xml version="1.0" encoding="UTF-8"?>
+<log>
+<logentry revision="5">
+<author>alice</author>
+<date>2024-05-05T10:00:00.000000Z</date>
+<paths>
+<path action="M" kind="file" prop-mods="false" text-mods="true">/trunk/README.md</path>
+<path action="A" kind="file" copyfrom-path="/trunk/old name.txt" copyfrom-rev="4">/trunk/new name.txt</path>
+<path action="D" kind="file">/trunk/old name.txt</path>
+<path action="A" kind="file">/trunk/brand-new.txt</path>
+<path action="A" kind="dir" copyfrom-path="/trunk/dir" copyfrom-rev="2">/trunk/dir2</path>
+</paths>
+<msg>mixed change</msg>
+</logentry>
+<logentry revision="4">
+<author>bob</author>
+<date>2024-05-04T10:00:00.000000Z</date>
+<paths>
+<path action="M" kind="file" text-mods="true">/trunk/docs/a.txt</path>
+</paths>
+<msg>docs</msg>
+</logentry>
+</log>`
+  const fake = svnAdapter(argv => {
+    if (argv[1] === 'log') return success(mixedLogXml)
+    if (argv[1] === 'info') return success(INFO_XML)
+    return failure('unexpected')
+  })
+  const page = expectOk(await fake.adapter.history(WC_ROOT, REPOSITORY_ID, { limit: 10, includeFiles: true }))
+
+  assert.equal(page.events.length, 2)
+  // Paths are mapped onto the working copy prefix (`^/trunk`), the copy whose
+  // source disappeared in the same revision becomes a rename, and a live copy
+  // stays a copy with its source path.
+  assert.deepEqual(page.events[0]!.changedFiles, [
+    { path: 'README.md', status: 'modified' },
+    { path: 'new name.txt', oldPath: 'old name.txt', status: 'renamed' },
+    { path: 'old name.txt', status: 'deleted' },
+    { path: 'brand-new.txt', status: 'added' },
+    { path: 'dir2', oldPath: 'dir', status: 'copied' },
+  ])
+  assert.equal(page.events[0]!.changedFilesTruncated, undefined)
+  assert.deepEqual(page.events[1]!.changedFiles, [{ path: 'docs/a.txt', status: 'modified' }])
+
+  // One log read plus one local info read; the log still carries `-v`.
+  assert.equal(fake.calls.length, 2)
+  const logCall = fake.calls.find(call => call.argv[1] === 'log')
+  const infoCall = fake.calls.find(call => call.argv[1] === 'info')
+  assert.ok(logCall !== undefined)
+  assert.ok(infoCall !== undefined)
+  assert.ok(logCall.argv.includes('-v'))
+
+  // A failed info probe only loses the prefix mapping: the page still succeeds
+  // and files fall back to their repository-relative form (documented fallback).
+  const fallback = svnAdapter(argv => (argv[1] === 'log' ? success(mixedLogXml) : failure('svn: E155007: not a working copy')))
+  const fallbackPage = expectOk(await fallback.adapter.history(WC_ROOT, REPOSITORY_ID, { limit: 10, includeFiles: true }))
+  assert.equal(fallbackPage.events[0]!.changedFiles?.[0]?.path, 'trunk/README.md')
+})
+
+test('history: without includeFiles the events carry no changed files and svn info is not run', async () => {
+  const fake = svnAdapter(argv => (argv[1] === 'log' ? success(logXml([{ revision: 3 }])) : failure('unexpected')))
+  const page = expectOk(await fake.adapter.history(WC_ROOT, REPOSITORY_ID, { limit: 10 }))
+  assert.equal(page.events.length, 1)
+  assert.equal('changedFiles' in (page.events[0] ?? {}), false)
+  assert.equal(page.events[0]!.changedFilesTruncated, undefined)
+  // Only the history read ran: no per-page file work when it was not asked for.
+  assert.equal(fake.calls.length, 1)
+})
+
+test('history: includeFiles caps a pathological revision at MAX_EVENT_FILES', async () => {
+  const paths = Array.from({ length: MAX_EVENT_FILES + 5 }, (_, index) => `/trunk/f-${index}.txt`)
+  const fake = svnAdapter(argv => {
+    if (argv[1] === 'log') return success(logXml([{ revision: 7, paths }]))
+    if (argv[1] === 'info') return success(INFO_XML)
+    return failure('unexpected')
+  })
+  const page = expectOk(await fake.adapter.history(WC_ROOT, REPOSITORY_ID, { limit: 10, includeFiles: true }))
+  const files = page.events[0]!.changedFiles ?? []
+  assert.equal(files.length, MAX_EVENT_FILES)
+  assert.equal(page.events[0]!.changedFilesTruncated, true)
+  assert.equal(files[0]?.path, 'f-0.txt')
 })
 
 test('history: stderr is redacted in the reported error detail', async () => {

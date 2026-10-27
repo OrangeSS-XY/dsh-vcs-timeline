@@ -359,3 +359,33 @@ export function hasStats(stats: EventStats): boolean {
   return stats.files !== undefined || stats.additions !== undefined || stats.deletions !== undefined
 }
 
+/** History window presets in display order. */
+export const TIME_PRESETS = ['all', '24h', '7d', '30d'] as const
+
+/**
+ * Inclusive ISO lower bound of one history window preset.
+ * @param preset - `all` (no bound), `24h`, `7d` or `30d`.
+ * @param now - clock used to compute the bound.
+ * @returns an ISO timestamp, or undefined for "all time".
+ */
+export function windowSince(preset: 'all' | '24h' | '7d' | '30d', now: number = Date.now()): string | undefined {
+  if (preset === 'all') return undefined
+  const hours = preset === '24h' ? 24 : preset === '7d' ? 24 * 7 : 24 * 30
+  return new Date(now - hours * 60 * 60 * 1000).toISOString()
+}
+
+/**
+ * Display label of one history window preset.
+ * @param preset - the preset.
+ * @param t - dictionary lookup.
+ * @returns the localized label.
+ */
+export function timePresetLabel(preset: 'all' | '24h' | '7d' | '30d', t: TranslateFn): string {
+  return t(`time.${preset}`)
+}
+
+/** Width of one tree indentation step, in px (pure layout arithmetic for tests). */
+export function treeIndent(depth: number): number {
+  return Number.isFinite(depth) && depth > 0 ? depth * 12 : 0
+}
+

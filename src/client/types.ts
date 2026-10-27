@@ -13,6 +13,7 @@ import type {
   ChangeSet,
   Diagnostics,
   DiffResult,
+  FileChangeStatus,
   OperationAttempt,
   OperationPreview,
   OperationType,
@@ -27,6 +28,9 @@ import type { TranslateFn } from './i18n.ts'
 /** Which source the panel body currently lists. */
 export type PanelSource = 'timeline' | 'audit'
 
+/** Server-side history window presets offered by the time filter. */
+export type TimePreset = 'all' | '24h' | '7d' | '30d'
+
 /** Debounced filter state plus the raw search box text. */
 export interface FilterState {
   /** Current value of the search input. */
@@ -39,6 +43,12 @@ export interface FilterState {
   author: string
   /** Whether the advanced filter row is expanded. */
   showAuthor: boolean
+  /** File-name search inside the tree pane (client-side only). */
+  treeQuery: string
+  /** Change-status filter shared by the tree and the timeline (client-side). */
+  fileStatus: FileChangeStatus | 'all'
+  /** History window preset, applied by the Host when the page is fetched. */
+  timePreset: TimePreset
 }
 
 /** Repository-history page state. */
@@ -112,6 +122,10 @@ export interface PanelState {
   noWorkspace: boolean
   source: PanelSource
   filters: FilterState
+  /** File whose history the right pane is narrowed to; null = whole repository. */
+  selectedFilePath: string | null
+  /** Directories the user expanded in the tree, keyed by repository path. */
+  expandedDirs: Record<string, boolean>
   refreshTick: number
   statusTick: number
   timeline: TimelineSlice
@@ -142,6 +156,20 @@ export interface PanelHandlers {
   onClearFilters(): void
   onLoadMoreTimeline(): void
   onRetryTimeline(): void
+  /** Narrow both panes to one repository-relative file; `null` shows all files. */
+  onSelectFile(path: string | null): void
+  /** Change the tree's file-name search. */
+  onTreeQueryChange(query: string): void
+  /** Change the status filter shared by the tree and the timeline. */
+  onSetFileStatus(status: FileChangeStatus | 'all'): void
+  /** Expand/collapse one directory of the tree. */
+  onToggleDir(path: string): void
+  /** Expand every directory of the current tree. */
+  onExpandAllDirs(): void
+  /** Collapse every directory of the current tree. */
+  onCollapseAllDirs(): void
+  /** Change the history window preset (refetches from the Host). */
+  onSetTimePreset(preset: TimePreset): void
   onOpenEvent(event: VcsEvent): void
   onBackFromDetail(): void
   onOpenFile(path: string): void
@@ -181,10 +209,26 @@ export interface PanelDeps {
   resolveWorkspacePath?: (props: PanelProps) => string | null
 }
 
-/** Props the sidebar slot passes to the tab body. */
+/** Props the sidebar slot (or the fullscreen overlay) passes to the panel. */
 export interface PanelProps {
   sessionId?: string
   workspacePath?: string | null
+  /** `overlay` adds the frame-wide close/fullscreen controls to the toolbar. */
+  mode?: 'sidebar' | 'overlay'
+  /** Close the fullscreen overlay (overlay mode only). */
+  onClose?: () => void
+  /** Toggle browser fullscreen for the overlay (overlay mode only). */
+  onToggleFullscreen?: () => void
+  /** Whether the overlay is currently in browser fullscreen. */
+  fullscreen?: boolean
+  /**
+   * Emit the component stylesheet inside this panel's tree.
+   *
+   * The fullscreen overlay is hosted by the composer dock, which already emits
+   * one copy of the stylesheet for its own row; passing `false` there keeps a
+   * single copy in the document.
+   */
+  inlineStyles?: boolean
 }
 
 /** Presentational props of one full panel render. */
@@ -192,6 +236,13 @@ export interface PanelViewProps {
   state: PanelState
   deps: PanelDeps
   handlers: PanelHandlers
+  /** Layout variant; `overlay` fills a fullscreen frame. */
+  mode?: 'sidebar' | 'overlay'
+  fullscreen?: boolean
+  onClose?: () => void
+  onToggleFullscreen?: () => void
+  /** Emit the `<style>` block; the dock host passes `false` when it already did. */
+  withStyles?: boolean
 }
 
 /** Empty repository-history slice. */
@@ -243,7 +294,18 @@ export function createInitialState(): PanelState {
     workspacePath: null,
     noWorkspace: false,
     source: 'timeline',
-    filters: { text: '', debouncedText: '', eventTypes: [], author: '', showAuthor: false },
+    filters: {
+      text: '',
+      debouncedText: '',
+      eventTypes: [],
+      author: '',
+      showAuthor: false,
+      treeQuery: '',
+      fileStatus: 'all',
+      timePreset: 'all',
+    },
+    selectedFilePath: null,
+    expandedDirs: {},
     refreshTick: 0,
     statusTick: 0,
     timeline: createTimelineSlice(),
@@ -275,6 +337,13 @@ export function createNoopHandlers(): PanelHandlers {
     onClearFilters: noop,
     onLoadMoreTimeline: noop,
     onRetryTimeline: noop,
+    onSelectFile: noop,
+    onTreeQueryChange: noop,
+    onSetFileStatus: noop,
+    onToggleDir: noop,
+    onExpandAllDirs: noop,
+    onCollapseAllDirs: noop,
+    onSetTimePreset: noop,
     onOpenEvent: noop,
     onBackFromDetail: noop,
     onOpenFile: noop,

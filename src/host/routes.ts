@@ -126,6 +126,16 @@ function optionalLimit(payload: Record<string, unknown>): number | undefined {
   return clampInt(value, 1, MAX_PAGE_SIZE, 30)
 }
 
+/** Read an optional boolean field. */
+function optionalBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
+  const value = payload[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'boolean') {
+    throw new ServiceError({ code: 'invalid-request', message: `${key} must be a boolean` })
+  }
+  return value
+}
+
 /** Build a timeline query from a request payload. */
 function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
   const eventTypes = payload.eventTypes
@@ -135,6 +145,7 @@ function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
   const since = optionalString(payload, 'since', 64)
   const until = optionalString(payload, 'until', 64)
   const limit = optionalLimit(payload)
+  const includeFiles = optionalBoolean(payload, 'includeFiles')
   return {
     repositoryId: requiredString(payload, 'repositoryId', 1024),
     ...(Array.isArray(eventTypes)
@@ -146,6 +157,7 @@ function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
     ...(until === undefined ? {} : { until }),
     ...(typeof cursor === 'string' && cursor !== '' ? { cursor } : {}),
     ...(limit === undefined ? {} : { limit }),
+    ...(includeFiles === undefined ? {} : { includeFiles }),
   }
 }
 

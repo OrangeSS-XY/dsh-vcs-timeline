@@ -10,6 +10,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { MAX_EVENT_FILES } from '../shared/contracts.ts'
 import {
   branchFromDecoration,
   commitArgs,
@@ -20,8 +21,11 @@ import {
   isSafeBranchName,
   isSafeRemoteName,
   logArgs,
+  logNameStatusArgs,
   logStatsArgs,
   mergeChangedFiles,
+  parseLogFileNumstatZ,
+  parseLogNameStatusZ,
   parseLogOutput,
   parseLogStatsZ,
   parseNameStatusZ,
@@ -182,6 +186,156 @@ test('parseLogStatsZ tolerates unknown tokens, leading newlines and truncated re
   // A rename record whose deferred paths are missing must not throw or hang.
   const truncated = parseLogStatsZ(`\u0001${hashD}\u00000\t0\t`)
   assert.deepEqual(truncated.get(hashD), { filesChanged: 1, additions: 0, deletions: 0, binaryFiles: 0 })
+})
+
+test('parseLogNameStatusZ separates commits, renames, copies, deletes and merge entries', () => {
+  const hashA = 'a'.repeat(40)
+  const hashMerge = 'b'.repeat(40)
+  const hashC = 'c'.repeat(40)
+  // Real `git log -z --name-status --find-renames` shape: each commit starts
+  // with `\x01<hash>`, the first status token carries the separating newline,
+  // and a merge commit reports no path tokens at all.
+  const stream = [
+    `\u0001${hashA}`,
+    '\nM', 'a.txt',
+    'A', 'bin.dat',
+    'R100', 'old name.txt', 'new name.txt',
+    'C75', 'src.txt', 'dst.txt',
+    'D', 'gone.txt',
+    'T', 'mode.txt',
+    `\u0001${hashMerge}`,
+    `\u0001${hashC}`,
+    '\nA', 'first.txt',
+    '',
+  ].join('\u0000')
+
+  const byHash = parseLogNameStatusZ(stream)
+  assert.equal(byHash.size, 3)
+  assert.deepEqual(byHash.get(hashA), [
+    { status: 'M', path: 'a.txt' },
+    { status: 'A', path: 'bin.dat' },
+    { status: 'R100', path: 'new name.txt', oldPath: 'old name.txt' },
+    { status: 'C75', path: 'dst.txt', oldPath: 'src.txt' },
+    { status: 'D', path: 'gone.txt' },
+    { status: 'T', path: 'mode.txt' },
+  ])
+  // A merge commit appears with an empty list, never with invented files.
+  assert.deepEqual(byHash.get(hashMerge), [])
+  assert.deepEqual(byHash.get(hashC), [{ status: 'A', path: 'first.txt' }])
+  assert.equal(parseLogNameStatusZ('').size, 0)
+})
+
+test('parseLogNameStatusZ tolerates unexpected tokens and truncated renames', () => {
+  const hash = 'd'.repeat(40)
+  const tolerated = [
+    'stray-before-any-commit',
+    `\u0001${hash}`,
+    '\nR100', 'only-old-path.txt',
+  ].join('\u0000')
+  const byHash = parseLogNameStatusZ(tolerated)
+  // The incomplete rename consumed the missing new path, so nothing is invented.
+  assert.deepEqual(byHash.get(hash), [])
+  assert.deepEqual(parseLogNameStatusZ('\u0000\u0000'), new Map())
+})
+
+test('parseLogFileNumstatZ keeps per-file line counts, binary flags and rename paths', () => {
+  const hashA = 'a'.repeat(40)
+  const hashMerge = 'b'.repeat(40)
+  const hashC = 'c'.repeat(40)
+  const stream = [
+    `\u0001${hashA}`,
+    '\n2\t1\ta.txt',
+    '-\t-\tbin.dat',
+    '0\t0\t', 'old name.txt', 'new name.txt',
+    `\u0001${hashMerge}`,
+    `\u0001${hashC}`,
+    '\n3\t0\tfirst.txt',
+    '',
+  ].join('\u0000')
+
+  const byHash = parseLogFileNumstatZ(stream)
+  assert.equal(byHash.size, 3)
+  assert.deepEqual(byHash.get(hashA), [
+    { path: 'a.txt', additions: 2, deletions: 1, binary: false },
+    { path: 'bin.dat', binary: true },
+    { path: 'new name.txt', oldPath: 'old name.txt', additions: 0, deletions: 0, binary: false },
+  ])
+  assert.deepEqual(byHash.get(hashMerge), [])
+  assert.deepEqual(byHash.get(hashC), [{ path: 'first.txt', additions: 3, deletions: 0, binary: false }])
+  assert.equal(parseLogFileNumstatZ('').size, 0)
+
+  // The same stats stream still feeds the existing aggregate parser unchanged.
+  assert.deepEqual(parseLogStatsZ(stream).get(hashA), {
+    filesChanged: 3,
+    additions: 2,
+    deletions: 1,
+    binaryFiles: 1,
+  })
+})
+
+test('mergeChangedFiles joins one commit\'s name-status and numstat records', () => {
+  const hash = 'e'.repeat(40)
+  const byHash = parseLogNameStatusZ([
+    `\u0001${hash}`,
+    '\nM', 'a.txt',
+    'A', 'bin.dat',
+    'R100', 'old name.txt', 'new name.txt',
+    '',
+  ].join('\u0000'))
+  const numstatByHash = parseLogFileNumstatZ([
+    `\u0001${hash}`,
+    '\n2\t1\ta.txt',
+    '-\t-\tbin.dat',
+    '0\t0\t', 'old name.txt', 'new name.txt',
+    '',
+  ].join('\u0000'))
+
+  const merged = mergeChangedFiles(byHash.get(hash) ?? [], numstatByHash.get(hash) ?? [], MAX_EVENT_FILES)
+  assert.equal(merged.truncated, false)
+  assert.deepEqual(merged.files, [
+    { path: 'a.txt', status: 'modified', additions: 2, deletions: 1 },
+    { path: 'bin.dat', status: 'added', binary: true },
+    { path: 'new name.txt', oldPath: 'old name.txt', status: 'renamed', additions: 0, deletions: 0 },
+  ])
+})
+
+test('commit changed files cap at MAX_EVENT_FILES and only set truncated when exceeded', () => {
+  const exactlyMax = Array.from({ length: MAX_EVENT_FILES }, (_, index) => ({ status: 'M', path: `file-${index}.txt` }))
+  const atCap = mergeChangedFiles(exactlyMax, [], MAX_EVENT_FILES)
+  assert.equal(atCap.files.length, MAX_EVENT_FILES)
+  assert.equal(atCap.truncated, false)
+
+  const overCap = mergeChangedFiles([...exactlyMax, { status: 'A', path: 'one-too-many.txt' }], [], MAX_EVENT_FILES)
+  assert.equal(overCap.files.length, MAX_EVENT_FILES)
+  assert.equal(overCap.truncated, true)
+  assert.equal(overCap.files.some(file => file.path === 'one-too-many.txt'), false)
+})
+
+test('logNameStatusArgs mirrors logArgs filters and adds the name-status flags', () => {
+  const input = {
+    skip: 2,
+    limit: 3,
+    author: 'a b; rm -rf /',
+    text: 'x;y&&z',
+    since: '2026-01-01T00:00:00.000Z',
+    until: '2026-02-01T00:00:00.000Z',
+  }
+  const historyArgv = logArgs(input)
+  const nameStatusArgv = logNameStatusArgs(input)
+  const filterArgs = (argv: readonly string[]): string[] => argv.filter(argument =>
+    argument.startsWith('--author=')
+    || argument.startsWith('--grep=')
+    || argument.startsWith('--since=')
+    || argument.startsWith('--until=')
+    || argument === '--fixed-strings'
+    || argument === '--regexp-ignore-case')
+  assert.deepEqual(filterArgs(nameStatusArgv), filterArgs(historyArgv))
+  assert.ok(nameStatusArgv.includes('--name-status'))
+  assert.ok(nameStatusArgv.includes('--find-renames'))
+  assert.ok(nameStatusArgv.includes('--format=\u0001%H'))
+  assert.ok(nameStatusArgv.includes('--max-count=3'))
+  assert.ok(nameStatusArgv.includes('--skip=2'))
+  assert.ok(nameStatusArgv.every(argument => typeof argument === 'string'))
 })
 
 test('parseStatusV2 decodes branch headers and record types 1, 2, u and ?', () => {

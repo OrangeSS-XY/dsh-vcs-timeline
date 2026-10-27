@@ -116,7 +116,7 @@ const status: WorkingTreeStatus = {
   conflicts: [],
 }
 
-/** A commit event with real-looking but explicitly fixture stats. */
+/** A commit event with real-looking but explicitly fixture stats and files. */
 function commit(input: {
   hash: string
   summary: string
@@ -125,6 +125,7 @@ function commit(input: {
   branch?: string
   stats?: { files: number; additions: number; deletions: number }
   parents?: string[]
+  files?: Array<{ path: string; status: 'added' | 'modified' | 'deleted' | 'renamed'; oldPath?: string; additions?: number; deletions?: number; binary?: boolean }>
 }): VcsEvent {
   return {
     schemaVersion: 1,
@@ -148,6 +149,7 @@ function commit(input: {
           deletions: input.stats.deletions,
         },
       }),
+    ...(input.files === undefined ? {} : { changedFiles: input.files }),
   }
 }
 
@@ -159,6 +161,15 @@ const events: VcsEvent[] = [
     time: '2026-10-27T09:12:00.000Z',
     branch: 'feature/sidebar-timeline',
     stats: { files: 7, additions: 214, deletions: 158 },
+    files: [
+      { path: 'src/client/ui/toolbar.ts', status: 'added', additions: 186, deletions: 0 },
+      { path: 'src/client/styles.ts', status: 'modified', additions: 214, deletions: 158 },
+      { path: 'src/client/ui/history.ts', status: 'renamed', oldPath: 'src/client/components.ts', additions: 62, deletions: 41 },
+      { path: 'src/client/ui/detail.ts', status: 'modified', additions: 48, deletions: 22 },
+      { path: 'assets/branch-graph.svg', status: 'added', binary: true },
+      { path: 'docs/ARCHITECTURE.md', status: 'modified', additions: 12, deletions: 4 },
+      { path: 'src/tests/client.render.test.ts', status: 'modified', additions: 31, deletions: 9 },
+    ],
   }),
   commit({
     hash: '9d2f41ab',
@@ -166,6 +177,11 @@ const events: VcsEvent[] = [
     actor: 'Chen Yu',
     time: '2026-10-27T08:41:00.000Z',
     stats: { files: 3, additions: 96, deletions: 210 },
+    files: [
+      { path: 'src/client/ui/audit.ts', status: 'added', additions: 96, deletions: 0 },
+      { path: 'src/client/components.ts', status: 'modified', additions: 0, deletions: 210 },
+      { path: 'src/tests/client.render.test.ts', status: 'modified', additions: 12, deletions: 8 },
+    ],
   }),
   commit({
     hash: '73ac90fe',
@@ -173,6 +189,7 @@ const events: VcsEvent[] = [
     actor: 'Lin Wei',
     time: '2026-10-26T17:05:00.000Z',
     parents: ['1a2b3c4d5e6f', '9d2f41ab0000'],
+    files: [],
   }),
   commit({
     hash: '41ee77c2',
@@ -180,6 +197,10 @@ const events: VcsEvent[] = [
     actor: 'Zhao Min',
     time: '2026-10-26T11:28:00.000Z',
     stats: { files: 2, additions: 18, deletions: 6 },
+    files: [
+      { path: 'src/client/ui/detail.ts', status: 'modified', additions: 18, deletions: 6 },
+      { path: 'src/client/ui/history.ts', status: 'modified', additions: 4, deletions: 2 },
+    ],
   }),
   commit({
     hash: '0c58b3d1',
@@ -187,6 +208,13 @@ const events: VcsEvent[] = [
     actor: 'Chen Yu',
     time: '2026-10-25T15:02:00.000Z',
     stats: { files: 5, additions: 432, deletions: 12 },
+    files: [
+      { path: 'src/host/storage/jsonl.ts', status: 'added', additions: 402, deletions: 0 },
+      { path: 'src/host/audit/audit-service.ts', status: 'added', additions: 28, deletions: 0 },
+      { path: 'src/host/index.ts', status: 'modified', additions: 2, deletions: 12 },
+      { path: 'docs/TEST-REPORT.md', status: 'modified', additions: 2, deletions: 0 },
+      { path: 'src/tests/storage.test.ts', status: 'added', additions: 0, deletions: 0 },
+    ],
   }),
   commit({
     hash: 'f1c0a9e4',
@@ -194,6 +222,7 @@ const events: VcsEvent[] = [
     actor: 'Lin Wei',
     time: '2026-10-25T09:36:00.000Z',
     stats: { files: 1, additions: 64, deletions: 4 },
+    files: [{ path: 'docs/DSH-COMPATIBILITY.md', status: 'modified', additions: 64, deletions: 4 }],
   }),
 ]
 
@@ -314,9 +343,46 @@ function stateWith(overrides: Partial<PanelState>): PanelState {
   }
 }
 
-const scenarios: Array<{ name: string; theme: 'light' | 'dark'; state: PanelState }> = [
-  { name: 'list-light', theme: 'light', state: stateWith({}) },
-  { name: 'list-dark', theme: 'dark', state: stateWith({}) },
+/** One preview scenario: a state, a theme and the stage size it needs. */
+interface Scenario {
+  name: string
+  theme: 'light' | 'dark'
+  state: PanelState
+  mode?: 'sidebar' | 'overlay'
+  width?: number
+  height?: number
+}
+
+const scenarios: Scenario[] = [
+  { name: 'list-light', theme: 'light', state: stateWith({ expandedDirs: { src: true, 'src/client': true } }) },
+  { name: 'list-dark', theme: 'dark', state: stateWith({ expandedDirs: { src: true, 'src/client': true } }) },
+  {
+    name: 'tree-file-light',
+    theme: 'light',
+    state: stateWith({
+      selectedFilePath: 'src/client/ui/detail.ts',
+      expandedDirs: { src: true, 'src/client': true, 'src/client/ui': true },
+    }),
+  },
+  {
+    name: 'overlay-light',
+    theme: 'light',
+    mode: 'overlay',
+    width: 1440,
+    height: 900,
+    state: stateWith({ expandedDirs: { src: true, 'src/client': true } }),
+  },
+  {
+    name: 'overlay-dark',
+    theme: 'dark',
+    mode: 'overlay',
+    width: 1440,
+    height: 900,
+    state: stateWith({
+      selectedFilePath: 'src/client/ui/detail.ts',
+      expandedDirs: { src: true, 'src/client': true, 'src/client/ui': true },
+    }),
+  },
   {
     name: 'detail-light',
     theme: 'light',
@@ -410,34 +476,49 @@ const scenarios: Array<{ name: string; theme: 'light' | 'dark'; state: PanelStat
   },
 ]
 
-const PAGE = (tokens: Record<string, string>, panel: string): string => `<!doctype html>
+const PAGE = (
+  tokens: Record<string, string>,
+  panel: string,
+  width: number,
+  height: number,
+): string => `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>dsh-vcs-timeline preview</title>
 <style>
   :root { ${Object.entries(tokens).map(([key, value]) => `${key}: ${value};`).join('\n    ')} }
   html, body { margin: 0; padding: 0; height: 100%; }
   body { background: var(--dsw-alias-bg-base); font-family: "Segoe UI", system-ui, sans-serif; }
-  .stage { width: 400px; height: 900px; display: flex; overflow: hidden; }
+  .stage { width: ${width}px; height: ${height}px; display: flex; overflow: hidden; }
   .stage > * { flex: 1 1 auto; }
 </style></head>
-<body><div class="stage">${panel}</div></body></html>`
+<body><div class="stage" data-stage="${width}x${height}">${panel}</div></body></html>`
 
 await mkdir(outDir, { recursive: true })
 for (const scenario of scenarios) {
+  const overlay = scenario.mode === 'overlay'
   const panel = renderToStaticMarkup(renderPanelView({
     state: scenario.state,
     deps: { t, locale: 'zh-CN' },
     handlers: createNoopHandlers(),
+    ...(overlay
+      ? {
+        mode: 'overlay' as const,
+        fullscreen: false,
+        onClose: () => {},
+        onToggleFullscreen: () => {},
+      }
+      : {}),
   }))
   const tokens = scenario.theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
-  await writeFile(resolve(outDir, `${scenario.name}.html`), PAGE(tokens, panel), 'utf8')
+  const html = PAGE(tokens, panel, scenario.width ?? 400, scenario.height ?? 900)
+  await writeFile(resolve(outDir, `${scenario.name}.html`), html, 'utf8')
 }
 
 await writeFile(resolve(outDir, 'render.md'), [
   '# UI 预览（设计验证用）',
   '',
   '这些页面由 `scripts/render-preview.ts` 用**固定示例数据**渲染真实的面板组件，',
-  '用于在 400px 侧栏宽度下检查密度、层级与明暗主题。它们不是运行时截图：',
-  '颜色使用近似 DSH 主题 token 的调色板，实际运行时颜色来自宿主 `--dsw-*` token。',
+  '用于检查密度、层级与明暗主题（400px 侧栏宽度，以及 1440px 全屏浮层）。',
+  '它们不是运行时截图：颜色使用近似 DSH 主题 token 的调色板，实际运行时颜色来自宿主 `--dsw-*` token。',
   '',
   '重新生成：',
   '',
@@ -446,8 +527,8 @@ await writeFile(resolve(outDir, 'render.md'), [
   'node scripts/preview-shots.mjs   # 用本机 Edge 无头模式截图',
   '```',
   '',
-  '场景：提交历史（亮/暗）、提交详情、Diff、审计列表/详情、写操作确认、',
-  '操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
+  '场景：文件树 + 变更时间线（亮/暗）、单文件时间线、全屏浮层（亮/暗）、提交详情、Diff、',
+  '审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
 ].join('\n'), 'utf8')
 
 console.log(`rendered ${scenarios.length} preview pages into ${outDir}`)

@@ -24,6 +24,13 @@ import type {
   VcsEvent,
 } from '../shared/contracts.ts'
 import { renderPanelView } from './components.ts'
+import {
+  aggregateChangedFiles,
+  buildFileTree,
+  directoryPaths,
+  filterFileEntries,
+} from './file-index.ts'
+import { windowSince } from './format.ts'
 import type { ApiResult, VcsClient } from './api.ts'
 import {
   createAuditSlice,
@@ -246,12 +253,14 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       } else {
         setState((prev) => ({ ...prev, timeline: { ...prev.timeline, loadingMore: true, error: null } }))
       }
-      const query: TimelineQuery = { repositoryId, limit: DEFAULT_PAGE_SIZE }
+      const query: TimelineQuery = { repositoryId, limit: DEFAULT_PAGE_SIZE, includeFiles: true }
       const text = filters.debouncedText.trim()
       if (text !== '') query.text = text
       if (filters.eventTypes.length > 0) query.eventTypes = [...filters.eventTypes]
       const author = filters.author.trim()
       if (author !== '') query.author = author
+      const since = windowSince(filters.timePreset, deps.now?.() ?? Date.now())
+      if (since !== undefined) query.since = since
       if (cursor !== null) query.cursor = cursor
       const result = await deps.api.timeline(query)
       if (!aliveRef.current || token !== timelineTokenRef.current) return
@@ -614,6 +623,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       state.filters.debouncedText,
       state.filters.eventTypes.join(','),
       state.filters.author,
+      state.filters.timePreset,
       state.refreshTick,
     ])
 
@@ -668,6 +678,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
             ...prev,
             menuOpen: false,
             selectedRepositoryId: selected,
+            selectedFilePath: null,
+            expandedDirs: {},
             timeline: createTimelineSlice(),
             changeSet: createChangeSetSlice(),
             diff: createDiffSlice(),
@@ -709,7 +721,64 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       })),
       onClearFilters: () => setState((prev) => ({
         ...prev,
-        filters: { text: '', debouncedText: '', eventTypes: [], author: '', showAuthor: prev.filters.showAuthor },
+        selectedFilePath: null,
+        filters: {
+          text: '',
+          debouncedText: '',
+          eventTypes: [],
+          author: '',
+          showAuthor: prev.filters.showAuthor,
+          treeQuery: '',
+          fileStatus: 'all',
+          timePreset: 'all',
+        },
+      })),
+      onSelectFile: (path: string | null) => setState((prev) => {
+        if (path === prev.selectedFilePath) return prev
+        const expanded = { ...prev.expandedDirs }
+        if (path !== null) {
+          // Reveal every ancestor of the file so the selection is visible.
+          const segments = path.split('/')
+          let dir = ''
+          for (const segment of segments.slice(0, -1)) {
+            dir = dir === '' ? segment : `${dir}/${segment}`
+            expanded[dir] = true
+          }
+        }
+        return {
+          ...prev,
+          selectedFilePath: path,
+          expandedDirs: expanded,
+          changeSet: createChangeSetSlice(),
+          diff: createDiffSlice(),
+        }
+      }),
+      onTreeQueryChange: (treeQuery: string) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, treeQuery },
+      })),
+      onSetFileStatus: (fileStatus) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, fileStatus },
+      })),
+      onToggleDir: (path: string) => setState((prev) => ({
+        ...prev,
+        expandedDirs: { ...prev.expandedDirs, [path]: prev.expandedDirs[path] !== true },
+      })),
+      onExpandAllDirs: () => setState((prev) => {
+        const visible = filterFileEntries(
+          aggregateChangedFiles(prev.timeline.events),
+          prev.filters.treeQuery,
+          prev.filters.fileStatus,
+        )
+        const expanded: Record<string, boolean> = { ...prev.expandedDirs }
+        for (const dir of directoryPaths(buildFileTree(visible))) expanded[dir] = true
+        return { ...prev, expandedDirs: expanded }
+      }),
+      onCollapseAllDirs: () => setState((prev) => ({ ...prev, expandedDirs: {} })),
+      onSetTimePreset: (timePreset) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, timePreset },
       })),
       onLoadMoreTimeline: () => {
         const snapshot = stateRef.current
@@ -791,7 +860,16 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
     }
 
-    return renderPanelView({ state, deps, handlers })
+    return renderPanelView({
+      state,
+      deps,
+      handlers,
+      mode: props.mode === 'overlay' ? 'overlay' : 'sidebar',
+      withStyles: props.inlineStyles !== false,
+      ...(props.fullscreen === undefined ? {} : { fullscreen: props.fullscreen }),
+      ...(props.onClose === undefined ? {} : { onClose: props.onClose }),
+      ...(props.onToggleFullscreen === undefined ? {} : { onToggleFullscreen: props.onToggleFullscreen }),
+    })
   }
 }
 

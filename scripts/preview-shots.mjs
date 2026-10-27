@@ -10,7 +10,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -38,6 +38,12 @@ const pages = (await readdir(dir)).filter((name) => name.endsWith('.html'))
 for (const page of pages.sort()) {
   const html = join(dir, page)
   const png = join(dir, page.replace(/\.html$/, '.png'))
+  // Each page declares the stage size it was rendered at (side panel 400x900,
+  // fullscreen overlay 1440x900); the shot uses exactly that viewport.
+  const markup = await readFile(html, 'utf8')
+  const declared = /data-stage="(\d+)x(\d+)"/.exec(markup)
+  const width = declared?.[1] ?? '400'
+  const height = declared?.[2] ?? '900'
   await execFileAsync(browser, [
     '--headless=new',
     '--disable-gpu',
@@ -45,9 +51,9 @@ for (const page of pages.sort()) {
     '--no-first-run',
     '--disable-extensions',
     `--force-device-scale-factor=${scale}`,
-    '--window-size=400,900',
+    `--window-size=${width},${height}`,
     `--screenshot=${png}`,
     pathToFileURL(html).href,
   ], { timeout: 60_000, windowsHide: true })
-  console.log(`shot ${page} -> ${png.replace(root + '\\', '')}`)
+  console.log(`shot ${page} (${width}x${height}) -> ${png.replace(root + '\\', '')}`)
 }

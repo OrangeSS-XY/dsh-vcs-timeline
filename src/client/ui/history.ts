@@ -1,19 +1,26 @@
 /**
- * Commit-history list: graph gutter, summary line, real per-commit stats, and
- * every empty/loading/error/partial variant the panel must distinguish.
+ * dsh-vcs-timeline — change timeline list (right column).
+ *
+ * Rows are grouped per commit and filtered by the same state as the file tree:
+ * a selected file narrows every row to that path and shows its per-commit
+ * status and line counts; the tree's search/status filters narrow the rows
+ * through {@link TimelineView.visibleEvents}. Nothing here invents a file
+ * count or a `+0/−0` statistic.
  * @module dsh-vcs-timeline/client/ui/history
  */
 
 import * as React from 'react'
-import type { VcsEvent } from '../../shared/contracts.ts'
+import type { FileChangeStatus, VcsEvent } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
+import type { TimelineView } from '../file-index.ts'
 import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
-import { IconBranch, IconError, IconRepo, IconTimeline } from './icons.ts'
+import { IconBranch, IconClose, IconError, IconFile, IconRepo, IconTimeline } from './icons.ts'
 import {
   Banner,
   DotSep,
   EmptyState,
   fileCountLabel,
+  IconButton,
   LineStats,
   SkeletonRows,
 } from './primitives.ts'
@@ -32,19 +39,43 @@ function revisionLabel(event: VcsEvent): string {
   return F.shortHash(event.commitHash, 7)
 }
 
-/** One commit row. */
+/** The file this row is about, when the pane is narrowed to one path. */
+function selectedFileOf(
+  event: VcsEvent,
+  path: string,
+): { additions: number | null; deletions: number | null; status: FileChangeStatus; letter: string; binary: boolean } {
+  const files = Array.isArray(event.changedFiles) ? event.changedFiles : []
+  const file = files.find((entry) => entry.path === path)
+  if (file === undefined) return { additions: null, deletions: null, status: 'unknown', letter: '?', binary: false }
+  const stats = F.fileStats(file)
+  return {
+    ...stats,
+    status: file.status,
+    letter: F.statusLetter(file.status),
+    binary: file.binary === true,
+  }
+}
+
+/** One commit row, optionally narrowed to the selected file. */
 function CommitRow(props: {
   event: VcsEvent
   deps: PanelDeps
   handlers: PanelHandlers
+  selectedPath: string | null
+  /** Visible file paths when a client-side file filter is active. */
+  visiblePaths: ReadonlySet<string> | null
 }): React.ReactElement {
-  const { event, deps, handlers } = props
+  const { event, deps, handlers, selectedPath, visiblePaths } = props
   const { t } = deps
   const merge = F.isMergeCommit(event)
   const hash = F.shortHash(event.commitHash, 7)
   const revision = revisionLabel(event)
   const time = F.formatCompactTime(event.timestamp, deps.locale)
   const stats = F.eventStats(event)
+  const narrow = selectedPath === null ? null : selectedFileOf(event, selectedPath)
+  const matched = selectedPath !== null || visiblePaths === null
+    ? null
+    : (Array.isArray(event.changedFiles) ? event.changedFiles : []).filter((file) => visiblePaths.has(file.path)).length
   const label = t('aria.timelineRow', {
     revision: revision === '' ? event.id : revision,
     summary: F.truncate(event.summary, 80),
@@ -63,14 +94,20 @@ function CommitRow(props: {
     h('span', { className: 'dvt-commit-body' },
       h('span', { className: 'dvt-commit-top' },
         h('span', { className: 'dvt-summary' }, F.truncate(event.summary, 200) === '' ? t('timeline.noRevision') : F.truncate(event.summary, 200)),
-        h(LineStats, {
-          ...(stats.additions === undefined ? {} : { additions: stats.additions }),
-          ...(stats.deletions === undefined ? {} : { deletions: stats.deletions }),
-          t,
-        }),
+        narrow === null
+          ? h(LineStats, {
+            ...(stats.additions === undefined ? {} : { additions: stats.additions }),
+            ...(stats.deletions === undefined ? {} : { deletions: stats.deletions }),
+            t,
+          })
+          : h(LineStats, {
+            ...(narrow.additions === null ? {} : { additions: narrow.additions }),
+            ...(narrow.deletions === null ? {} : { deletions: narrow.deletions }),
+            t,
+          }),
       ),
       h('span', { className: 'dvt-commit-bottom' },
-        hash === '' ? null : h('span', { className: `dvt-hash dvt-mono` }, hash),
+        hash === '' ? null : h('span', { className: 'dvt-hash dvt-mono' }, hash),
         hash === '' ? null : h(DotSep),
         event.actor === undefined || event.actor === ''
           ? null
@@ -86,17 +123,62 @@ function CommitRow(props: {
             h(IconBranch, { size: 9 }),
             h('span', null, F.truncate(event.branch, 20)),
           ),
-        stats.files === undefined
+        narrow === null
           ? null
-          : h('span', { className: 'dvt-stat-files', title: t('aria.stats') }, fileCountLabel(stats.files, t)),
+          : h('span', {
+            className: `dvt-file-status dvt-status-${narrow.status}`,
+            title: t('aria.fileStatus'),
+          }, narrow.letter),
+        matched === null || matched === 0
+          ? null
+          : h('span', { className: 'dvt-stat-files', title: t('aria.stats') }, t('timeline.matchedFiles', { count: matched })),
+        narrow === null && stats.files !== undefined && visiblePaths === null
+          ? h('span', { className: 'dvt-stat-files', title: t('aria.stats') }, fileCountLabel(stats.files, t))
+          : null,
+        narrow !== null && narrow.binary
+          ? h('span', { className: 'dvt-bin', title: t('diff.binary') }, 'BIN')
+          : null,
       ),
     ),
     ),
   )
 }
 
-/** The history body for the selected repository. */
-export function renderHistory(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
+/** 26px bar naming the file the right pane is narrowed to. */
+function SelectionHeader(props: {
+  path: string
+  status: FileChangeStatus
+  count: number
+  deps: PanelDeps
+  handlers: PanelHandlers
+}): React.ReactElement {
+  const { path, status, count, deps, handlers } = props
+  const { t } = deps
+  const { dir, name } = F.splitRepoPath(path)
+  return h('div', { className: 'dvt-selection' },
+    h('span', { className: `dvt-file-status dvt-status-${status}`, 'aria-hidden': 'true' },
+      F.statusLetter(status)),
+    h('span', { className: 'dvt-selection-path dvt-mono', title: path },
+      dir === '' ? null : h('span', { className: 'dvt-file-dir' }, dir),
+      h('span', { className: 'dvt-selection-name' }, name),
+    ),
+    h('span', { className: 'dvt-selection-meta' }, t('timeline.count.label', { count })),
+    h(IconButton, {
+      label: t('tree.showAll'),
+      icon: IconClose,
+      extraClass: 'dvt-selection-clear',
+      onClick: () => handlers.onSelectFile(null),
+    }),
+  )
+}
+
+/** The change timeline body for the selected repository and filters. */
+export function renderHistory(
+  state: PanelState,
+  deps: PanelDeps,
+  handlers: PanelHandlers,
+  view: TimelineView,
+): React.ReactElement {
   const { t } = deps
   const repository = selectedRepository(state)
   const timeline = state.timeline
@@ -148,7 +230,31 @@ export function renderHistory(state: PanelState, deps: PanelDeps, handlers: Pane
     })
   }
 
-  if (timeline.events.length === 0) {
+  const rows = view.visibleEvents
+  const fileFilterActive = state.filters.treeQuery.trim() !== '' || state.filters.fileStatus !== 'all'
+  const visiblePaths = fileFilterActive ? new Set(view.visibleFiles.map((entry) => entry.path)) : null
+  const header = view.selected === null
+    ? null
+    : h(SelectionHeader, {
+      path: view.selected.path,
+      status: view.selected.status,
+      count: rows.length,
+      deps,
+      handlers,
+    })
+
+  if (rows.length === 0) {
+    if (view.selected !== null) {
+      return h('div', { className: 'dvt-col' },
+        header,
+        h(EmptyState, {
+          icon: IconTimeline,
+          title: t('timeline.empty.file'),
+          hint: t('timeline.empty.file.hint'),
+          actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: () => handlers.onSelectFile(null) }, t('tree.showAll')),
+        }),
+      )
+    }
     if (hasActiveFilters(state)) {
       return h(EmptyState, {
         icon: IconTimeline,
@@ -173,7 +279,7 @@ export function renderHistory(state: PanelState, deps: PanelDeps, handlers: Pane
     })
   }
 
-  return h('div', { className: 'dvt-col' },
+  return h('div', { className: 'dvt-col dvt-timeline-col' },
     timeline.partial
       ? h(Banner, {
         kind: 'warn',
@@ -183,10 +289,25 @@ export function renderHistory(state: PanelState, deps: PanelDeps, handlers: Pane
           : t('timeline.partial.detail', { detail: timeline.warnings[0] }),
       })
       : null,
+    header,
+    view.filesReported && view.files.length === 0 && timeline.events.length > 0
+      ? h(Banner, { kind: 'info', text: t('timeline.noFilesNotice') })
+      : null,
     h('ul', { className: 'dvt-list', 'aria-label': t('source.timeline') },
-      timeline.events.map((event) => h(CommitRow, { key: event.id, event, deps, handlers })),
+      rows.map((event) => h(CommitRow, {
+        key: event.id,
+        event,
+        deps,
+        handlers,
+        selectedPath: state.selectedFilePath,
+        visiblePaths,
+      })),
     ),
-    h('div', { className: 'dvt-list-count' }, t('timeline.count.label', { count: timeline.events.length })),
+    h('div', { className: 'dvt-list-count' },
+      view.selected === null
+        ? t('timeline.count.label', { count: rows.length })
+        : t('timeline.filteredCount', { count: rows.length, total: timeline.events.length }),
+    ),
     timeline.hasMore
       ? h('div', { className: 'dvt-list-more' },
         h('button', {
@@ -196,6 +317,9 @@ export function renderHistory(state: PanelState, deps: PanelDeps, handlers: Pane
           onClick: handlers.onLoadMoreTimeline,
         }, timeline.loadingMore ? t('common.loadingMore') : t('timeline.more')),
       )
+      : null,
+    timeline.hasMore
+      ? h('div', { className: 'dvt-list-window' }, t('timeline.windowNotice', { count: timeline.events.length }))
       : null,
   )
 }
