@@ -496,6 +496,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       const draft = createOperationDraft(operation, repository, snapshot.dialog)
       setState((prev) => ({
         ...prev,
+        menuOpen: false,
         dialog: {
           operation: draft.operation,
           phase: 'previewing',
@@ -626,23 +627,37 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       return () => clearTimeout(handle)
     }, [state.filters.text])
 
-    // Escape closes the dialog (never while a write is executing).
-    const dialogOpen = state.dialog !== null
+    // Escape unwinds our own layers: dialog first, then the header menu, then
+    // the diagnostics block. It never closes anything while a write executes.
+    const overlayOpen = state.dialog !== null || state.menuOpen || state.diagnosticsOpen
     React.useEffect(() => {
-      if (!dialogOpen || typeof document === 'undefined') return
+      if (!overlayOpen || typeof document === 'undefined') return
       const onKeyDown = (event: KeyboardEvent): void => {
         if (event.key !== 'Escape') return
-        if (stateRef.current.dialog?.phase === 'executing') return
-        event.stopPropagation()
-        setState((prev) => ({ ...prev, dialog: null }))
+        const snapshot = stateRef.current
+        if (snapshot.dialog !== null) {
+          if (snapshot.dialog.phase === 'executing') return
+          event.stopPropagation()
+          setState((prev) => ({ ...prev, dialog: null }))
+          return
+        }
+        if (snapshot.menuOpen) {
+          event.stopPropagation()
+          setState((prev) => ({ ...prev, menuOpen: false }))
+          return
+        }
+        if (snapshot.diagnosticsOpen) {
+          event.stopPropagation()
+          setState((prev) => ({ ...prev, diagnosticsOpen: false }))
+        }
       }
       document.addEventListener('keydown', onKeyDown)
       return () => document.removeEventListener('keydown', onKeyDown)
-    }, [dialogOpen])
+    }, [overlayOpen])
 
     const handlers: PanelHandlers = {
       onRefreshRepositories: () => {
-        setState((prev) => ({ ...prev, refreshTick: prev.refreshTick + 1, statusTick: prev.statusTick + 1 }))
+        setState((prev) => ({ ...prev, menuOpen: false, refreshTick: prev.refreshTick + 1, statusTick: prev.statusTick + 1 }))
         void reloadRepositories()
       },
       onSelectRepository: (repositoryId: string) => {
@@ -651,6 +666,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           if (selected === prev.selectedRepositoryId) return prev
           return {
             ...prev,
+            menuOpen: false,
             selectedRepositoryId: selected,
             timeline: createTimelineSlice(),
             changeSet: createChangeSetSlice(),
@@ -667,6 +683,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         if (prev.source === source) return prev
         return {
           ...prev,
+          menuOpen: false,
           source,
           changeSet: createChangeSetSlice(),
           diff: createDiffSlice(),
@@ -769,6 +786,9 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         })
       },
       onRetryStatus: () => setState((prev) => ({ ...prev, statusTick: prev.statusTick + 1 })),
+      onToggleWriteMenu: () => setState((prev) => ({ ...prev, menuOpen: !prev.menuOpen })),
+      onCloseWriteMenu: () => setState((prev) => (prev.menuOpen ? { ...prev, menuOpen: false } : prev)),
+      onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
     }
 
     return renderPanelView({ state, deps, handlers })

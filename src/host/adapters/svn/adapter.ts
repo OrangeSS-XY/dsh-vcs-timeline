@@ -419,6 +419,9 @@ function buildCommitEvent(repositoryIdValue: string, entry: SvnLogEntry): VcsEve
     metadata: {
       parentCount: revisionNumber <= 1 ? 0 : 1,
       pathCount: entry.paths.length,
+      // SVN log entries carry the changed-path count; line counts would need a
+      // full diff per revision, so none are invented here.
+      filesChanged: entry.paths.length,
     },
   }
 }

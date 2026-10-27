@@ -85,6 +85,10 @@ try {
     `${timeline.events.length} events, newest="${timeline.events[0]?.summary ?? ''}"`)
 
   const head = timeline.events[0].commitHash
+  const headStats = timeline.events[0].metadata ?? {}
+  record('timeline carries real commit stats',
+    typeof headStats.filesChanged === 'number' && typeof headStats.additions === 'number' && typeof headStats.deletions === 'number',
+    `files=${String(headStats.filesChanged)} +${String(headStats.additions)} -${String(headStats.deletions)}`)
   const changeset = await post('vcs/changeset', { repositoryId, revision: head })
   record('changeset', changeset.files.length === 1 && changeset.files[0].path === 'a.txt',
     JSON.stringify(changeset.files.map(file => `${file.status}:${file.path}`)))

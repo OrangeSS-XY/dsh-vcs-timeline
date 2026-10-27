@@ -123,6 +123,10 @@ export interface PanelState {
   statusError: ApiError | null
   dialog: DialogState | null
   copied: boolean
+  /** The header overflow menu (write operations) is open. */
+  menuOpen: boolean
+  /** The collapsible diagnostics block above the status bar is open. */
+  diagnosticsOpen: boolean
 }
 
 /** Every user intent the views can raise. */
@@ -155,6 +159,12 @@ export interface PanelHandlers {
   onDialogConfirm(): void
   onDialogRepreview(): void
   onRetryStatus(): void
+  /** Toggle the header overflow menu that holds the write operations. */
+  onToggleWriteMenu(): void
+  /** Close the overflow menu without choosing an action. */
+  onCloseWriteMenu(): void
+  /** Toggle the collapsible diagnostics block. */
+  onToggleDiagnostics(): void
 }
 
 /** Service/style dependencies injected once by `index.ts`. */
@@ -245,6 +255,8 @@ export function createInitialState(): PanelState {
     statusError: null,
     dialog: null,
     copied: false,
+    menuOpen: false,
+    diagnosticsOpen: false,
   }
 }
 
@@ -280,5 +292,8 @@ export function createNoopHandlers(): PanelHandlers {
     onDialogConfirm: noop,
     onDialogRepreview: noop,
     onRetryStatus: noop,
+    onToggleWriteMenu: noop,
+    onCloseWriteMenu: noop,
+    onToggleDiagnostics: noop,
   }
 }

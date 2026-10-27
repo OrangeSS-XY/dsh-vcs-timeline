@@ -42,9 +42,11 @@ import {
   isSafeRemoteName,
   isEmptyRepositoryError,
   logArgs,
+  logStatsArgs,
   originHeadArgs,
   parseCommitMeta,
   parseLogOutput,
+  parseLogStatsZ,
   parseNameStatusZ,
   parseNumstatZ,
   parseRemoteNames,
@@ -195,15 +197,22 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       const limit = clampInt(query.limit, 1, MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE)
       const cursor = decodeCursor(query.cursor ?? null)
       const offset = cursor !== null && typeof cursor.o === 'number' && cursor.o >= 0 ? Math.trunc(cursor.o) : 0
-      const argv = logArgs({
+      const statsInput = {
         skip: offset,
         limit: limit + 1,
         ...(query.author === undefined ? {} : { author: query.author }),
         ...(query.text === undefined ? {} : { text: query.text }),
         ...(query.since === undefined ? {} : { since: query.since }),
         ...(query.until === undefined ? {} : { until: query.until }),
-      })
-      const result = await run(argv, root, signal, READ_TIMEOUT_MS)
+      }
+      const argv = logArgs(statsInput)
+      // The stats probe mirrors the history invocation (same filters/skip/limit)
+      // so it can be aligned by commit hash. A failed probe only omits the
+      // additive stats keys; the page itself still succeeds.
+      const [result, statsResult] = await Promise.all([
+        run(argv, root, signal, READ_TIMEOUT_MS),
+        run(logStatsArgs(statsInput), root, signal, READ_TIMEOUT_MS),
+      ])
       if (result.exitCode !== 0) {
         if (isEmptyRepositoryError(result.stderr)) {
           return { ok: true, value: { events: [], nextCursor: null, hasMore: false, warnings: ['this repository has no commits yet'] } }
@@ -213,7 +222,22 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       const parsed = parseLogOutput(result.stdout)
       const hasMore = parsed.length > limit
       const page = hasMore ? parsed.slice(0, limit) : parsed
-      const events = page.map(commit => commitToEvent(commit, repositoryIdValue))
+      const statsByHash = statsResult.exitCode === 0 ? parseLogStatsZ(statsResult.stdout) : null
+      const events = page.map(commit => {
+        const event = commitToEvent(commit, repositoryIdValue)
+        const stats = statsByHash?.get(commit.hash)
+        if (stats === undefined) return event
+        return {
+          ...event,
+          metadata: {
+            ...event.metadata,
+            filesChanged: stats.filesChanged,
+            additions: stats.additions,
+            deletions: stats.deletions,
+            binaryFiles: stats.binaryFiles,
+          },
+        }
+      })
       const nextCursor = hasMore ? encodeCursor({ o: offset + limit }) : null
       return {
         ok: true,

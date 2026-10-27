@@ -127,6 +127,24 @@ test('detect, info, history paging, changeset, diff and status on a real reposit
     assert.equal(page2.value.events.length, 1)
     assert.notEqual(page2.value.events[0]!.commitHash, page1.value.events[0]!.commitHash)
 
+    // Per-commit stats ride on the same page, aligned by commit hash:
+    // commit 2 changes a.txt (1+/1-), adds one binary file and renames one
+    // file (0/0), so it touches three files with one addition and one deletion.
+    const headEvent = page1.value.events[0]!
+    assert.equal(headEvent.metadata?.filesChanged, 3)
+    assert.equal(headEvent.metadata?.additions, 1)
+    assert.equal(headEvent.metadata?.deletions, 1)
+    assert.equal(headEvent.metadata?.binaryFiles, 1)
+    // Existing metadata keys survive alongside the additive stats keys.
+    assert.equal(headEvent.metadata?.parentCount, 1)
+    assert.equal(headEvent.metadata?.authorEmail, 'test@example.com')
+    // Commit 1 adds two text files (3 lines total, no deletions, no binaries).
+    const parentEvent = page2.value.events[0]!
+    assert.equal(parentEvent.metadata?.filesChanged, 2)
+    assert.equal(parentEvent.metadata?.additions, 3)
+    assert.equal(parentEvent.metadata?.deletions, 0)
+    assert.equal(parentEvent.metadata?.binaryFiles, 0)
+
     // Changeset of HEAD: rename + binary + unicode name.
     const changeset = await adapter.changeSet(root, info.value.id, head)
     assert.equal(changeset.ok, true)
@@ -189,12 +207,60 @@ test('history filters by author and text', async () => {
     const byAuthor = await adapter.history(repo.dir, info.value.id, { limit: 10, author: 'Test User' })
     assert.equal(byAuthor.ok, true)
     assert.equal(byAuthor.ok ? byAuthor.value.events.length : 0, 2)
+    // Newest first: the rename commit then the initial commit.
+    if (byAuthor.ok) {
+      assert.equal(byAuthor.value.events[0]!.metadata?.filesChanged, 3)
+      assert.equal(byAuthor.value.events[1]!.metadata?.filesChanged, 2)
+    }
     const byText = await adapter.history(repo.dir, info.value.id, { limit: 10, text: 'rename' })
     assert.equal(byText.ok, true)
     assert.equal(byText.ok ? byText.value.events.length : 0, 1)
+    // The same filter applies to the stats invocation, so the surviving
+    // commit carries its own stats (not the initial commit's two files).
+    if (byText.ok) {
+      assert.equal(byText.value.events[0]!.commitHash, info.value.currentRevision)
+      assert.equal(byText.value.events[0]!.metadata?.filesChanged, 3)
+      assert.equal(byText.value.events[0]!.metadata?.additions, 1)
+      assert.equal(byText.value.events[0]!.metadata?.deletions, 1)
+      assert.equal(byText.value.events[0]!.metadata?.binaryFiles, 1)
+    }
     const noMatch = await adapter.history(repo.dir, info.value.id, { limit: 10, text: 'zzz-not-there' })
     assert.equal(noMatch.ok, true)
     assert.equal(noMatch.ok ? noMatch.value.events.length : -1, 0)
+  } finally {
+    await repo.cleanup()
+  }
+})
+
+test('a failed stats probe omits the stats keys instead of failing the page', async () => {
+  const repo = await makeRepo()
+  try {
+    const base = nodeRunner()
+    const failingStats: Runner = {
+      ...base,
+      async run(argv, cwd, options = {}) {
+        if (argv.includes('log') && argv.includes('--numstat')) {
+          return { exitCode: 1, stdout: '', stderr: 'fatal: simulated stats failure' }
+        }
+        return base.run(argv, cwd, options)
+      },
+    }
+    const adapter = createGitAdapter(failingStats)
+    const info = await adapter.info(repo.dir)
+    assert.equal(info.ok, true)
+    if (!info.ok) return
+    const history = await adapter.history(repo.dir, info.value.id, { limit: 10 })
+    assert.equal(history.ok, true)
+    if (!history.ok) return
+    assert.equal(history.value.events.length, 2)
+    for (const event of history.value.events) {
+      assert.equal(event.metadata?.filesChanged, undefined)
+      assert.equal(event.metadata?.additions, undefined)
+      assert.equal(event.metadata?.deletions, undefined)
+      assert.equal(event.metadata?.binaryFiles, undefined)
+      // Non-stats metadata is still present.
+      assert.equal(typeof event.metadata?.parentCount, 'number')
+    }
   } finally {
     await repo.cleanup()
   }
@@ -214,6 +280,9 @@ test('an unborn repository yields an empty history page instead of an error', as
     if (!history.ok) return
     assert.equal(history.value.events.length, 0)
     assert.equal(history.value.hasMore, false)
+    // No commits means no stats keys anywhere on the page.
+    assert.equal(history.value.events.every(event => event.metadata?.filesChanged === undefined), true)
+    assert.equal(history.value.events.every(event => event.metadata?.binaryFiles === undefined), true)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

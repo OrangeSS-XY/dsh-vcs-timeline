@@ -15,6 +15,9 @@ import { normalizeRepoRelativePath, parseIsoTimestamp, redactUrl } from '../../s
 /** Field separator inside one commit record. */
 const NUL = '\u0000'
 
+/** Start-of-header marker that prefixes each commit hash in the stats stream. */
+const SOH = '\u0001'
+
 /** Log format: eight NUL-separated fields per commit, records NUL-terminated by `-z`. */
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%D%x00%s%x00%b'
 
@@ -73,9 +76,25 @@ export interface LogArgsInput {
   until?: string
 }
 
+/** History filters shared by the history and the per-commit stats invocations. */
+function logFilterArgs(input: LogArgsInput): string[] {
+  const args: string[] = []
+  if (input.author !== undefined && input.author !== '') {
+    // --fixed-strings keeps the author a literal substring, so a value such as
+    // "[" is a search term and never an invalid regular expression.
+    args.push('--fixed-strings', `--author=${input.author}`)
+  }
+  if (input.text !== undefined && input.text !== '') {
+    args.push('--regexp-ignore-case', '--fixed-strings', `--grep=${input.text}`)
+  }
+  if (input.since !== undefined) args.push(`--since=${input.since}`)
+  if (input.until !== undefined) args.push(`--until=${input.until}`)
+  return args
+}
+
 /** One `git log` page argv. */
 export function logArgs(input: LogArgsInput): string[] {
-  const argv = [
+  return [
     ...gitBase(),
     'log',
     '--no-color',
@@ -84,18 +103,28 @@ export function logArgs(input: LogArgsInput): string[] {
     `--max-count=${Math.max(1, input.limit)}`,
     `--skip=${Math.max(0, input.skip)}`,
     `--format=${LOG_FORMAT}`,
+    ...logFilterArgs(input),
   ]
-  if (input.author !== undefined && input.author !== '') {
-    // --fixed-strings keeps the author a literal substring, so a value such as
-    // "[" is a search term and never an invalid regular expression.
-    argv.push('--fixed-strings', `--author=${input.author}`)
-  }
-  if (input.text !== undefined && input.text !== '') {
-    argv.push('--regexp-ignore-case', '--fixed-strings', `--grep=${input.text}`)
-  }
-  if (input.since !== undefined) argv.push(`--since=${input.since}`)
-  if (input.until !== undefined) argv.push(`--until=${input.until}`)
-  return argv
+}
+
+/**
+ * One `git log` page argv carrying numstat lines, used to build per-commit
+ * change statistics. Filters, skip and limit are identical to {@link logArgs}
+ * so both invocations describe the same commits.
+ */
+export function logStatsArgs(input: LogArgsInput): string[] {
+  return [
+    ...gitBase(),
+    'log',
+    '--no-color',
+    '-z',
+    '--numstat',
+    '--date-order',
+    `--max-count=${Math.max(1, input.limit)}`,
+    `--skip=${Math.max(0, input.skip)}`,
+    `--format=${SOH}%H`,
+    ...logFilterArgs(input),
+  ]
 }
 
 /** A commit hash: 7..64 hex digits (a full or unambiguous abbreviation), never option-like. */
@@ -250,6 +279,83 @@ export function parseLogOutput(text: string): ParsedCommit[] {
     })
   }
   return commits
+}
+
+/** Per-commit change statistics derived from `git log --numstat`. */
+export interface CommitStats {
+  filesChanged: number
+  additions: number
+  deletions: number
+  binaryFiles: number
+}
+
+/** A textual numstat line: `additions\tdeletions\tpath` (path may be empty for renames). */
+const NUMSTAT_LINE = /^(\d+)\t(\d+)\t(.*)$/
+
+/** A binary numstat line: `-\t-\tpath` (path may be empty for renames). */
+const NUMSTAT_BINARY_LINE = /^-\t-\t(.*)$/
+
+/**
+ * Parse `git log -z --numstat --format=<SOH>%H` output into per-commit stats.
+ *
+ * The stream starts each commit with a `\x01<hash>` token, then carries one
+ * numstat token per changed file. A rename/copy line with an empty path defers
+ * its two paths to the following NUL tokens. Numeric and binary lines count one
+ * changed file each; only numeric lines contribute additions/deletions. Blank
+ * and unexpected tokens are ignored, so a malformed stream never throws.
+ * @param text - raw stdout of the stats command.
+ * @returns stats keyed by full commit hash.
+ */
+export function parseLogStatsZ(text: string): Map<string, CommitStats> {
+  const stats = new Map<string, CommitStats>()
+  if (text === '') return stats
+  const tokens = text.split(NUL)
+  let current: CommitStats | undefined
+  let index = 0
+  while (index < tokens.length) {
+    const raw = tokens[index] ?? ''
+    index += 1
+    // git separates the format output from the first numstat line with a
+    // newline, so the newline rides on the following token.
+    const token = raw.replace(/^\n+/, '')
+    if (token === '') continue
+    if (token.startsWith(SOH)) {
+      const hash = token.slice(1).replace(/^\n+/, '').trim()
+      if (hash === '') {
+        current = undefined
+        continue
+      }
+      const existing = stats.get(hash)
+      if (existing !== undefined) {
+        current = existing
+      } else {
+        current = { filesChanged: 0, additions: 0, deletions: 0, binaryFiles: 0 }
+        stats.set(hash, current)
+      }
+      continue
+    }
+    if (current === undefined) continue
+    const numeric = NUMSTAT_LINE.exec(token)
+    if (numeric !== null) {
+      const additions = Number.parseInt(numeric[1] ?? '', 10)
+      const deletions = Number.parseInt(numeric[2] ?? '', 10)
+      current.filesChanged += 1
+      current.additions += Number.isFinite(additions) ? additions : 0
+      current.deletions += Number.isFinite(deletions) ? deletions : 0
+      // An empty path means the rename/copy paths are the next two tokens.
+      if ((numeric[3] ?? '') === '') index += 2
+      continue
+    }
+    const binary = NUMSTAT_BINARY_LINE.exec(token)
+    if (binary !== null) {
+      current.filesChanged += 1
+      current.binaryFiles += 1
+      if ((binary[1] ?? '') === '') index += 2
+      continue
+    }
+    // Unexpected token: the stream is untrusted, so ignore it instead of throwing.
+  }
+  return stats
 }
 
 /** Whether a git stderr means the repository has no commits yet. */

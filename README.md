@@ -54,14 +54,39 @@ plugin_manager remove_bundle target="dsh-vcs-timeline"
 审计数据保存在 `%DSH_HOME%\storages\dsh-vcs-timeline\`（本机为
 `C:\Users\Lenovo\.dsh\storages\dsh-vcs-timeline`），卸载插件不会删除该目录；需要清理时手动删除即可。
 
+## 界面
+
+按 IDE 工具窗口的密度重构（VS Code / JetBrains Git 窗口的量级，不是管理后台）：
+
+- **34px 工具栏**：仓库选择（原生下拉覆盖层，键盘可用）· 分支 chip · 刷新 · `⋯` 版本控制菜单。
+  不再有占据空间的“写操作卡片”；Fetch / Pull / Commit / Push（SVN 为 Update / Commit）
+  收进菜单，仍然先预览再确认。
+- **来源页签**：`时间线` 与 `审计` 并排，带条数；两者视觉与数据都不混用。
+- **统一工具条**：搜索、`全部/提交` 事件类型、作者筛选在同一个 28px 工具条体系内。
+- **提交历史**：左侧 graph 槽（提交节点 / 合并环 / 连线），右侧两行信息：
+  提交说明 + `+增 −删`；短 hash · 作者 · 本地时间 · 分支标签 · 变更文件数。
+  统计来自 Git `--numstat`（SVN 只显示文件数），**不伪造任何数字**。
+- **提交详情**：32px 固定面包屑（返回 / hash / 来源徽标）+ 摘要 + 元信息网格 +
+  变更文件列表（状态字母、重命名旧路径、BIN 标记、每文件 ± 行）。
+- **Diff**：行号槽 + 统一 diff 着色 + 底部路径/行数/字节；二进制与截断各有明确提示。
+- **状态栏**：工作区状态点（干净/有修改/冲突）、分支、变更数、VCS；
+  右侧“诊断”展开插件/运行时/Git/SVN/工作区/数据目录/警告。
+- **空状态区分**：未选择工作区 / 未检测到仓库 / Git/SVN 客户端缺失 / 空历史 /
+  筛选无结果 / 仓库尚无提交 / 部分数据 / 请求失败，各自给出原因和下一步。
+- 明暗主题由 DSH 主题 token 自动适配；样式无字面颜色、无全局选择器，全部 `dvt-` 前缀。
+
+设计验证截图（示例数据渲染，非运行时截图）见 [docs/ui-preview/render.md](docs/ui-preview/render.md)：
+`npm run preview:ui` 可在本机重新生成 400px 与 320px 的明暗主题截图。
+
 ## 使用
 
 1. 打开任意会话，右侧栏打开「代码时间线」。
 2. 顶部选择仓库（Git/SVN · 名称 · 当前分支或 base revision）。
 3. 「时间线」查看历史；点条目看详情与文件列表；点文件看 Diff。
 4. 「审计」查看本插件执行过的写操作（状态、退出码、前后 revision、correlationId）。
-5. 写操作按钮先弹预览：显示将执行的确切 argv、当前分支/HEAD/干净状态/暂存数、警告；
-   确认后才真正执行，执行结果追加审计。Commit 只提交**已暂存**的改动（插件从不自动 `git add`）。
+5. 右上 `⋯` → Fetch / Pull / Push / Commit（SVN：Update / Commit）：先弹预览，
+   显示将执行的确切 argv、当前分支/HEAD/干净状态/暂存数、警告；确认后才真正执行，
+   执行结果追加审计。Commit 只提交**已暂存**的改动（插件从不自动 `git add`）。
 
 ## 开发
 
@@ -74,6 +99,7 @@ npm test                         # 全部测试（单一进程执行所有套件
 npm run build                    # lib/index.js (Host ESM) + lib/client.js (ModuleLoader 包装)
 npm run check                    # typecheck + test + build
 node scripts\verify-live.mjs     # 对运行中的桌面端做端到端 HTTP 验证（会创建并删除临时 Git 仓库）
+npm run preview:ui               # 用示例数据渲染面板并截图到 docs/ui-preview/
 ```
 
 目录：
@@ -104,7 +130,9 @@ docs/                            兼容性、架构、安全、测试报告
 ## 已知限制
 
 - 本机未安装 `svn` 客户端，SVN 仅完成解析器/命令行/降级路径的单元测试，未做真实仓库联调。
-- 无浏览器自动化：面板的视觉与交互只经过 SSR 渲染测试与代码审查（页签注册本身已用 inspector 验证）。
+- 无浏览器自动化驱动真实宿主页面：面板的视觉密度、明暗主题与窄栏布局通过
+  `react-dom/server` + 无头 Chromium 的**组件渲染截图**验证（400px / 320px），
+  页签注册通过 DSH inspector 验证；真实页面内的 hover/焦点/滚动仍需人工确认。
 - 未做整进程重启验证（已验证插件重新挂载后审计数据仍可读）。
 - `/vcs` 路由仅接受 loopback（桌面端）；配对设备远程访问不支持。
 - Merge/Rebase/Switch/Reset/Clean/Force-push 不实现。

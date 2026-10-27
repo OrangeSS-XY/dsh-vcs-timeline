@@ -45,7 +45,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --no-warnings src/tests/index.test.ts",
     "check": "npm run typecheck && npm test && npm run build",
-    "verify:live": "node scripts/verify-live.mjs"
+    "verify:live": "node scripts/verify-live.mjs",
+    "preview:ui": "node --experimental-strip-types scripts/render-preview.ts && node scripts/preview-shots.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

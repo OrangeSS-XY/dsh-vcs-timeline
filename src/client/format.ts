@@ -232,3 +232,130 @@ export function pathsSummary(paths: readonly string[] | undefined, max = 3): str
 export function diffLineClassName(kind: DiffLineKind): string {
   return `dvt-diff-line dvt-diff-${kind}`
 }
+
+/**
+ * Compact local timestamp for dense list rows: `M/D HH:mm` inside the current
+ * year, `YYYY/M/D` otherwise. Returns an empty string for missing/invalid input.
+ */
+export function formatCompactTime(iso: string | undefined | null, locale?: string, now: Date = new Date()): string {
+  if (typeof iso !== 'string' || iso.trim() === '') return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  try {
+    const sameYear = date.getFullYear() === now.getFullYear()
+    return new Intl.DateTimeFormat(intlLocale(locale), sameYear
+      ? { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: 'numeric', day: 'numeric' }).format(date)
+  } catch {
+    return date.toISOString().slice(0, 16).replace('T', ' ')
+  }
+}
+
+/** Real change statistics carried in an event's metadata, when the Host knew them. */
+export interface EventStats {
+  /** Number of changed files; absent when the backend did not report it. */
+  files?: number
+  /** Added lines; absent for SVN or when stats were unavailable. */
+  additions?: number
+  /** Removed lines; absent for SVN or when stats were unavailable. */
+  deletions?: number
+  /** Binary files among the changed files, when reported. */
+  binaryFiles?: number
+}
+
+/** Read the numeric stats a Host event carries; never invents a value. */
+export function eventStats(event: {
+  metadata?: Record<string, string | number | boolean | null>
+  parentHashes?: string[]
+} | null | undefined): EventStats {
+  const metadata = event?.metadata
+  if (metadata === undefined || metadata === null) return {}
+  const number = (key: string): number | undefined => {
+    const value = metadata[key]
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+  }
+  const files = number('filesChanged') ?? number('pathCount')
+  const additions = number('additions')
+  const deletions = number('deletions')
+  const binaryFiles = number('binaryFiles')
+  const merged = Array.isArray(event?.parentHashes) && (event?.parentHashes?.length ?? 0) > 1
+  // `git log --numstat` prints nothing for merge commits, so all-zero stats
+  // there mean "not reported", not "an empty change". Never render 0/0.
+  if (merged && (files ?? 0) === 0 && (additions ?? 0) === 0 && (deletions ?? 0) === 0) return {}
+  return {
+    ...(files === undefined ? {} : { files }),
+    ...(additions === undefined ? {} : { additions }),
+    ...(deletions === undefined ? {} : { deletions }),
+    ...(binaryFiles === undefined || binaryFiles === 0 ? {} : { binaryFiles }),
+  }
+}
+
+/** Whether a commit event has more than one parent (a merge in Git terms). */
+export function isMergeCommit(event: { parentHashes?: string[] } | null | undefined): boolean {
+  return Array.isArray(event?.parentHashes) && (event?.parentHashes?.length ?? 0) > 1
+}
+
+/** Split a repository-relative path into a dimmed directory and a name. */
+export function splitRepoPath(path: string | undefined | null): { dir: string; name: string } {
+  if (typeof path !== 'string' || path === '') return { dir: '', name: '' }
+  const index = path.lastIndexOf('/')
+  if (index < 0) return { dir: '', name: path }
+  return { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
+}
+
+/** One rendered row of a unified diff, with optional old/new line numbers. */
+export interface DiffRow {
+  kind: DiffLineKind
+  text: string
+  oldLine: number | null
+  newLine: number | null
+}
+
+/** Parse unified-diff text into rows carrying gutter line numbers. */
+export function diffRows(text: string | undefined | null): DiffRow[] {
+  const lines = diffLines(text)
+  const rows: DiffRow[] = []
+  let oldLine: number | null = null
+  let newLine: number | null = null
+  for (const line of lines) {
+    const kind = diffLineKind(line)
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line)
+    if (hunk !== null) {
+      oldLine = Number.parseInt(hunk[1] ?? '0', 10)
+      newLine = Number.parseInt(hunk[2] ?? '0', 10)
+      rows.push({ kind, text: line, oldLine: null, newLine: null })
+      continue
+    }
+    if (kind === 'meta') {
+      rows.push({ kind, text: line, oldLine: null, newLine: null })
+      continue
+    }
+    if (kind === 'added') {
+      rows.push({ kind, text: line, oldLine: null, newLine })
+      if (newLine !== null) newLine += 1
+      continue
+    }
+    if (kind === 'removed') {
+      rows.push({ kind, text: line, oldLine, newLine: null })
+      if (oldLine !== null) oldLine += 1
+      continue
+    }
+    rows.push({ kind, text: line, oldLine, newLine })
+    if (oldLine !== null) oldLine += 1
+    if (newLine !== null) newLine += 1
+  }
+  return rows
+}
+
+/** The two stats of a changed file, or nulls when the backend did not report them. */
+export function fileStats(file: { additions?: number; deletions?: number }): { additions: number | null; deletions: number | null } {
+  const additions = typeof file.additions === 'number' && file.additions >= 0 ? file.additions : null
+  const deletions = typeof file.deletions === 'number' && file.deletions >= 0 ? file.deletions : null
+  return { additions, deletions }
+}
+
+/** Whether a commit's stats carry anything worth showing. */
+export function hasStats(stats: EventStats): boolean {
+  return stats.files !== undefined || stats.additions !== undefined || stats.deletions !== undefined
+}
+

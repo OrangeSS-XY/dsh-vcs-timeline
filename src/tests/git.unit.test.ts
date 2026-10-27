@@ -20,8 +20,10 @@ import {
   isSafeBranchName,
   isSafeRemoteName,
   logArgs,
+  logStatsArgs,
   mergeChangedFiles,
   parseLogOutput,
+  parseLogStatsZ,
   parseNameStatusZ,
   parseNumstatZ,
   parseRemotes,
@@ -129,6 +131,57 @@ test('parseNumstatZ handles binary entries and the rename empty-path form', () =
   assert.equal(renamed.path, 'new name.txt')
   assert.equal(renamed.additions, 0)
   assert.equal(renamed.deletions, 0)
+})
+
+test('parseLogStatsZ aggregates numeric, binary and renamed files per commit', () => {
+  const hashA = 'a'.repeat(40)
+  const hashB = 'b'.repeat(40)
+  const stream = [
+    `\u0001${hashA}`,
+    '\n2\t2\ta.txt',
+    '-\t-\tbin.dat',
+    '0\t0\t',
+    'old name.txt',
+    'new name.txt',
+    '',
+    `\u0001${hashB}`,
+    '\n3\t0\ta.txt',
+    '',
+  ].join('\u0000')
+
+  const stats = parseLogStatsZ(stream)
+  assert.equal(stats.size, 2)
+  // a.txt (2/2) + binary bin.dat + one rename = three changed files.
+  assert.deepEqual(stats.get(hashA), { filesChanged: 3, additions: 2, deletions: 2, binaryFiles: 1 })
+  assert.deepEqual(stats.get(hashB), { filesChanged: 1, additions: 3, deletions: 0, binaryFiles: 0 })
+  assert.equal(parseLogStatsZ('').size, 0)
+})
+
+test('parseLogStatsZ tolerates unknown tokens, leading newlines and truncated renames', () => {
+  const hashC = 'c'.repeat(40)
+  const hashD = 'd'.repeat(40)
+  const tolerated = [
+    `\u0001${hashC}`,
+    'not-a-numstat-line',
+    '1\t2',
+    '\u0001',
+    '5\t5\tafter-a-reset.txt',
+    `\u0001\n${hashD}`,
+    '\n0\t0\t',
+    'old.txt',
+    'new.txt',
+    '',
+  ].join('\u0000')
+  const stats = parseLogStatsZ(tolerated)
+  assert.equal(stats.size, 2)
+  // Unknown tokens and stats before any commit token are ignored, never thrown.
+  assert.deepEqual(stats.get(hashC), { filesChanged: 0, additions: 0, deletions: 0, binaryFiles: 0 })
+  // The hash may arrive with a leading newline; the rename counts one file.
+  assert.deepEqual(stats.get(hashD), { filesChanged: 1, additions: 0, deletions: 0, binaryFiles: 0 })
+
+  // A rename record whose deferred paths are missing must not throw or hang.
+  const truncated = parseLogStatsZ(`\u0001${hashD}\u00000\t0\t`)
+  assert.deepEqual(truncated.get(hashD), { filesChanged: 1, additions: 0, deletions: 0, binaryFiles: 0 })
 })
 
 test('parseStatusV2 decodes branch headers and record types 1, 2, u and ?', () => {
@@ -343,6 +396,29 @@ test('argv builders keep user input inside single argv elements (never a shell s
   assert.ok(logArgv.includes('--max-count=3'))
   assert.ok(logArgv.includes('--skip=2'))
   assert.ok(logArgv.every(argument => typeof argument === 'string'))
+
+  // The stats invocation shares every filter with the history invocation.
+  const statsArgv = logStatsArgs({
+    skip: 2,
+    limit: 3,
+    author: 'a b; rm -rf /',
+    text: 'x;y&&z',
+    since: '2026-01-01T00:00:00.000Z',
+  })
+  const filterArgs = (argv: readonly string[]): string[] => argv.filter(argument =>
+    argument.startsWith('--author=')
+    || argument.startsWith('--grep=')
+    || argument.startsWith('--since=')
+    || argument.startsWith('--until=')
+    || argument === '--fixed-strings'
+    || argument === '--regexp-ignore-case')
+  assert.deepEqual(filterArgs(statsArgv), filterArgs(logArgv))
+  assert.ok(statsArgv.includes('--numstat'))
+  assert.ok(statsArgv.includes('--format=\u0001%H'))
+  assert.ok(statsArgv.includes('--max-count=3'))
+  assert.ok(statsArgv.includes('--skip=2'))
+  assert.ok(statsArgv.includes('--author=a b; rm -rf /'))
+  assert.ok(statsArgv.includes('--grep=x;y&&z'))
 
   const commitArgv = commitArgs('msg; rm -rf / && echo pwned')
   assert.deepEqual(commitArgv.slice(-2), ['-m', 'msg; rm -rf / && echo pwned'])

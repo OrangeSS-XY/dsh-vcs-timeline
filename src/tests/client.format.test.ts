@@ -11,15 +11,22 @@ import {
   diffLineClassName,
   diffLineKind,
   diffLines,
+  diffRows,
   errorMessage,
+  eventStats,
   eventTypeLabel,
+  fileStats,
   formatBytes,
+  formatCompactTime,
   formatTime,
+  hasStats,
+  isMergeCommit,
   operationLabel,
   operationStateLabel,
   pathsSummary,
   shortHash,
   sourceLabel,
+  splitRepoPath,
   stagedCount,
   statusLetter,
   statusLabel,
@@ -119,4 +126,78 @@ test('the translator falls back to the key rather than throwing', () => {
   const t = createTranslator('en')
   assert.equal(t('timeline.empty'), dictionaries.en['timeline.empty'])
   assert.equal(t('this.key.does.not.exist'), 'this.key.does.not.exist')
+})
+
+test('formatCompactTime keeps dense rows short and rejects invalid input', () => {
+  const now = new Date('2026-06-01T00:00:00.000Z')
+  const sameYear = formatCompactTime('2026-01-02T03:04:05.000Z', 'zh-CN', now)
+  assert.ok(/\d{1,2}\/\d{1,2}/.test(sameYear), sameYear)
+  assert.ok(!sameYear.includes('2026'), sameYear)
+  const otherYear = formatCompactTime('2024-01-02T03:04:05.000Z', 'zh-CN', now)
+  assert.ok(otherYear.includes('2024'), otherYear)
+  assert.equal(formatCompactTime('not-a-date'), '')
+  assert.equal(formatCompactTime(undefined), '')
+})
+
+test('eventStats reads only reported numbers and prefers filesChanged', () => {
+  assert.deepEqual(eventStats({ metadata: { filesChanged: 3, additions: 12, deletions: 4, binaryFiles: 1 } }), {
+    files: 3,
+    additions: 12,
+    deletions: 4,
+    binaryFiles: 1,
+  })
+  assert.deepEqual(eventStats({ metadata: { pathCount: 2 } }), { files: 2 })
+  assert.deepEqual(eventStats({ metadata: { filesChanged: 0, additions: 0, deletions: 0 } }), {
+    files: 0,
+    additions: 0,
+    deletions: 0,
+  })
+  assert.deepEqual(eventStats({ metadata: { additions: -1 as never } }), {})
+  assert.deepEqual(eventStats({}), {})
+  assert.deepEqual(eventStats(null), {})
+  assert.deepEqual(eventStats(undefined), {})
+  assert.equal(hasStats(eventStats({ metadata: { filesChanged: 1 } })), true)
+  assert.equal(hasStats({}), false)
+})
+
+test('merge commits never present all-zero stats as a real change', () => {
+  const stats = eventStats({
+    parentHashes: ['a', 'b'],
+    metadata: { filesChanged: 0, additions: 0, deletions: 0 },
+  })
+  assert.deepEqual(stats, {})
+  const real = eventStats({
+    parentHashes: ['a', 'b'],
+    metadata: { filesChanged: 2, additions: 5, deletions: 1 },
+  })
+  assert.deepEqual(real, { files: 2, additions: 5, deletions: 1 })
+  assert.equal(isMergeCommit({ parentHashes: ['a', 'b'] }), true)
+  assert.equal(isMergeCommit({ parentHashes: ['a'] }), false)
+  assert.equal(isMergeCommit({}), false)
+})
+
+test('splitRepoPath separates directory and file name', () => {
+  assert.deepEqual(splitRepoPath('src/components/a.ts'), { dir: 'src/components/', name: 'a.ts' })
+  assert.deepEqual(splitRepoPath('a.ts'), { dir: '', name: 'a.ts' })
+  assert.deepEqual(splitRepoPath(''), { dir: '', name: '' })
+  assert.deepEqual(splitRepoPath(undefined), { dir: '', name: '' })
+})
+
+test('diffRows tracks old and new line numbers per hunk', () => {
+  const rows = diffRows('@@ -10,3 +20,4 @@ ctx\n context\n-removed\n+added\n+added2\n')
+  assert.equal(rows.length, 5)
+  assert.equal(rows[0]!.kind, 'hunk')
+  assert.deepEqual([rows[1]!.oldLine, rows[1]!.newLine], [10, 20])
+  assert.deepEqual([rows[2]!.oldLine, rows[2]!.newLine], [11, null])
+  assert.deepEqual([rows[3]!.oldLine, rows[3]!.newLine], [null, 21])
+  assert.deepEqual([rows[4]!.oldLine, rows[4]!.newLine], [null, 22])
+  const meta = diffRows('diff --git a/x b/x\n--- a/x\n+++ b/x\n')
+  assert.ok(meta.every((row) => row.oldLine === null && row.newLine === null))
+  assert.deepEqual(diffRows(''), [])
+})
+
+test('fileStats reflects only reported per-file numbers', () => {
+  assert.deepEqual(fileStats({ additions: 2, deletions: 0 }), { additions: 2, deletions: 0 })
+  assert.deepEqual(fileStats({}), { additions: null, deletions: null })
+  assert.deepEqual(fileStats({ additions: undefined, deletions: undefined }), { additions: null, deletions: null })
 })

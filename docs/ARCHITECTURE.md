@@ -47,8 +47,8 @@ Client (浏览器)                          Host (DSH 主进程)
   → 返回 Repository[] + Diagnostics
 POST vcs/timeline {repositoryId, cursor, filters}
   → registry.gate(repositoryId)（重新 realpath + 重校验工作区归属 + 重新识别 VCS）
-  → adapter.history() → git log（NUL 分隔、机器可读）或 svn log --xml
-  → VcsEvent[]（source: 'repository'）+ nextCursor
+  → adapter.history() → git log（NUL 分隔、机器可读）+ 同参数的 numstat 统计命令
+  → VcsEvent[]（source: 'repository'，metadata 带真实 filesChanged/±行数）+ nextCursor
 POST vcs/changeset / vcs/diff / vcs/status
   → adapter.changeSet() / diff() / status() → 文件状态、统一 diff 文本、工作区状态
 ```
@@ -123,24 +123,51 @@ beforeState / planOperation`。各自保留语义：
 - 审计永不篡改 `started` 记录：终态是**追加**记录，读取时按 id 折叠。
 - 敏感信息（凭据、token、私钥、Authorization）在写入前脱敏；不保存完整命令输出，只保存摘要。
 
-## 6. UI 结构
+## 6. UI 结构（IDE 风格紧凑面板）
+
+设计目标：像一个成熟的开发者工具窗口，而不是管理后台。垂直空间优先给历史列表，
+装饰性卡片全部去掉，分区只用 1px 分隔线；颜色只来自 `--dsw-alias-*` / `--dsw-specific-*`
+token，因此明暗主题自动成立。
 
 ```
-dvt-root
-├─ <style>            仅主题 token 的组件样式（前缀 dvt-）
-├─ header             仓库选择器 + 刷新 + 来源页签（时间线 / 审计）
-├─ notices            部分结果/工具缺失/错误横幅
-├─ body
-│   ├─ 列表模式        过滤栏 + 写操作栏 + 时间线列表（或审计列表）
-│   ├─ 事件详情        元信息 + 变更文件列表 → 点击文件进入 Diff
-│   ├─ Diff 视图       纯文本、加/删着色、二进制与截断提示
-│   └─ 审计详情        startedAt/finishedAt/exitCode/errorCode/前后 revision/correlationId
-├─ footer             分支/base revision、工作区干净状态、冲突数、工具与数据目录
-└─ dialog             写操作预览（argv、before 状态、警告）→ 确认 → 结果
+dvt-root (flex column, 100%, overflow hidden)
+├─ <style>                     组件样式（dvt- 前缀，仅主题 token）
+├─ dvt-chrome
+│   ├─ dvt-toolbar (34px)      仓库选择（原生 select 覆盖层）+ 分支 chip + 刷新 + “⋯”
+│   ├─ dvt-menu (popover)      Fetch / Pull / Commit / Push 分组菜单（SVN: Update / Commit）
+│   ├─ dvt-tabstrip (30px)     时间线（提交数）/ 审计（记录数）
+│   └─ dvt-filterbar (28px)    搜索框 + 全部/提交 chip + 筛选按钮（展开作者输入）
+├─ dvt-body
+│   ├─ dvt-pinned              详情/Diff 的 32px 面包屑（返回 + 标题 + 副标题 + 状态徽标）
+│   └─ dvt-scroll
+│       ├─ 提交历史            graph gutter（节点/合并环/连线）+ 摘要 + +/− 统计
+│       │                      + 底行（短 hash · 作者 · 相对时间 · 分支 chip · 文件数）
+│       ├─ 提交详情            hero 摘要 + 元信息网格 + 变更文件（状态字母/重命名旧路径/BIN/±行）
+│       ├─ Diff                行号槽 + 统一 diff 着色 + 底部（路径/行数/字节/截断）
+│       ├─ 审计列表            状态图标 + 操作 · 仓库 + 时间/correlation + 状态徽标
+│       └─ 空/错误/加载        区分：无工作区、未检测到仓库、客户端缺失、空历史、
+│                              筛选无结果、仓库尚无提交、部分数据、请求失败、加载骨架
+├─ dvt-diag (可折叠)           插件/运行时/Git/SVN/工作区/数据目录/警告
+├─ dvt-statusbar (24px)        工作区状态点 + 分支 + 变更数/冲突 + VCS + 诊断开关
+└─ dvt-dialog (面板内 absolute overlay，非全屏模态)
 ```
 
-状态机覆盖：无工作区、无仓库、客户端缺失、加载中、空历史、部分结果、超时、
-权限拒绝、冲突、Diff 超限、Host 路由不可用。所有错误文案包含原因 + 影响 + 下一步。
+关键取舍：
+
+- **写操作不再占卡片**：收进头部 “⋯” 菜单，点击后仍走同一套
+  “预览 → 单次 token → 确认执行” 流程，危险操作确认没有削弱。
+- **详情是面板内的“编辑器页”**：面包屑固定、内容滚动，不覆盖宿主布局；
+  对话框也限制在面板内（`position:absolute`），不会像全屏模态那样盖住整个应用。
+- **提交统计是真实数据**：Git 历史为每页额外执行一次
+  `git log --numstat -z --format=<SOH>%H`（与主查询同 filters/skip/limit），
+  合并进事件的 `metadata.filesChanged/additions/deletions/binaryFiles`；
+  SVN 只提供 `metadata.filesChanged`（变更路径数），**不虚构增删行**。
+  merge commit 无 numstat 时归零会被 UI 识别为“未提供”，不显示 `+0 −0`。
+- **密度**：列表行约 46px、详情文件行 26px、Diff 行 16px；控件高度统一 22/24px；
+  字号层级 12 / 11.5 / 10.5 / 10px；圆角 3–7px。
+- **窄栏**：≤380px 隐藏工具栏分支 chip 与状态栏 VCS 标签，≤360px 隐藏行内分支标签，
+  ≤330px 收窄 Diff 行号槽；320px 下无横向溢出。
+
 
 ## 7. 关键不变量
 

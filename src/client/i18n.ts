@@ -15,8 +15,10 @@ export type Locale = 'zh' | 'en'
 /** Translate function shape shared by the panel and the locale service. */
 export type TranslateFn = (key: string, params?: Record<string, string | number>) => string
 
+import { uiEn, uiZh } from './ui-i18n.ts'
+
 /** Simplified Chinese dictionary (the user's locale). */
-export const zh: Record<string, string> = {
+const baseZh: Record<string, string> = {
   'tab.title': '代码时间线',
   'guide.description': '查看 Git/SVN 历史、变更文件与 Diff，以及本插件发起的操作审计。',
 
@@ -272,7 +274,7 @@ export const zh: Record<string, string> = {
 }
 
 /** English dictionary; mirrors {@link zh} key-for-key. */
-export const en: Record<string, string> = {
+const baseEn: Record<string, string> = {
   'tab.title': 'Code Timeline',
   'guide.description': 'Git/SVN history, changed files, diffs, and an audit trail of operations this plugin performed.',
 
@@ -526,6 +528,12 @@ export const en: Record<string, string> = {
   'error.generic': 'The request failed; nothing was executed. Retry.',
   'error.hostUnavailable': 'The host route is unavailable; the plugin may be unloaded or the service restarted. Refresh the page, and check that the plugin is enabled if this persists.',
 }
+
+/** Simplified Chinese dictionary: base copy plus the redesigned chrome. */
+export const zh: Record<string, string> = { ...baseZh, ...uiZh }
+
+/** English dictionary: base copy plus the redesigned chrome. */
+export const en: Record<string, string> = { ...baseEn, ...uiEn }
 
 /** All dictionaries by locale. */
 export const dictionaries: Record<Locale, Record<string, string>> = { zh, en }
