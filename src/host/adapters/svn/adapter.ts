@@ -39,6 +39,7 @@ import type {
 import {
   DEFAULT_DIFF_MAX_BYTES,
   HARD_DIFF_MAX_BYTES,
+  MAX_EVENT_FILES,
   MAX_PAGE_SIZE,
   SCHEMA_VERSION,
 } from '../../../shared/contracts.ts'
@@ -427,6 +428,50 @@ function buildCommitEvent(repositoryIdValue: string, entry: SvnLogEntry): VcsEve
 }
 
 /**
+ * Attach one log entry's changed paths to its timeline event.
+ *
+ * `svn log -v` already reports every changed path of the revision, so the
+ * per-commit file list needs no extra history command. Paths are mapped into
+ * the working copy-relative form; copies become renames when their source was
+ * deleted in the same revision, matching the changeset classification. The
+ * list is capped at {@link MAX_EVENT_FILES}; the rest only sets
+ * `changedFilesTruncated`.
+ */
+function attachChangedFiles(event: VcsEvent, entry: SvnLogEntry, wcPrefix: string): VcsEvent {
+  const deletedPaths = new Set<string>()
+  for (const path of entry.paths) {
+    if (path.action !== 'D') continue
+    const relative = repoPathToRelative(path.path, wcPrefix)
+    if (relative !== null) deletedPaths.add(relative)
+  }
+  const files: ChangedFile[] = []
+  const seen = new Set<string>()
+  let truncated = false
+  for (const path of entry.paths) {
+    const relative = repoPathToRelative(path.path, wcPrefix)
+    if (relative === null || seen.has(relative)) continue
+    if (files.length >= MAX_EVENT_FILES) {
+      truncated = true
+      break
+    }
+    seen.add(relative)
+    const classified = classifyLogPath(path, wcPrefix, deletedPaths)
+    files.push(classified === null
+      ? { path: relative, status: 'unknown' }
+      : {
+          path: relative,
+          status: classified.status,
+          ...(classified.oldPath === undefined ? {} : { oldPath: classified.oldPath }),
+        })
+  }
+  return {
+    ...event,
+    changedFiles: files,
+    ...(truncated ? { changedFilesTruncated: true } : {}),
+  }
+}
+
+/**
  * Create the SVN adapter.
  * @param runner - the Host subprocess seam (argv arrays only, managed caps).
  * @returns the {@link VcsAdapter} implementation.
@@ -634,11 +679,20 @@ export function createSvnAdapter(runner: Runner): VcsAdapter {
         }
 
         const revisionRange = afterRevision === null ? 'HEAD:1' : `${afterRevision - 1}:1`
+        const includeFiles = query.includeFiles === true
         const argv = buildLogArgs(client.value, root, { revisionRange, limit, verbose: true })
-        const run = await runSvn(argv, root, signal, { timeoutMs: NETWORK_TIMEOUT_MS, maxBytes: LOG_OUTPUT_CAP_BYTES })
+        // The log already runs with `-v`, so a requested file list costs no
+        // extra history read: only the local `svn info` needed for path mapping
+        // runs alongside it, and its failure merely falls back to repository
+        // paths (the same documented fallback the changeset path uses).
+        const [run, infoResult] = await Promise.all([
+          runSvn(argv, root, signal, { timeoutMs: NETWORK_TIMEOUT_MS, maxBytes: LOG_OUTPUT_CAP_BYTES }),
+          includeFiles ? readInfo(client.value, root, signal) : Promise.resolve(null),
+        ])
         if (run.exitCode !== 0) return err(classifyFailure(run, 'svn log failed', signal))
         const parsed = parseOrError(run.stdout, LOG_OUTPUT_CAP_BYTES, parseLogXml)
         if (!parsed.ok) return parsed
+        const wcPrefix = infoResult !== null && infoResult.ok ? svnPrefixFromInfo(infoResult.value) : ''
 
         const rawEntries = parsed.value
         const hasMore = rawEntries.length >= limit
@@ -659,7 +713,8 @@ export function createSvnAdapter(runner: Runner): VcsAdapter {
           const timestampMs = Date.parse(entry.date ?? EPOCH_ISO)
           if (Number.isFinite(since) && Number.isFinite(timestampMs) && timestampMs < since) continue
           if (Number.isFinite(until) && Number.isFinite(timestampMs) && timestampMs > until) continue
-          events.push(buildCommitEvent(requestedId, entry))
+          const event = buildCommitEvent(requestedId, entry)
+          events.push(includeFiles ? attachChangedFiles(event, entry, wcPrefix) : event)
         }
 
         const nextCursor = hasMore && lastEntry !== undefined

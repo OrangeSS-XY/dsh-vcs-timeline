@@ -36,6 +36,17 @@ export function hasActiveFilters(state: PanelState): boolean {
   return state.filters.debouncedText.trim() !== ''
     || state.filters.eventTypes.length > 0
     || state.filters.author.trim() !== ''
+    || state.filters.treeQuery.trim() !== ''
+    || state.filters.fileStatus !== 'all'
+    || state.filters.timePreset !== 'all'
+    || state.selectedFilePath !== null
+}
+
+/** Whether the filters that live only in the browser narrow either pane. */
+export function hasFileFilters(state: PanelState): boolean {
+  return state.filters.treeQuery.trim() !== ''
+    || state.filters.fileStatus !== 'all'
+    || state.selectedFilePath !== null
 }
 
 /** The VCS client that is missing for the selected repository, if any. */

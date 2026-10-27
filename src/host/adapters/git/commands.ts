@@ -127,6 +127,30 @@ export function logStatsArgs(input: LogArgsInput): string[] {
   ]
 }
 
+/**
+ * One `git log` page argv carrying a per-commit name/status list, used to
+ * attach changed files to timeline events.
+ *
+ * Filters, skip and limit are identical to {@link logArgs} / {@link logStatsArgs}
+ * so all invocations describe exactly the same commits; `-z` keeps paths raw
+ * and `--find-renames` turns a detected move into a `R###` record.
+ */
+export function logNameStatusArgs(input: LogArgsInput): string[] {
+  return [
+    ...gitBase(),
+    'log',
+    '--no-color',
+    '-z',
+    '--name-status',
+    '--find-renames',
+    '--date-order',
+    `--max-count=${Math.max(1, input.limit)}`,
+    `--skip=${Math.max(0, input.skip)}`,
+    `--format=${SOH}%H`,
+    ...logFilterArgs(input),
+  ]
+}
+
 /** A commit hash: 7..64 hex digits (a full or unambiguous abbreviation), never option-like. */
 export function isCommitHash(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{7,64}$/i.test(value)
@@ -356,6 +380,146 @@ export function parseLogStatsZ(text: string): Map<string, CommitStats> {
     // Unexpected token: the stream is untrusted, so ignore it instead of throwing.
   }
   return stats
+}
+
+/**
+ * Parse `git log -z --name-status --find-renames --format=<SOH>%H` output into
+ * one name/status list per commit.
+ *
+ * Each commit starts with a `\x01<hash>` token; the following NUL tokens are
+ * alternating status/path records, except that `R###` and `C###` records carry
+ * the old path and the new path as two tokens. A commit with no files (a merge
+ * commit, because `git log --name-status` never expands merges without `-m`)
+ * still gets a map entry with an empty list, so the caller can tell "no files
+ * reported" apart from "this commit is missing from the page". Blank and
+ * unexpected tokens are ignored, so a malformed stream never throws.
+ * @param text - raw stdout of the name-status command.
+ * @returns name/status lists keyed by full commit hash.
+ */
+export function parseLogNameStatusZ(text: string): Map<string, NameStatusEntry[]> {
+  const byHash = new Map<string, NameStatusEntry[]>()
+  if (text === '') return byHash
+  const tokens = text.split(NUL)
+  let current: NameStatusEntry[] | undefined
+  let index = 0
+  while (index < tokens.length) {
+    const raw = tokens[index] ?? ''
+    index += 1
+    // git separates a commit's format output from its file list with a newline,
+    // so the newline rides on the following token.
+    const token = raw.replace(/^\n+/, '')
+    if (token === '') continue
+    if (token.startsWith(SOH)) {
+      const hash = token.slice(1).replace(/^\n+/, '').trim()
+      if (hash === '') {
+        current = undefined
+        continue
+      }
+      const existing = byHash.get(hash)
+      if (existing !== undefined) {
+        current = existing
+      } else {
+        current = []
+        byHash.set(hash, current)
+      }
+      continue
+    }
+    if (current === undefined) continue
+    const code = token
+    const letter = code[0]?.toUpperCase() ?? '?'
+    if (letter === 'R' || letter === 'C') {
+      const oldPath = tokens[index] ?? ''
+      const path = tokens[index + 1] ?? ''
+      index += 2
+      if (path !== '') current.push({ status: code, path, oldPath })
+      continue
+    }
+    const path = tokens[index] ?? ''
+    index += 1
+    if (path !== '') current.push({ status: code, path })
+  }
+  return byHash
+}
+
+/**
+ * Parse `git log -z --numstat --format=<SOH>%H` output into one per-file
+ * numstat list per commit.
+ *
+ * This reads the exact stream {@link parseLogStatsZ} aggregates, so one stats
+ * invocation can feed both the page-level statistics and the per-file event
+ * details. A rename/copy record with an empty path defers its two paths to the
+ * following NUL tokens; binary records keep `binary: true` and no line counts.
+ * Blank and unexpected tokens are ignored, so a malformed stream never throws.
+ * @param text - raw stdout of the stats command.
+ * @returns per-file records keyed by full commit hash.
+ */
+export function parseLogFileNumstatZ(text: string): Map<string, NumstatEntry[]> {
+  const byHash = new Map<string, NumstatEntry[]>()
+  if (text === '') return byHash
+  const tokens = text.split(NUL)
+  let current: NumstatEntry[] | undefined
+  let index = 0
+  while (index < tokens.length) {
+    const raw = tokens[index] ?? ''
+    index += 1
+    const token = raw.replace(/^\n+/, '')
+    if (token === '') continue
+    if (token.startsWith(SOH)) {
+      const hash = token.slice(1).replace(/^\n+/, '').trim()
+      if (hash === '') {
+        current = undefined
+        continue
+      }
+      const existing = byHash.get(hash)
+      if (existing !== undefined) {
+        current = existing
+      } else {
+        current = []
+        byHash.set(hash, current)
+      }
+      continue
+    }
+    if (current === undefined) continue
+    const numeric = NUMSTAT_LINE.exec(token)
+    if (numeric !== null) {
+      const additionsRaw = numeric[1] ?? ''
+      const deletionsRaw = numeric[2] ?? ''
+      let path = numeric[3] ?? ''
+      let oldPath: string | undefined
+      if (path === '') {
+        oldPath = tokens[index]
+        path = tokens[index + 1] ?? ''
+        index += 2
+      }
+      if (path === '') continue
+      current.push({
+        path,
+        ...(oldPath === undefined ? {} : { oldPath }),
+        additions: Number.parseInt(additionsRaw, 10) || 0,
+        deletions: Number.parseInt(deletionsRaw, 10) || 0,
+        binary: false,
+      })
+      continue
+    }
+    const binary = NUMSTAT_BINARY_LINE.exec(token)
+    if (binary !== null) {
+      let path = binary[1] ?? ''
+      let oldPath: string | undefined
+      if (path === '') {
+        oldPath = tokens[index]
+        path = tokens[index + 1] ?? ''
+        index += 2
+      }
+      if (path === '') continue
+      current.push({
+        path,
+        ...(oldPath === undefined ? {} : { oldPath }),
+        binary: true,
+      })
+    }
+    // Unexpected token: the stream is untrusted, so ignore it instead of throwing.
+  }
+  return byHash
 }
 
 /** Whether a git stderr means the repository has no commits yet. */

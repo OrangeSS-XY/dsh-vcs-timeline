@@ -66,6 +66,14 @@ export interface HistoryQuery {
   /** Inclusive upper bound, ISO 8601. */
   until?: string
   eventTypes?: VcsEventType[]
+  /**
+   * Attach each event's changed files (`VcsEvent.changedFiles`).
+   *
+   * Off/absent by default: the page is cheaper without it and the Client needs
+   * to distinguish "not requested" from "changed nothing". An adapter that
+   * cannot produce the lists must leave the key absent rather than fake it.
+   */
+  includeFiles?: boolean
 }
 
 /** One page of repository history. */

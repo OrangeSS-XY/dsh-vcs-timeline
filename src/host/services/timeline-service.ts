@@ -178,6 +178,7 @@ export function createTimelineService(deps: TimelineServiceDeps): TimelineServic
         ...(typeof query.text === 'string' && query.text.trim() !== '' ? { text: query.text.trim().slice(0, 200) } : {}),
         ...window,
         ...(eventTypes === undefined ? {} : { eventTypes }),
+        includeFiles: query.includeFiles === true,
       })
       if (!history.ok) throw new ServiceError(history.error)
       return {

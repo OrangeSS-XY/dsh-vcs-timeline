@@ -359,3 +359,140 @@ export function hasStats(stats: EventStats): boolean {
   return stats.files !== undefined || stats.additions !== undefined || stats.deletions !== undefined
 }
 
+/** History window presets in display order. */
+export const TIME_PRESETS = ['all', '24h', '7d', '30d'] as const
+
+/**
+ * Inclusive ISO lower bound of one history window preset.
+ * @param preset - `all` (no bound), `24h`, `7d` or `30d`.
+ * @param now - clock used to compute the bound.
+ * @returns an ISO timestamp, or undefined for "all time".
+ */
+export function windowSince(preset: 'all' | '24h' | '7d' | '30d', now: number = Date.now()): string | undefined {
+  if (preset === 'all') return undefined
+  const hours = preset === '24h' ? 24 : preset === '7d' ? 24 * 7 : 24 * 30
+  return new Date(now - hours * 60 * 60 * 1000).toISOString()
+}
+
+/**
+ * Display label of one history window preset.
+ * @param preset - the preset.
+ * @param t - dictionary lookup.
+ * @returns the localized label.
+ */
+export function timePresetLabel(preset: 'all' | '24h' | '7d' | '30d', t: TranslateFn): string {
+  return t(`time.${preset}`)
+}
+
+/** Width of one tree indentation step, in px (pure layout arithmetic for tests). */
+export function treeIndent(depth: number): number {
+  return Number.isFinite(depth) && depth > 0 ? depth * 12 : 0
+}
+
+/** Coarse relative age of a timestamp, for the timeline's "when". */
+export type RelativeTimeUnit = 'justNow' | 'minutes' | 'hours' | 'days'
+
+/** Relative age of one timestamp: unit plus count (count is 0 for `justNow`). */
+export interface RelativeTime {
+  unit: RelativeTimeUnit
+  count: number
+}
+
+/**
+ * Coarse relative age used by timeline rows: "just now", "N minutes ago",
+ * "N hours ago", "N days ago"; anything older returns null so the row shows a
+ * compact date instead of an ever-growing count.
+ * @param iso - ISO timestamp.
+ * @param now - clock used for the comparison.
+ * @returns the relative age, or null when older than seven days/invalid.
+ */
+export function relativeTime(iso: string | undefined | null, now: number = Date.now()): RelativeTime | null {
+  if (typeof iso !== 'string' || iso.trim() === '') return null
+  const at = new Date(iso).getTime()
+  if (!Number.isFinite(at) || !Number.isFinite(now)) return null
+  const seconds = Math.max(0, Math.floor((now - at) / 1000))
+  if (seconds < 60) return { unit: 'justNow', count: 0 }
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return { unit: 'minutes', count: minutes }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return { unit: 'hours', count: hours }
+  const days = Math.floor(hours / 24)
+  if (days < 7) return { unit: 'days', count: days }
+  return null
+}
+
+/** Local calendar key of one ISO timestamp: `YYYY-MM-DD`, or null when invalid. */
+export function localDayKey(iso: string | undefined | null): string | null {
+  if (typeof iso !== 'string' || iso.trim() === '') return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** Header label of one timeline day: localized today/yesterday or a date. */
+export interface DayLabel {
+  kind: 'today' | 'yesterday' | 'date'
+  /** Formatted date for `kind === 'date'`; empty otherwise. */
+  text: string
+}
+
+/**
+ * Day header label of one timestamp.
+ * @param iso - ISO timestamp.
+ * @param locale - display locale.
+ * @param now - clock used to decide today/yesterday.
+ * @returns the header label, falling back to a plain date.
+ */
+export function dayLabel(iso: string | undefined | null, locale?: string, now: Date = new Date()): DayLabel {
+  const key = localDayKey(iso)
+  if (key === null) return { kind: 'date', text: '' }
+  const today = localDayKey(now.toISOString())
+  const yesterday = localDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
+  if (key === today) return { kind: 'today', text: '' }
+  if (key === yesterday) return { kind: 'yesterday', text: '' }
+  const date = new Date(iso as string)
+  const sameYear = date.getFullYear() === now.getFullYear()
+  try {
+    return {
+      kind: 'date',
+      text: new Intl.DateTimeFormat(intlLocale(locale), {
+        ...(sameYear ? {} : { year: 'numeric' }),
+        month: 'numeric',
+        day: 'numeric',
+        weekday: 'short',
+      }).format(date),
+    }
+  } catch {
+    return { kind: 'date', text: key }
+  }
+}
+
+/** Stable decorative avatar label: the first character(s) of an author name. */
+export function authorInitials(actor: string | undefined | null): string {
+  if (typeof actor !== 'string') return '?'
+  const trimmed = actor.trim()
+  if (trimmed === '') return '?'
+  const parts = trimmed.split(/\s+/).filter((part) => part !== '')
+  if (parts.length === 0) return '?'
+  const first = parts[0] ?? trimmed
+  const second = parts.length > 1 ? parts[parts.length - 1] ?? '' : ''
+  const initials = second === '' ? first.slice(0, 1) : `${first.slice(0, 1)}${second.slice(0, 1)}`
+  return initials.toUpperCase()
+}
+
+/**
+ * Deterministic hue for the decorative author avatar, derived from the name so
+ * one person keeps one color across rows and sessions.
+ * @param actor - author name.
+ * @returns a hue in degrees (0–359).
+ */
+export function authorHue(actor: string | undefined | null): number {
+  const text = typeof actor === 'string' && actor !== '' ? actor : '?'
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash) % 360
+}
+

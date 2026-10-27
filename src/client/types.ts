@@ -13,6 +13,7 @@ import type {
   ChangeSet,
   Diagnostics,
   DiffResult,
+  FileChangeStatus,
   OperationAttempt,
   OperationPreview,
   OperationType,
@@ -21,11 +22,15 @@ import type {
   VcsEventType,
   WorkingTreeStatus,
 } from '../shared/contracts.ts'
+import type * as React from 'react'
 import type { VcsClient } from './api.ts'
 import type { TranslateFn } from './i18n.ts'
 
 /** Which source the panel body currently lists. */
 export type PanelSource = 'timeline' | 'audit'
+
+/** Server-side history window presets offered by the time filter. */
+export type TimePreset = 'all' | '24h' | '7d' | '30d'
 
 /** Debounced filter state plus the raw search box text. */
 export interface FilterState {
@@ -39,6 +44,12 @@ export interface FilterState {
   author: string
   /** Whether the advanced filter row is expanded. */
   showAuthor: boolean
+  /** File-name search inside the tree pane (client-side only). */
+  treeQuery: string
+  /** Change-status filter shared by the tree and the timeline (client-side). */
+  fileStatus: FileChangeStatus | 'all'
+  /** History window preset, applied by the Host when the page is fetched. */
+  timePreset: TimePreset
 }
 
 /** Repository-history page state. */
@@ -112,6 +123,10 @@ export interface PanelState {
   noWorkspace: boolean
   source: PanelSource
   filters: FilterState
+  /** File whose history the right pane is narrowed to; null = whole repository. */
+  selectedFilePath: string | null
+  /** Directories the user expanded in the tree, keyed by repository path. */
+  expandedDirs: Record<string, boolean>
   refreshTick: number
   statusTick: number
   timeline: TimelineSlice
@@ -142,6 +157,20 @@ export interface PanelHandlers {
   onClearFilters(): void
   onLoadMoreTimeline(): void
   onRetryTimeline(): void
+  /** Narrow both panes to one repository-relative file; `null` shows all files. */
+  onSelectFile(path: string | null): void
+  /** Change the tree's file-name search. */
+  onTreeQueryChange(query: string): void
+  /** Change the status filter shared by the tree and the timeline. */
+  onSetFileStatus(status: FileChangeStatus | 'all'): void
+  /** Expand/collapse one directory of the tree. */
+  onToggleDir(path: string): void
+  /** Expand every directory of the current tree. */
+  onExpandAllDirs(): void
+  /** Collapse every directory of the current tree. */
+  onCollapseAllDirs(): void
+  /** Change the history window preset (refetches from the Host). */
+  onSetTimePreset(preset: TimePreset): void
   onOpenEvent(event: VcsEvent): void
   onBackFromDetail(): void
   onOpenFile(path: string): void
@@ -181,7 +210,7 @@ export interface PanelDeps {
   resolveWorkspacePath?: (props: PanelProps) => string | null
 }
 
-/** Props the sidebar slot passes to the tab body. */
+/** Props the sidebar slot or the Conversation View passes to the panel. */
 export interface PanelProps {
   sessionId?: string
   workspacePath?: string | null
@@ -192,6 +221,8 @@ export interface PanelViewProps {
   state: PanelState
   deps: PanelDeps
   handlers: PanelHandlers
+  /** Attached to the root element so the panel can size itself in a host area. */
+  rootRef?: React.Ref<HTMLDivElement>
 }
 
 /** Empty repository-history slice. */
@@ -243,7 +274,18 @@ export function createInitialState(): PanelState {
     workspacePath: null,
     noWorkspace: false,
     source: 'timeline',
-    filters: { text: '', debouncedText: '', eventTypes: [], author: '', showAuthor: false },
+    filters: {
+      text: '',
+      debouncedText: '',
+      eventTypes: [],
+      author: '',
+      showAuthor: false,
+      treeQuery: '',
+      fileStatus: 'all',
+      timePreset: 'all',
+    },
+    selectedFilePath: null,
+    expandedDirs: {},
     refreshTick: 0,
     statusTick: 0,
     timeline: createTimelineSlice(),
@@ -275,6 +317,13 @@ export function createNoopHandlers(): PanelHandlers {
     onClearFilters: noop,
     onLoadMoreTimeline: noop,
     onRetryTimeline: noop,
+    onSelectFile: noop,
+    onTreeQueryChange: noop,
+    onSetFileStatus: noop,
+    onToggleDir: noop,
+    onExpandAllDirs: noop,
+    onCollapseAllDirs: noop,
+    onSetTimePreset: noop,
     onOpenEvent: noop,
     onBackFromDetail: noop,
     onOpenFile: noop,

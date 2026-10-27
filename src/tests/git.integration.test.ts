@@ -232,6 +232,180 @@ test('history filters by author and text', async () => {
   }
 })
 
+test('history includeFiles attaches each commit\'s changed files to the same page', async () => {
+  const repo = await makeRepo()
+  try {
+    const adapter = createGitAdapter(nodeRunner())
+    const info = await adapter.info(repo.dir)
+    assert.equal(info.ok, true)
+    if (!info.ok) return
+
+    const page = await adapter.history(repo.dir, info.value.id, { limit: 10, includeFiles: true })
+    assert.equal(page.ok, true)
+    if (!page.ok) return
+    assert.equal(page.value.events.length, 2)
+
+    // Newest first: modify a.txt, add the binary, rename the unicode file.
+    const headFiles = page.value.events[0]!.changedFiles
+    assert.ok(headFiles !== undefined)
+    assert.equal(headFiles?.length, 3)
+    assert.equal(page.value.events[0]!.changedFilesTruncated, undefined)
+    const renamed = headFiles?.find(file => file.status === 'renamed')
+    assert.equal(renamed?.path, 'renamed file.txt')
+    assert.equal(renamed?.oldPath, '中文 空格 #1.txt')
+    assert.equal(renamed?.additions, 0)
+    assert.equal(renamed?.deletions, 0)
+    const binary = headFiles?.find(file => file.path === 'bin.dat')
+    assert.equal(binary?.status, 'added')
+    assert.equal(binary?.binary, true)
+    assert.equal(binary?.additions, undefined)
+    const modified = headFiles?.find(file => file.path === 'a.txt')
+    assert.equal(modified?.status, 'modified')
+    assert.equal(modified?.additions, 1)
+    assert.equal(modified?.deletions, 1)
+
+    // Oldest: the initial commit adds two text files.
+    const rootFiles = page.value.events[1]!.changedFiles
+    assert.ok(rootFiles !== undefined)
+    assert.equal(rootFiles?.length, 2)
+    for (const file of rootFiles ?? []) {
+      assert.equal(file.status, 'added')
+      assert.equal(file.binary, undefined)
+      assert.equal(typeof file.additions, 'number')
+    }
+    assert.deepEqual(
+      (rootFiles ?? []).map(file => file.path).sort(),
+      ['a.txt', '中文 空格 #1.txt'],
+    )
+
+    // Without includeFiles the key is absent, so the client can tell
+    // "not asked for" from "changed nothing".
+    const plain = await adapter.history(repo.dir, info.value.id, { limit: 10 })
+    assert.equal(plain.ok, true)
+    if (!plain.ok) return
+    for (const event of plain.value.events) {
+      assert.equal('changedFiles' in event, false)
+      assert.equal(event.changedFilesTruncated, undefined)
+    }
+  } finally {
+    await repo.cleanup()
+  }
+})
+
+test('history includeFiles classifies added, modified, deleted, renamed and binary files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dvt-git-files-'))
+  try {
+    await git(dir, 'init', '-b', 'main', '-q')
+    await git(dir, 'config', 'user.name', 'Test User')
+    await git(dir, 'config', 'user.email', 'test@example.com')
+    await writeFile(join(dir, 'a.txt'), 'one\ntwo\n', 'utf8')
+    await writeFile(join(dir, 'del.txt'), 'bye\n', 'utf8')
+    await writeFile(join(dir, 'old name.txt'), 'copy me\n', 'utf8')
+    await writeFile(join(dir, 'bin.dat'), Buffer.from([0, 1, 2, 0, 255]))
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'initial files')
+    await writeFile(join(dir, 'a.txt'), 'one\nCHANGED\n', 'utf8')
+    await rm(join(dir, 'del.txt'))
+    await rename(join(dir, 'old name.txt'), join(dir, 'new name.txt'))
+    await writeFile(join(dir, 'bin.dat'), Buffer.from([9, 9, 0]))
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'modify, delete, rename, binary')
+
+    const adapter = createGitAdapter(nodeRunner())
+    const info = await adapter.info(dir)
+    assert.equal(info.ok, true)
+    if (!info.ok) return
+    const page = await adapter.history(dir, info.value.id, { limit: 10, includeFiles: true })
+    assert.equal(page.ok, true)
+    if (!page.ok) return
+    assert.equal(page.value.events.length, 2)
+
+    const files = page.value.events[0]!.changedFiles ?? []
+    assert.equal(files.length, 4)
+    const byPath = new Map(files.map(file => [file.path, file]))
+    assert.deepEqual(byPath.get('a.txt'), { path: 'a.txt', status: 'modified', additions: 1, deletions: 1 })
+    assert.deepEqual(byPath.get('del.txt'), { path: 'del.txt', status: 'deleted', additions: 0, deletions: 1 })
+    assert.deepEqual(byPath.get('new name.txt'), { path: 'new name.txt', oldPath: 'old name.txt', status: 'renamed', additions: 0, deletions: 0 })
+    assert.deepEqual(byPath.get('bin.dat'), { path: 'bin.dat', status: 'modified', binary: true })
+
+    const initial = page.value.events[1]!.changedFiles ?? []
+    assert.deepEqual(initial.map(file => file.status), ['added', 'added', 'added', 'added'])
+    assert.equal(initial.find(file => file.path === 'bin.dat')?.binary, true)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('history includeFiles reports an empty file list for a merge commit', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dvt-git-merge-'))
+  try {
+    await git(dir, 'init', '-b', 'main', '-q')
+    await git(dir, 'config', 'user.name', 'Test User')
+    await git(dir, 'config', 'user.email', 'test@example.com')
+    await writeFile(join(dir, 'base.txt'), 'base\n', 'utf8')
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'base')
+    await git(dir, 'checkout', '-q', '-b', 'side')
+    await writeFile(join(dir, 'side.txt'), 'side\n', 'utf8')
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'side commit')
+    await git(dir, 'checkout', '-q', 'main')
+    await writeFile(join(dir, 'main.txt'), 'main\n', 'utf8')
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'main commit')
+    await git(dir, 'merge', '--no-ff', '-q', '-m', 'merge side', 'side')
+
+    const adapter = createGitAdapter(nodeRunner())
+    const info = await adapter.info(dir)
+    assert.equal(info.ok, true)
+    if (!info.ok) return
+    const page = await adapter.history(dir, info.value.id, { limit: 10, includeFiles: true })
+    assert.equal(page.ok, true)
+    if (!page.ok) return
+    const mergeEvent = page.value.events[0]
+    assert.ok(mergeEvent !== undefined)
+    assert.equal(mergeEvent.parentHashes?.length, 2)
+    // `git log --name-status` never expands a merge without `-m`, so the honest
+    // answer is an empty list, not a guessed one.
+    assert.deepEqual(mergeEvent.changedFiles, [])
+    assert.equal(mergeEvent.changedFilesTruncated, undefined)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a failed name-status probe omits changedFiles and warns instead of failing the page', async () => {
+  const repo = await makeRepo()
+  try {
+    const base = nodeRunner()
+    const failingNameStatus: Runner = {
+      ...base,
+      async run(argv, cwd, options = {}) {
+        if (argv.includes('log') && argv.includes('--name-status')) {
+          return { exitCode: 1, stdout: '', stderr: 'fatal: simulated name-status failure' }
+        }
+        return base.run(argv, cwd, options)
+      },
+    }
+    const adapter = createGitAdapter(failingNameStatus)
+    const info = await adapter.info(repo.dir)
+    assert.equal(info.ok, true)
+    if (!info.ok) return
+    const history = await adapter.history(repo.dir, info.value.id, { limit: 10, includeFiles: true })
+    assert.equal(history.ok, true)
+    if (!history.ok) return
+    assert.equal(history.value.events.length, 2)
+    for (const event of history.value.events) {
+      assert.equal('changedFiles' in event, false)
+      // The page is still fully readable and the stats probe is unaffected.
+      assert.equal(typeof event.metadata?.filesChanged, 'number')
+    }
+    assert.equal((history.value.warnings ?? []).some(warning => warning.includes('changed files')), true)
+  } finally {
+    await repo.cleanup()
+  }
+})
+
 test('a failed stats probe omits the stats keys instead of failing the page', async () => {
   const repo = await makeRepo()
   try {

@@ -35,9 +35,13 @@ npm registry 上的同版本类型包，以及一次真实的桌面端加载验�
 - 本插件没有 `Config` 导出；`Config.listConfigs` 查询结果为 `status: "absent"`，
   Loader 仍正常激活。可选行配置 `dataDir` 通过 `apply(ctx, config)` 第二个参数读取。
 
-## 3. 右侧栏契约（逐项确认）
+## 3. 入口与 Slot 契约（逐项确认）
 
-### 3.1 Tab 类型注册（Client）
+### 3.1 右侧栏 Tab 类型注册（Client，备用路径）
+
+> 现状：该 tab 类型与 body 仍注册（`sidebar.right.pane.tab` 的 occupant 可见），
+> 但当前桌面端侧栏的加页签 UI 没有暴露它；主入口已改为 §3.4 的对话区页签。
+> 以下契约保留，供未来侧栏入口暴露时复用。
 
 ```ts
 ctx.inject(['sidebarRightTabs'], (scope) => {
@@ -89,6 +93,60 @@ ctx.inject(['sidebarRightTabs'], (scope) => {
 - `ctx.locale.register(ns, {zh, en})` + `ctx.locale.bind(ns)` 返回 `t(key, params)`。
   面板全部可见文案走 `t()`；zh/en 字典键完全一致（测试断言）。
 
+### 3.4 对话区页签（`conversation.view`）
+
+主入口是**对话内容区的 View 页签**，与官方的 对话 / 轨迹 以及第三方的 上下文 / 编队 同一行：
+
+```ts
+scope.slots.inject('conversation.view', () => scope.slots.register(
+  {
+    name: 'conversation.view',
+    id: 'vcs-timeline',
+    order: 40,
+    locale: 'vcs-timeline',
+    label: () => translate('view.tab'),   // 页签文字，thunk 随语言重读
+  },
+  PanelComponent,
+))
+```
+
+- Slot 事实（`cordis_inspect_query` client `Slots.listSubTree`，root `conversation.view`）：
+  kind `list`、scope `session`、purpose “Registered Conversation target Views, rendered one
+  at a time”；注册字段 `{ id（必填，自有 id 为新增，复用已占用 id 会替换该格）, order?, label? }`。
+  实测 occupants：`chat(0)`、`trajectory(10)`、`context(20)`、`fleet(30)`（后两者来自
+  dsh-context@0.77.0），本插件以 order 40 排在 编队 之后。
+- 同版本已安装的 `dsh-context` 就是这一用法的正例：其 `lib/client.js` 中
+  `np(e,t,n,r,i)` 调用 `e.slots.inject('conversation.view', () => e.slots.register({
+  name:'conversation.view', id:'fleet', order:30, locale:i, label:()=>r('tab.fleet') }, n))`，
+  与官方 View 完全同构；`package.json` 的 `dsh.client.inject` 声明
+  `@deepseek-ai/dsh-client-ui-conversation`（本插件同样声明）。
+- 行为：选中页签后宿主把**整个对话内容区**替换为该 View，聊天记录/输入框布局不受影响；
+  切回「对话」即恢复聊天。没有覆盖层、没有再套一层全屏浮层、没有新的焦点陷阱。
+- 组件拿到标准 props（`sessionId` 等）；本插件用它解析会话 cwd，再通过 `/vcs` 路由加载仓库。
+- 验证：真实页面里顶部视图行出现「代码时间线」，点击后
+  `[data-dvt-panel="vcs-timeline"]` 出现在对话内容区（1920×1080 下 x≈280 y≈76 w≈1633 h≈876），
+  页面上不存在插件自己的浮层/输入框条带元素。
+
+> 历史实现说明：早期版本用 `conversation.input.dock`（输入框上方条带）+ portal 全屏浮层；
+> 该方案功能可用但入口位置不符合「与对话同一行、占据对话区」的期望，已移除，
+> 相关 slot 契约仍记录在 §3.6 供参考。
+
+### 3.5 窄栏适配：容器查询
+
+面板宽度与窗口宽度无关，因此本插件的窄栏规则使用 `@container`
+（`.dvt-split { container-type: inline-size }` + `@container (max-width: 520px)`），
+而不是 `@media`：右侧栏 400px 时隐藏行内分支标签等次要信息，对话区 1600px 时自动展开。
+DSH 桌面端为 Chromium ≥ 110，容器查询可用（真实页面截图验证）。
+
+### 3.6 可用的其他挂载点（参考）
+
+- `conversation.input.dock`（list, session）：输入框上方的条带，occupants
+  `todo(0)/goal(10)/queue(20)/git-graph(100)`；注册字段 `{ id, order?, label? }`。
+  本插件不再使用，但它是同版本第三方 `@linxin666/dsh-client-ui-git-graph` 的实际用法。
+- `shell.overlay`（list, root）：frame-wide 浮层，occupants 含 toast/pet 等。
+- `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`（keyed, session）：
+  本插件仍注册 key `vcs-timeline`（当前侧栏 UI 未暴露入口，见 §3.1 注）。
+
 ## 4. Host/Client 通信（实测选择的方案）
 
 **结论：0.2.1-rc.3 的桌面端没有面向第三方插件的公开 “Remote 命名空间注册” 入口可用**
@@ -133,11 +191,14 @@ asar 内没有 `.d.ts`，因此：
 
 ## 7. 已知限制与未验证项
 
-1. **无浏览器自动化**：面板在真实 GUI 中的视觉效果、窄屏溢出、交互路径（防抖、Esc、焦点、剪贴板）
-   只经过 SSR 渲染测试与代码审查，未做像素级验证；tab 的实时挂载与 slot occupant 已通过 inspector 验证。
+1. **真实页面验证的边界**：已用 Playwright + Edge（headless）对运行中的桌面端做了真实页面检查
+   （对话区页签入口、IDEA 风格时间线、双栏、筛选、详情/Diff、尺寸、深色主题，见 TEST-REPORT §6），
+   但仍是脚本化 DOM/计算样式/截图核对，不是人工逐像素签收；clipboard、输入法、拖动等细节未覆盖。
 2. **未做整进程重启验证**：已验证「禁用/启用插件（重新挂载）」后审计数据仍可读；
    完整关闭并重启 DSH 桌面端的持久化未实测（JSONL 语义上是磁盘文件，风险低）。
 3. **SVN 客户端未安装**：SVN 适配器只做了解析器/命令行/降级路径的单元测试，
    未与真实 SVN 服务器联调；`svn` 缺失时 UI 显示明确的安装提示。
 4. 右侧栏内部布局、`sidebarRightTabs` 的未公开字段（如 `priority`、图标对象）没有官方类型，
    本插件只使用已被 `dsh-context` 证实的字段子集。
+5. **`conversation.view` 的 owner 语义**：页签按 session 注册；若未来 shell 移除该 slot，
+   注册会被 try/catch 降级为“无对话区页签”，右侧栏页签仍可用。

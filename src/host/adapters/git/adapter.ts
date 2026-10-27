@@ -6,7 +6,7 @@
 
 import { realpath } from 'node:fs/promises'
 import type { ApiError, ChangeSet, DiffResult, Repository, WorkingTreeStatus } from '../../../shared/contracts.ts'
-import { DEFAULT_PAGE_SIZE, HARD_DIFF_MAX_BYTES, MAX_PAGE_SIZE } from '../../../shared/contracts.ts'
+import { DEFAULT_PAGE_SIZE, HARD_DIFF_MAX_BYTES, MAX_EVENT_FILES, MAX_PAGE_SIZE } from '../../../shared/contracts.ts'
 import { clampInt, decodeCursor, encodeCursor, normalizeRepoRelativePath, repositoryId, safeErrorMessage, truncateUtf8 } from '../../security.ts'
 import type {
   AdapterResult,
@@ -42,9 +42,13 @@ import {
   isSafeRemoteName,
   isEmptyRepositoryError,
   logArgs,
+  logNameStatusArgs,
   logStatsArgs,
+  mergeChangedFiles,
   originHeadArgs,
   parseCommitMeta,
+  parseLogFileNumstatZ,
+  parseLogNameStatusZ,
   parseLogOutput,
   parseLogStatsZ,
   parseNameStatusZ,
@@ -197,6 +201,7 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       const limit = clampInt(query.limit, 1, MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE)
       const cursor = decodeCursor(query.cursor ?? null)
       const offset = cursor !== null && typeof cursor.o === 'number' && cursor.o >= 0 ? Math.trunc(cursor.o) : 0
+      const includeFiles = query.includeFiles === true
       const statsInput = {
         skip: offset,
         limit: limit + 1,
@@ -206,12 +211,13 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
         ...(query.until === undefined ? {} : { until: query.until }),
       }
       const argv = logArgs(statsInput)
-      // The stats probe mirrors the history invocation (same filters/skip/limit)
-      // so it can be aligned by commit hash. A failed probe only omits the
-      // additive stats keys; the page itself still succeeds.
-      const [result, statsResult] = await Promise.all([
+      // The stats and name-status probes mirror the history invocation (same
+      // filters/skip/limit) so both can be aligned by commit hash. A failed
+      // probe only omits its additive keys; the page itself still succeeds.
+      const [result, statsResult, nameStatusResult] = await Promise.all([
         run(argv, root, signal, READ_TIMEOUT_MS),
         run(logStatsArgs(statsInput), root, signal, READ_TIMEOUT_MS),
+        includeFiles ? run(logNameStatusArgs(statsInput), root, signal, READ_TIMEOUT_MS) : Promise.resolve(undefined),
       ])
       if (result.exitCode !== 0) {
         if (isEmptyRepositoryError(result.stderr)) {
@@ -223,11 +229,24 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       const hasMore = parsed.length > limit
       const page = hasMore ? parsed.slice(0, limit) : parsed
       const statsByHash = statsResult.exitCode === 0 ? parseLogStatsZ(statsResult.stdout) : null
+      // One stats stream feeds both the aggregate metadata and the per-file
+      // details; the name-status stream carries the authoritative file order.
+      const nameStatusByHash = includeFiles && nameStatusResult !== undefined && nameStatusResult.exitCode === 0
+        ? parseLogNameStatusZ(nameStatusResult.stdout)
+        : null
+      const numstatByHash = nameStatusByHash !== null && statsResult.exitCode === 0
+        ? parseLogFileNumstatZ(statsResult.stdout)
+        : null
+      // A missing name-status probe is partial data, never a failed page, and
+      // the events then carry no `changedFiles` key at all.
+      const warnings: string[] = []
+      if (includeFiles && nameStatusByHash === null) {
+        warnings.push('changed files could not be read for this page')
+      }
       const events = page.map(commit => {
         const event = commitToEvent(commit, repositoryIdValue)
         const stats = statsByHash?.get(commit.hash)
-        if (stats === undefined) return event
-        return {
+        const withStats = stats === undefined ? event : {
           ...event,
           metadata: {
             ...event.metadata,
@@ -237,6 +256,20 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
             binaryFiles: stats.binaryFiles,
           },
         }
+        if (nameStatusByHash === null) return withStats
+        // Every commit on the page gets a list, including an empty one: a merge
+        // commit reports no files through `git log --name-status`, so an empty
+        // list is the honest answer and never an invented one.
+        const merged = mergeChangedFiles(
+          nameStatusByHash.get(commit.hash) ?? [],
+          numstatByHash?.get(commit.hash) ?? [],
+          MAX_EVENT_FILES,
+        )
+        return {
+          ...withStats,
+          changedFiles: merged.files,
+          ...(merged.truncated ? { changedFilesTruncated: true } : {}),
+        }
       })
       const nextCursor = hasMore ? encodeCursor({ o: offset + limit }) : null
       return {
@@ -245,7 +278,7 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
           events,
           nextCursor,
           hasMore,
-          ...(parsed.length === 0 && offset === 0 ? {} : {}),
+          ...(warnings.length === 0 ? {} : { warnings }),
         },
       }
     },

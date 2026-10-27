@@ -81,7 +81,20 @@ export interface VcsEvent {
   outcome?: 'success' | 'failure' | 'partial' | 'unknown'
   externalObservationConfidence?: 'confirmed' | 'inferred'
   metadata?: Record<string, string | number | boolean | null>
+  /**
+   * Files this commit changed, in the order the VCS reported them.
+   *
+   * Present only when the query asked for them (`includeFiles`); a repository
+   * history page without that flag never carries a file list, so the Client
+   * cannot mistake "not asked for" for "changed nothing".
+   */
+  changedFiles?: ChangedFile[]
+  /** True when the commit changed more files than {@link MAX_EVENT_FILES}. */
+  changedFilesTruncated?: boolean
 }
+
+/** Most changed files one timeline event carries; the rest sets `changedFilesTruncated`. */
+export const MAX_EVENT_FILES = 200
 
 /** Per-file change classification. */
 export type FileChangeStatus =
@@ -209,6 +222,14 @@ export interface TimelineQuery {
   cursor?: string | null
   /** Requested page size; the Host clamps it. */
   limit?: number
+  /**
+   * Ask the Host to attach each commit's changed files to its event.
+   *
+   * The file-centered browser needs one commit's file list to build the tree
+   * and to filter by path; the Host answers it from the same history window as
+   * the rest of the page.
+   */
+  includeFiles?: boolean
 }
 
 /** One page of timeline events. */

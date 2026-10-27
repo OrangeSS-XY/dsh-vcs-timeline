@@ -219,3 +219,26 @@ export function IconDot(props: IconProps): React.ReactElement {
     'data-dvt-icon': 'dot',
   }, h('circle', { cx: 4, cy: 4, r: 3.2, fill: 'currentColor' }))
 }
+
+/** Collapsed directory. */
+export const IconFolder = icon('folder', [
+  h('path', { key: 'a', d: 'M2.2 4A1.2 1.2 0 0 1 3.4 2.8h2.7l1.3 1.5h5.2A1.2 1.2 0 0 1 13.8 5.5v6A1.2 1.2 0 0 1 12.6 12.7H3.4A1.2 1.2 0 0 1 2.2 11.5z' }),
+])
+
+/** Expanded directory. */
+export const IconFolderOpen = icon('folder-open', [
+  h('path', { key: 'a', d: 'M2.2 4A1.2 1.2 0 0 1 3.4 2.8h2.7l1.3 1.5h4.2A1.2 1.2 0 0 1 12.8 5.5v.7' }),
+  h('path', { key: 'b', d: 'M2.2 6.4h11.4l-1.3 5.1a1.2 1.2 0 0 1-1.2 1.2H3.4A1.2 1.2 0 0 1 2.2 11.5z' }),
+])
+
+/** Expand every directory. */
+export const IconExpandAll = icon('expand-all', [
+  h('path', { key: 'a', d: 'M4.6 3.4 8 6.6l3.4-3.2' }),
+  h('path', { key: 'b', d: 'M4.6 9 8 12.2 11.4 9' }),
+])
+
+/** Collapse every directory. */
+export const IconCollapseAll = icon('collapse-all', [
+  h('path', { key: 'a', d: 'M4.6 6.6 8 3.4l3.4 3.2' }),
+  h('path', { key: 'b', d: 'M4.6 12.2 8 9l3.4 3.2' }),
+])

@@ -7,12 +7,13 @@
 import * as React from 'react'
 import type { OperationType, Repository } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
-import type { PanelDeps, PanelHandlers, PanelState, PanelSource } from '../types.ts'
+import type { PanelDeps, PanelHandlers, PanelState, PanelSource, TimePreset } from '../types.ts'
 import {
   IconAudit,
   IconBranch,
   IconCheck,
   IconChevronDown,
+  IconClock,
   IconClose,
   IconDownload,
   IconFilter,
@@ -154,7 +155,7 @@ function SourceTabs(props: {
   )
 }
 
-/** Search + event-type chips + advanced filter toggle. */
+/** Search + event-type chips + time window + advanced filter toggle. */
 function FilterBar(props: {
   state: PanelState
   handlers: PanelHandlers
@@ -198,6 +199,18 @@ function FilterBar(props: {
           onClick: () => handlers.onToggleEventType('commit'),
         }, t('filter.chip.commit')),
       ),
+      h('label', { className: 'dvt-time' },
+        h(IconClock, { size: 11 }),
+        h('select', {
+          className: 'dvt-time-select',
+          'aria-label': t('filter.time'),
+          value: state.filters.timePreset,
+          onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
+            handlers.onSetTimePreset(event.currentTarget.value as TimePreset)
+          },
+        },
+        F.TIME_PRESETS.map((preset) => h('option', { key: preset, value: preset }, F.timePresetLabel(preset, t))),        ),
+      ),
       h(IconButton, {
         label: t('filter.toggle'),
         icon: IconFilter,
@@ -222,7 +235,11 @@ function FilterBar(props: {
 }
 
 /** The whole chrome: toolbar, menu, tabs and filters. */
-export function renderChrome(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
+export function renderChrome(
+  state: PanelState,
+  deps: PanelDeps,
+  handlers: PanelHandlers,
+): React.ReactElement {
   const { t } = deps
   const repository = selectedRepository(state)
   const menuOpen = state.menuOpen && repository !== null

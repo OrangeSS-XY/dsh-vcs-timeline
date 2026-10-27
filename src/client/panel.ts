@@ -24,6 +24,13 @@ import type {
   VcsEvent,
 } from '../shared/contracts.ts'
 import { renderPanelView } from './components.ts'
+import {
+  aggregateChangedFiles,
+  buildFileTree,
+  directoryPaths,
+  filterFileEntries,
+} from './file-index.ts'
+import { windowSince } from './format.ts'
 import type { ApiResult, VcsClient } from './api.ts'
 import {
   createAuditSlice,
@@ -150,6 +157,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
     const stateRef = React.useRef<PanelState>(state)
     stateRef.current = state
     const aliveRef = React.useRef<boolean>(true)
+    const rootRef = React.useRef<HTMLDivElement | null>(null)
     const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
     const repreviewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
     const timelineTokenRef = React.useRef<number>(0)
@@ -246,12 +254,14 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       } else {
         setState((prev) => ({ ...prev, timeline: { ...prev.timeline, loadingMore: true, error: null } }))
       }
-      const query: TimelineQuery = { repositoryId, limit: DEFAULT_PAGE_SIZE }
+      const query: TimelineQuery = { repositoryId, limit: DEFAULT_PAGE_SIZE, includeFiles: true }
       const text = filters.debouncedText.trim()
       if (text !== '') query.text = text
       if (filters.eventTypes.length > 0) query.eventTypes = [...filters.eventTypes]
       const author = filters.author.trim()
       if (author !== '') query.author = author
+      const since = windowSince(filters.timePreset, deps.now?.() ?? Date.now())
+      if (since !== undefined) query.since = since
       if (cursor !== null) query.cursor = cursor
       const result = await deps.api.timeline(query)
       if (!aliveRef.current || token !== timelineTokenRef.current) return
@@ -587,6 +597,51 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       })
     }
 
+    /**
+     * Fit the panel to the host's conversation area.
+     *
+     * A Conversation View is mounted inside the chat scroll region, so a plain
+     * `height: 100%` resolves against a content-sized wrapper: with a long
+     * commit list the panel would grow to that list's height and the host would
+     * scroll the whole panel, taking the toolbar, tree and status bar with it.
+     * The host's scroll element is bounded and holds the view area plus the
+     * composer seat; the panel takes what is left above the seats. The sidebar
+     * host (no such scroll element) keeps the CSS `height: 100%` path.
+     */
+    React.useLayoutEffect(() => {
+      const element = rootRef.current
+      if (element === null || typeof window === 'undefined') return undefined
+      const scroller = element.closest('[data-conversation-scroll]')
+      if (!(scroller instanceof HTMLElement)) return undefined
+      const observed: Element[] = [scroller, ...Array.from(scroller.children)]
+      const update = (): void => {
+        const scrollerRect = scroller.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        // Sibling "seats" (the composer) below the view area are not part of
+        // the panel; fixed/absolute siblings report a box but no flow space.
+        let reserved = 0
+        for (const child of Array.from(scroller.children)) {
+          if (child.contains(element)) continue
+          if (child.getBoundingClientRect().height <= 0) continue
+          const position = window.getComputedStyle(child).position
+          if (position === 'absolute' || position === 'fixed') continue
+          reserved += child.getBoundingClientRect().height
+        }
+        const offset = Math.max(0, elementRect.top - scrollerRect.top)
+        const available = Math.max(240, Math.floor(scroller.clientHeight - offset - reserved))
+        element.style.height = `${available}px`
+      }
+      update()
+      const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { update() }) : null
+      if (observer !== null) for (const target of observed) observer.observe(target)
+      window.addEventListener('resize', update)
+      return () => {
+        observer?.disconnect()
+        window.removeEventListener('resize', update)
+        element.style.height = ''
+      }
+    }, [])
+
     // Bootstrap: diagnostics + repositories.
     React.useEffect(() => {
       void reloadRepositories()
@@ -614,6 +669,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       state.filters.debouncedText,
       state.filters.eventTypes.join(','),
       state.filters.author,
+      state.filters.timePreset,
       state.refreshTick,
     ])
 
@@ -668,6 +724,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
             ...prev,
             menuOpen: false,
             selectedRepositoryId: selected,
+            selectedFilePath: null,
+            expandedDirs: {},
             timeline: createTimelineSlice(),
             changeSet: createChangeSetSlice(),
             diff: createDiffSlice(),
@@ -709,7 +767,64 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       })),
       onClearFilters: () => setState((prev) => ({
         ...prev,
-        filters: { text: '', debouncedText: '', eventTypes: [], author: '', showAuthor: prev.filters.showAuthor },
+        selectedFilePath: null,
+        filters: {
+          text: '',
+          debouncedText: '',
+          eventTypes: [],
+          author: '',
+          showAuthor: prev.filters.showAuthor,
+          treeQuery: '',
+          fileStatus: 'all',
+          timePreset: 'all',
+        },
+      })),
+      onSelectFile: (path: string | null) => setState((prev) => {
+        if (path === prev.selectedFilePath) return prev
+        const expanded = { ...prev.expandedDirs }
+        if (path !== null) {
+          // Reveal every ancestor of the file so the selection is visible.
+          const segments = path.split('/')
+          let dir = ''
+          for (const segment of segments.slice(0, -1)) {
+            dir = dir === '' ? segment : `${dir}/${segment}`
+            expanded[dir] = true
+          }
+        }
+        return {
+          ...prev,
+          selectedFilePath: path,
+          expandedDirs: expanded,
+          changeSet: createChangeSetSlice(),
+          diff: createDiffSlice(),
+        }
+      }),
+      onTreeQueryChange: (treeQuery: string) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, treeQuery },
+      })),
+      onSetFileStatus: (fileStatus) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, fileStatus },
+      })),
+      onToggleDir: (path: string) => setState((prev) => ({
+        ...prev,
+        expandedDirs: { ...prev.expandedDirs, [path]: prev.expandedDirs[path] !== true },
+      })),
+      onExpandAllDirs: () => setState((prev) => {
+        const visible = filterFileEntries(
+          aggregateChangedFiles(prev.timeline.events),
+          prev.filters.treeQuery,
+          prev.filters.fileStatus,
+        )
+        const expanded: Record<string, boolean> = { ...prev.expandedDirs }
+        for (const dir of directoryPaths(buildFileTree(visible))) expanded[dir] = true
+        return { ...prev, expandedDirs: expanded }
+      }),
+      onCollapseAllDirs: () => setState((prev) => ({ ...prev, expandedDirs: {} })),
+      onSetTimePreset: (timePreset) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, timePreset },
       })),
       onLoadMoreTimeline: () => {
         const snapshot = stateRef.current
@@ -791,7 +906,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
     }
 
-    return renderPanelView({ state, deps, handlers })
+    return renderPanelView({ state, deps, handlers, rootRef })
   }
 }
 

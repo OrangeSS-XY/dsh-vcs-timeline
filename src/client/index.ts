@@ -20,6 +20,8 @@ import type { PanelProps } from './types.ts'
 const NS = 'vcs-timeline'
 /** Tab type id, also the keyed-slot key and the navigation kind. */
 const TAB_ID = 'vcs-timeline'
+/** Conversation View id (`conversation.view` slot cell). */
+const VIEW_ID = 'vcs-timeline'
 
 /** Structural face of the sidebar tab registry observed on 0.2.1-rc.3. */
 interface SidebarRightTabsService {
@@ -172,4 +174,35 @@ export function apply(ctx: ClientContext): void {
     ))
     return () => { body(); title() }
   }, 'dsh-vcs-timeline: tab body')
+
+  // Primary entry point: a Conversation View tab beside 对话 / 轨迹 / 上下文 /
+  // 编队. Selecting it replaces the chat area with the file-centered timeline,
+  // exactly like the shipped context view — no floating strip, no overlay.
+  // The slot is declared by the shipped conversation UI; absence degrades to
+  // "no tab" while the right-sidebar tab keeps working.
+  ctx.effect(() => {
+    const slots = services.slots!
+    let dispose: (() => void) | undefined
+    try {
+      dispose = slots.inject('conversation.view', () => {
+        try {
+          return slots.register(
+            {
+              name: 'conversation.view',
+              id: VIEW_ID,
+              order: 40,
+              locale: NS,
+              label: () => translate('view.tab'),
+            },
+            panelComponent,
+          )
+        } catch {
+          return () => {}
+        }
+      })
+    } catch {
+      dispose = undefined
+    }
+    return () => { dispose?.() }
+  }, 'dsh-vcs-timeline: conversation view')
 }

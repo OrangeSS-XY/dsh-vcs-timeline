@@ -63,6 +63,28 @@ const event: VcsEvent = {
   parentHashes: ['1234567890abcdef1234567890abcdef12345678'],
   branch: 'main',
   metadata: { filesChanged: 3, additions: 12, deletions: 4, binaryFiles: 1 },
+  changedFiles: [
+    { path: 'src/components/a.ts', status: 'modified', additions: 10, deletions: 4 },
+    { path: 'src/panel.ts', status: 'modified', additions: 2, deletions: 0 },
+    { path: 'assets/logo.png', status: 'added', binary: true },
+  ],
+}
+
+/** A second commit touching one file, so the per-file history is testable. */
+const olderEvent: VcsEvent = {
+  schemaVersion: 1,
+  id: 'commit:123456',
+  repositoryId: repository.id,
+  vcsType: 'git',
+  eventType: 'commit',
+  source: 'repository',
+  timestamp: '2026-01-01T01:02:03.000Z',
+  actor: 'Bob',
+  summary: 'fix: panel spacing',
+  commitHash: '1234567890abcdef1234567890abcdef12345678',
+  parentHashes: ['fedcba9876543210fedcba9876543210fedcba98'],
+  metadata: { filesChanged: 1, additions: 3, deletions: 1 },
+  changedFiles: [{ path: 'src/panel.ts', status: 'modified', additions: 3, deletions: 1 }],
 }
 
 const mergeEvent: VcsEvent = {
@@ -72,6 +94,7 @@ const mergeEvent: VcsEvent = {
   commitHash: 'fedcba9876543210fedcba9876543210fedcba98',
   parentHashes: ['1234567890abcdef', 'abcdef0123456789'],
   metadata: { filesChanged: 0, additions: 0, deletions: 0 },
+  changedFiles: [],
 }
 
 const diagnostics: Diagnostics = {
@@ -242,14 +265,14 @@ test('a commit row shows summary, short hash, author, compact time, branch and r
   assert.ok(html.includes('+12'))
   assert.ok(html.includes('−4'))
   assert.ok(html.includes(t('timeline.stats.files', { count: 3 })))
-  assert.ok(html.includes('dvt-node'))
-  assert.ok(html.includes('dvt-commit'))
+  assert.ok(html.includes('dvt-tl-node'))
+  assert.ok(html.includes('dvt-tl-row'))
 })
 
 test('a merge commit renders the merge marker and never fakes 0/0 stats', () => {
   const html = render(ready({ timeline: { ...createInitialState().timeline, events: [mergeEvent] } }))
   assert.ok(html.includes(t('timeline.merge')))
-  assert.ok(html.includes('dvt-node-merge'))
+  assert.ok(html.includes('dvt-tl-node-merge'))
   assert.ok(!html.includes('+0'))
   assert.ok(!html.includes('−0'))
 })
@@ -258,7 +281,7 @@ test('a commit without stats renders no fake numbers', () => {
   const bare: VcsEvent = { ...event, metadata: undefined }
   const html = render(ready({ timeline: { ...createInitialState().timeline, events: [bare] } }))
   assert.ok(!html.includes('+12'))
-  assert.ok(!html.includes(t('timeline.stats.files', { count: 3 })))
+  assert.ok(!html.includes('dvt-stat-files'), 'no per-row stat when the host reported none')
 })
 
 test('an uninitialized repository, a filtered miss and an empty history are distinct', () => {
@@ -275,7 +298,11 @@ test('an uninitialized repository, a filtered miss and an empty history are dist
 
   const filtered = render(ready({
     timeline: { ...createInitialState().timeline, events: [] },
-    filters: { text: 'zzz', debouncedText: 'zzz', eventTypes: [], author: '', showAuthor: false },
+    filters: {
+      ...createInitialState().filters,
+      text: 'zzz',
+      debouncedText: 'zzz',
+    },
   }))
   assert.ok(filtered.includes(t('timeline.empty.filtered')))
   assert.ok(filtered.includes(t('filter.clear')))
@@ -305,7 +332,7 @@ test('the filter bar keeps search, event-type chips and the filter toggle togeth
   assert.ok(html.includes(t('filter.chip.commit')))
   assert.ok(html.includes('dvt-filterbar'))
   const expanded = render(ready({
-    filters: { text: '', debouncedText: '', eventTypes: [], author: '', showAuthor: true },
+    filters: { ...createInitialState().filters, showAuthor: true },
   }))
   assert.ok(expanded.includes('dvt-author-row'))
 })
@@ -476,6 +503,113 @@ test('the stylesheet uses theme tokens only: no literal color, no global selecto
   assert.ok(STYLES.includes('--dsw-alias-'))
   assert.ok(STYLES.includes('.dvt-root'))
   assert.ok(STYLES.includes('@media'))
+  assert.ok(STYLES.includes('.dvt-split'), 'dual pane layout')
+  assert.ok(STYLES.includes('.dvt-tree'), 'file tree pane')
+  assert.ok(STYLES.includes('.dvt-tl'), 'vertical change timeline')
+  assert.ok(STYLES.includes('.dvt-tl-avatar'), 'author avatar')
+})
+
+test('the file-centered dual pane renders tree, all-files entry and shared filters', () => {
+  const html = render(ready({
+    expandedDirs: { src: true, 'src/components': true, assets: true },
+  }))
+  assert.ok(html.includes('dvt-split'))
+  assert.ok(html.includes('dvt-tree'))
+  assert.ok(html.includes('dvt-tree-all'))
+  assert.ok(html.includes(t('tree.all')))
+  assert.ok(html.includes(t('tree.title')))
+  assert.ok(html.includes('src'))
+  assert.ok(html.includes('dvt-tree-badge'), 'directory change count')
+  assert.ok(html.includes('dvt-status-modified'))
+  assert.ok(html.includes('a.ts'))
+  // The tree search, the status chips and the time-range select are visible.
+  assert.ok(html.includes('dvt-tree-input'))
+  assert.ok(html.includes('dvt-tree-chip'))
+  assert.ok(html.includes('dvt-time-select'))
+  for (const preset of ['time.all', 'time.24h', 'time.7d', 'time.30d']) {
+    assert.ok(html.includes(t(preset)), `time preset ${preset}`)
+  }
+})
+
+test('selecting a file narrows the timeline and both panes stay consistent', () => {
+  const html = render(ready({
+    timeline: { ...createInitialState().timeline, events: [event, olderEvent] },
+    selectedFilePath: 'src/panel.ts',
+    expandedDirs: { src: true },
+  }))
+  assert.ok(html.includes('dvt-selection'))
+  assert.ok(html.includes('panel.ts'))
+  // Only the two commits that touch panel.ts remain, and the tree count agrees.
+  assert.ok(html.includes(t('timeline.count.label', { count: 2 })))
+  assert.ok(html.includes('dvt-tree-file-selected'))
+})
+
+test('a status filter keeps the tree and the timeline on the same file set', () => {
+  const changed = render(ready({
+    filters: { ...createInitialState().filters, fileStatus: 'added' },
+    expandedDirs: { assets: true },
+  }))
+  assert.ok(changed.includes(t('file.status.added')))
+  // Only the renamed/added file remains: one row, one tree leaf.
+  assert.ok(changed.includes(t('timeline.count.label', { count: 1 })))
+  assert.ok(!changed.includes('dvt-status-modified'))
+})
+
+test('an expanded directory reveals its nested directories and files', () => {
+  const deep: VcsEvent = {
+    ...event,
+    changedFiles: [{ path: 'src/client/ui/panel.ts', status: 'modified', additions: 1, deletions: 1 }],
+  }
+  const collapsed = render(ready({ timeline: { ...createInitialState().timeline, events: [deep] } }))
+  assert.ok(!collapsed.includes('panel.ts'), 'collapsed tree must not render nested files')
+  const expanded = render(ready({
+    timeline: { ...createInitialState().timeline, events: [deep] },
+    expandedDirs: { src: true, 'src/client': true, 'src/client/ui': true },
+  }))
+  assert.ok(expanded.includes('panel.ts'))
+})
+
+test('a host that reports no file lists says so instead of showing an empty tree', () => {
+  const bare: VcsEvent = { ...event, changedFiles: undefined }
+  const html = render(ready({ timeline: { ...createInitialState().timeline, events: [bare] } }))
+  assert.ok(html.includes(t('tree.unavailable.title')))
+  assert.ok(html.includes(t('tree.unavailable.hint')))
+})
+
+test('the change timeline renders a rail, day header, author avatar and "when" label', () => {
+  const recent: VcsEvent = {
+    ...event,
+    id: 'commit:recent',
+    timestamp: new Date().toISOString(),
+    actor: 'Alice Chen',
+    summary: 'fix: recent change',
+    changedFiles: [{ path: 'src/panel.ts', status: 'modified', additions: 3, deletions: 1 }],
+  }
+  const html = render(ready({ timeline: { ...createInitialState().timeline, events: [recent] } }))
+  assert.ok(html.includes('dvt-tl'), 'vertical timeline container')
+  assert.ok(html.includes('dvt-tl-rail'), 'continuous rail gutter')
+  assert.ok(html.includes('dvt-tl-node'), 'commit node on the rail')
+  assert.ok(html.includes('dvt-tl-day-label'), 'sticky day header')
+  assert.ok(html.includes(t('group.today')), 'today header for a current commit')
+  assert.ok(html.includes('dvt-tl-avatar'), 'author avatar')
+  assert.ok(html.includes('AC'), 'author initials in the avatar')
+  assert.ok(html.includes('Alice Chen'), 'author name')
+  assert.ok(html.includes(t('rel.justNow')), 'relative time ("who did it, when")')
+  assert.ok(html.includes('dvt-tl-head'), 'HEAD marker on the current revision')
+})
+
+test('older commits are grouped into day sections, newest first', () => {
+  const day = 24 * 60 * 60 * 1000
+  const now = Date.now()
+  const events: VcsEvent[] = [
+    { ...event, id: 'commit:today', timestamp: new Date(now).toISOString(), changedFiles: [{ path: 'a.ts', status: 'modified' }] },
+    { ...event, id: 'commit:yesterday', timestamp: new Date(now - day).toISOString(), changedFiles: [{ path: 'b.ts', status: 'added' }] },
+  ]
+  const html = render(ready({ timeline: { ...createInitialState().timeline, events } }))
+  assert.ok(html.includes(t('group.today')))
+  assert.ok(html.includes(t('group.yesterday')))
+  assert.ok(html.indexOf(t('group.today')) < html.indexOf(t('group.yesterday')))
+  assert.ok(html.includes('dvt-tl-group'))
 })
 
 test('the zh and en dictionaries stay complete and non-empty', () => {
