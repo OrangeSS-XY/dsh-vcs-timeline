@@ -833,12 +833,16 @@ export function SwimlaneHeader(props: SwimlaneHeaderProps): React.ReactElement {
       h('button', {
         type: 'button',
         className: 'swl-btn swl-btn-outline',
+        title: labels.actions.pull,
+        'aria-label': labels.actions.pull,
         disabled: props.busy === true,
         onClick: props.onPull,
       }, h(Icon, { name: 'pull', size: 13 }), h('span', null, labels.actions.pull)),
       h('button', {
         type: 'button',
         className: 'swl-btn swl-btn-primary',
+        title: labels.actions.push,
+        'aria-label': labels.actions.push,
         disabled: props.busy === true,
         onClick: props.onPush,
       }, h(Icon, { name: 'push', size: 13 }), h('span', null, labels.actions.push)),
@@ -870,7 +874,7 @@ export interface SwimlaneToolbarProps {
 /** Toolbar: source tabs on the left, search + scope capsule on the right. */
 export function SwimlaneToolbar(props: SwimlaneToolbarProps): React.ReactElement {
   const { labels } = props
-  return h('div', { className: 'swl-toolbar dvt-filterbar' },
+  return h('div', { className: 'swl-toolbar' },
     h('div', { className: 'swl-tabs', role: 'tablist', 'aria-label': labels.timelineTab },
       props.tabs.map((tab) => h('button', {
         key: tab.key,
@@ -1642,7 +1646,7 @@ export const SWIMLANE_STYLES = `
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 19px;
+  height: 18px;
   padding: 0 7px;
   border-radius: 999px;
   font-size: 10.5px;
@@ -1666,6 +1670,9 @@ export const SWIMLANE_STYLES = `
   color: color-mix(in srgb, var(--swl-ok) 78%, var(--swl-ink));
   font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
   letter-spacing: .02em;
+  /* Legacy .dvt-tl-head draws a 15px bordered box; the pill owns its shape. */
+  height: 18px;
+  border: 0;
 }
 .swl-pill-add {
   background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
@@ -1750,14 +1757,25 @@ export const SWIMLANE_STYLES = `
   align-items: stretch;
   min-height: var(--swl-row-h);
   border-radius: 12px;
+  overflow: hidden;
   transition: background 150ms ease, box-shadow 150ms ease;
 }
-.swl-row:hover { background: color-mix(in srgb, var(--swl-accent) 5%, transparent); }
+.swl-row:hover {
+  background: color-mix(in srgb, var(--swl-accent) 5%, transparent);
+  box-shadow: 0 10px 22px -20px hsl(220 43% 16% / .55);
+}
 .swl-row[data-selected="true"] {
   background: color-mix(in srgb, var(--swl-accent) 8%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--swl-accent) 24%, transparent);
 }
-.swl-canvas { position: relative; flex: 0 0 auto; width: var(--swl-canvas-w); }
+.swl-canvas {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--swl-canvas-w);
+  /* Beat the legacy .dvt-tl-graph height:52px compat rule: the graph canvas
+     must be exactly one new row tall, or nodes and edges drift. */
+  height: var(--swl-row-h);
+}
 .swl-svg { position: absolute; inset: 0; display: block; overflow: visible; pointer-events: none; }
 .swl-node {
   position: absolute;
@@ -1801,7 +1819,7 @@ export const SWIMLANE_STYLES = `
   cursor: pointer;
 }
 .swl-rowbody:focus-visible { outline-offset: -2px; }
-.swl-rowtop { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.swl-rowtop { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
 .swl-msg {
   flex: 1 1 auto;
   min-width: 0;
@@ -1814,7 +1832,7 @@ export const SWIMLANE_STYLES = `
   white-space: nowrap;
 }
 .swl-pills { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
-.swl-rowmeta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11.5px; color: var(--swl-ink-3); }
+.swl-rowmeta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: 11.5px; color: var(--swl-ink-3); }
 .swl-avatar {
   flex: 0 0 auto;
   width: 18px;
@@ -2201,8 +2219,7 @@ export const SWIMLANE_STYLES = `
   }
   .swl-header { height: 52px; padding: 0 10px; gap: 6px; }
   .swl-repo-name { font-size: 13.5px; }
-  .swl-toolbar { height: 42px; padding: 0 8px; gap: 6px; overflow: hidden; }
-  .swl-search { min-width: 0; flex: 1 1 auto; }
+  .swl-search { min-width: 0; }
   .swl-legend { padding-left: 12px; }
   .swl-group-head { padding-left: 12px; height: 34px; }
   .swl-msg { font-size: 12.5px; }
@@ -2212,22 +2229,68 @@ export const SWIMLANE_STYLES = `
   .swl-main .dvt-tabstrip { height: 42px; padding: 0 8px; overflow-x: auto; }
   .swl-main .dvt-filterbar { height: 44px; padding: 0 8px; gap: 6px; }
   .swl-main .dvt-search { min-width: 0; flex: 1 1 auto; }
-  .swl-main .dvt-seg { display: none; }
 }
-@container swl (max-width: 560px) {
-  .swl-pill-branch, .swl-pill-files { display: none; }
-  .swl-search { display: none; }
-  .swl-toolbar-right { gap: 0; }
-  .swl-seg { margin-left: auto; }
-  .swl-when { display: none; }
+@container swl (max-width: 640px) {
+  .swl-branch, .swl-title-caret { display: none; }
+  .swl-btn-outline span, .swl-btn-primary span { display: none; }
+  .swl-btn { padding: 0 9px; }
+  .swl-toolbar { flex-wrap: wrap; height: auto; padding: 8px 10px; row-gap: 6px; }
+  .swl-tabs { flex: 1 1 100%; }
+  .swl-tab { padding: 0 9px; font-size: 11.5px; }
+  .swl-toolbar-right { width: 100%; }
+  .swl-search { display: flex; flex: 1 1 auto; }
+  .swl-pill-branch, .swl-pill-merge, .swl-pill-head, .swl-attrib { display: none; }
+  .swl-author, .swl-dot, .swl-when { display: none; }
   .swl-legend-label { display: none; }
+
+  /* Plugin chrome (real renderChrome) at sidebar width: let the header wrap
+     instead of truncating the repository name, and make the sync buttons
+     icon-only. The branch dropdown keeps its own row. */
+  .swl-main .dvt-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-toolbar-op { padding: 0 8px; }
+  .swl-main .dvt-toolbar-op span { display: none; }
+  .swl-main .dvt-toolbar-actions { margin-left: auto; gap: 4px; }
+  .swl-main .dvt-branch { max-width: 160px; }
+  .swl-main .dvt-filterbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-filterbar .dvt-search { flex: 1 1 100%; }
+}
+@container swl (max-width: 520px) {
+  .swl-pill-files { display: none; }
+  .swl-repo-name { font-size: 12.5px; }
+  .swl-tab { padding: 0 7px; font-size: 11px; }
+  .swl-tab-count { display: none; }
+  .swl-seg-btn { padding: 0 9px; font-size: 11px; }
+  .swl-main .dvt-tabstrip .dvt-tab { padding: 0 6px; }
+  .swl-main .dvt-tabstrip { mask-image: linear-gradient(90deg, hsl(0 0% 0%) calc(100% - 16px), transparent); }
+  .swl-main .dvt-filterbar .dvt-time { display: none; }
+  .swl-main .dvt-filterbar .dvt-chip { padding: 0 8px; }
+
+  /* At right-sidebar width the header must stay a single row: the branch
+     dropdown is a wide-view affordance (the scope capsule still filters).
+     The remaining icon buttons (add repo / refresh / ⋯) all fit, so none are
+     dropped: hiding one by :first-of-type would also hit the demo header's
+     refresh button, which is the first icon button there. */
+  .swl-main .dvt-toolbar { flex-wrap: nowrap; min-height: 52px; }
+  .swl-main .dvt-branch { display: none; }
 }
 
 /* ---------- session attribution pill ---------- */
 .swl-attrib {
   display: inline-flex;
   align-items: center;
-  height: 19px;
+  height: 18px;
   padding: 0 7px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--swl-ink) 6%, transparent);

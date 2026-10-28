@@ -7,7 +7,9 @@
  * Chromium screenshot shows the intended density and hierarchy. The live app
  * uses the real `--dsw-*` tokens from the host theme.
  *
- * Usage: node --experimental-strip-types scripts/render-preview.ts
+ * Usage: node --experimental-strip-types scripts/render-preview.ts [--demo-only]
+ *   --demo-only renders only the standalone `SwimlaneDemo` stages, which is
+ *   useful while the panel integration is still in progress.
  * Output: docs/ui-preview/*.html (screenshot with docs/ui-preview/render.md)
  * @module scripts/render-preview
  */
@@ -15,6 +17,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type {
   ChangeSet,
@@ -28,6 +31,7 @@ import type {
 import { createNoopHandlers, createInitialState, type PanelState } from '../src/client/types.ts'
 import { renderPanelView } from '../src/client/components.ts'
 import { createTranslator } from '../src/client/i18n.ts'
+import { SwimlaneDemo } from '../src/client/ui/swimlane.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = resolve(root, 'docs/ui-preview')
@@ -634,6 +638,46 @@ const scenarios: Scenario[] = [
   },
 ]
 
+/**
+ * The standalone `SwimlaneDemo` page at the two widths that matter: the full
+ * 1440x900 page from the design brief, and the 420px plugin right sidebar.
+ * The demo carries its own stylesheet and mock data; only the DSH theme tokens
+ * come from the shared wrapper, exactly like the panel previews.
+ */
+interface DemoStage {
+  name: string
+  width: number
+  height: number
+}
+
+const demoStages: DemoStage[] = [
+  { name: 'swimlane-wide', width: 1440, height: 900 },
+  { name: 'swimlane-sidebar', width: 420, height: 900 },
+]
+
+const demoOnly = process.argv.includes('--demo-only')
+
+/**
+ * Undo React's server-render text escaping inside `<style>` blocks.
+ *
+ * `<style>` is a raw-text element: browsers do not decode `&quot;` / `&gt;`
+ * inside it, and React escapes text children during SSR. Left as-is, every
+ * attribute selector (`[data-merge="true"]`, `[aria-selected="true"]`, …) and
+ * child combinator would silently drop out of the preview stylesheet, so the
+ * static shots would not match what the browser-side React render produces.
+ */
+function unescapeStyleBlocks(markup: string): string {
+  return markup.replace(/<style>([\s\S]*?)<\/style>/g, (_match, css: string) => {
+    const text = css
+      .replaceAll('&quot;', '"')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&#x27;', "'")
+      .replaceAll('&amp;', '&')
+    return `<style>${text}</style>`
+  })
+}
+
 const PAGE = (
   tokens: Record<string, string>,
   panel: string,
@@ -651,15 +695,26 @@ const PAGE = (
 <body><div class="stage" data-stage="${width}x${height}">${panel}</div></body></html>`
 
 await mkdir(outDir, { recursive: true })
-for (const scenario of scenarios) {
-  const panel = renderToStaticMarkup(renderPanelView({
-    state: scenario.state,
-    deps: { t, locale: 'zh-CN' },
-    handlers: createNoopHandlers(),
-  }))
-  const tokens = scenario.theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
-  const html = PAGE(tokens, panel, scenario.width ?? 400, scenario.height ?? 900)
-  await writeFile(resolve(outDir, `${scenario.name}.html`), html, 'utf8')
+if (demoOnly) {
+  console.log('rendering demo stages only (--demo-only)')
+} else {
+  for (const scenario of scenarios) {
+    const panel = unescapeStyleBlocks(renderToStaticMarkup(renderPanelView({
+      state: scenario.state,
+      deps: { t, locale: 'zh-CN' },
+      handlers: createNoopHandlers(),
+    })))
+    const tokens = scenario.theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
+    const html = PAGE(tokens, panel, scenario.width ?? 400, scenario.height ?? 900)
+    await writeFile(resolve(outDir, `${scenario.name}.html`), html, 'utf8')
+  }
+}
+
+// The demo is pure and takes no props, so one SSR pass feeds both stages.
+const demoMarkup = unescapeStyleBlocks(renderToStaticMarkup(createElement(SwimlaneDemo)))
+for (const stage of demoStages) {
+  const html = PAGE(LIGHT_TOKENS, demoMarkup, stage.width, stage.height)
+  await writeFile(resolve(outDir, `${stage.name}.html`), html, 'utf8')
 }
 
 await writeFile(resolve(outDir, 'render.md'), [
@@ -668,6 +723,9 @@ await writeFile(resolve(outDir, 'render.md'), [
   '这些页面由 `scripts/render-preview.ts` 用**固定示例数据**渲染真实的面板组件，',
   '用于检查密度、层级与明暗主题（400px 侧栏宽度，以及 1600px 对话区宽度）。',
   '它们不是运行时截图：颜色使用近似 DSH 主题 token 的调色板，实际运行时颜色来自宿主 `--dsw-*` token。',
+  '',
+  '截图前会把 SSR 生成的 `<style>` 内容反转义（React 服务端渲染会转义文本，而 `<style>` 是原始文本元素，',
+  '不反转义的话 `[data-*="…"]` 属性选择器与子选择器会在预览样式表里静默失效）。',
   '',
   '重新生成：',
   '',
@@ -678,6 +736,15 @@ await writeFile(resolve(outDir, 'render.md'), [
   '',
   '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件三栏（树 | Diff | 操作信息）、提交详情、',
   'PR 列表 / 未认证提示、审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
+  '',
+  '另外两个场景渲染独立演示页 `SwimlaneDemo`（`src/client/ui/swimlane.ts`，自带样式与 MOCK 数据）：',
+  '`swimlane-wide`（1440×900，260px 文件树 + 页头/工具栏 + 多轨道泳道）与',
+  '`swimlane-sidebar`（420×900，插件右侧栏宽度，窄屏下文件树折叠为抽屉）。',
+  '只重建这两个演示页时可用 `node --experimental-strip-types scripts/render-preview.ts --demo-only`。',
 ].join('\n'), 'utf8')
 
-console.log(`rendered ${scenarios.length} preview pages into ${outDir}`)
+console.log([
+  `rendered ${demoStages.length} demo stage(s)`,
+  demoOnly ? '(demo only)' : `and ${scenarios.length} panel preview page(s)`,
+  `into ${outDir}`,
+].join(' '))

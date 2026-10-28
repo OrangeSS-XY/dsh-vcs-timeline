@@ -14,7 +14,6 @@ import * as React from 'react'
 import type { FileChangeStatus, OperationAttempt, VcsEvent } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
 import type { DayGroup, TimelineView } from '../file-index.ts'
-import { groupEventsByDay } from '../file-index.ts'
 import type { GraphModel, GraphRow } from '../graph.ts'
 import { renderGraphGutter } from './graph.ts'
 import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
@@ -46,6 +45,7 @@ import {
   missingTool,
   selectedRepository,
 } from './shared.ts'
+import { assignLanes, SwimlaneTimeline, type GitCommit, type SwimlaneLabels } from './swimlane.ts'
 
 const h = React.createElement
 
@@ -82,6 +82,127 @@ function whenLabel(iso: string, deps: PanelDeps, now: number): string {
     case 'minutes': return t('rel.minutesAgo', { count: relative.count })
     case 'hours': return t('rel.hoursAgo', { count: relative.count })
     default: return t('rel.daysAgo', { count: relative.count })
+  }
+}
+
+/**
+ * Extra facts the swimlane mapping cannot read from the contract value alone.
+ */
+export interface ToGitCommitsOptions {
+  /** Repository branch used when an event carries no decoration (SVN, detached). */
+  currentBranch?: string
+  /** Session/audit attribution of one event, when the panel can determine it. */
+  attributionOf?: (event: VcsEvent) => 'audit' | 'inferred' | null
+}
+
+/**
+ * Map one loaded history page onto the swimlane component's commit rows.
+ *
+ * The mapping never invents a number: line stats and the file count stay `0`
+ * when the Host reported nothing (the row suppresses zero pills), and the
+ * calendar grouping is pre-computed here so the row needs no clock. `lane` and
+ * `type` are placeholders until {@link assignLanes} places the commits on their
+ * branch tracks.
+ * @param events - visible history page, newest first.
+ * @param deps - dictionary dependency (`t`, `locale`).
+ * @param now - clock used for the relative "when" label and the day grouping.
+ * @param options - repository branch fallback and session/audit attribution.
+ * @returns one mutable GitCommit per event, in the same order.
+ */
+export function toGitCommits(
+  events: readonly VcsEvent[],
+  deps: PanelDeps,
+  now: number,
+  options: ToGitCommitsOptions = {},
+): GitCommit[] {
+  const { t } = deps
+  const nowDate = new Date(now)
+  const todayKey = F.localDayKey(nowDate.toISOString())
+  const currentBranch = options.currentBranch ?? ''
+  const commits: GitCommit[] = []
+  for (const event of events) {
+    const metadata = event.metadata
+    const stats = F.eventStats(event)
+    const label = F.dayLabel(event.timestamp, deps.locale, nowDate)
+    const dayLabel = label.kind === 'today'
+      ? t('group.today')
+      : label.kind === 'yesterday'
+        ? t('group.yesterday')
+        : label.text === '' ? t('group.earlier') : label.text
+    const revised = F.shortHash(event.commitHash, 7)
+    const revision = event.revision === undefined || event.revision === '' ? '' : `r${event.revision}`
+    const files = Array.isArray(event.changedFiles) ? event.changedFiles.length : 0
+    // `metadata` absent means the Host reported no stats block at all, so the
+    // changed-file list is not a proven total: keep 0 and let the row hide it.
+    const fileCount = stats.files ?? (metadata === undefined || metadata === null ? 0 : files)
+    const merge = F.isMergeCommit(event)
+    const attribution = options.attributionOf === undefined ? null : options.attributionOf(event)
+    const summary = F.truncate(event.summary, 200)
+    commits.push({
+      id: event.id,
+      lane: 0,
+      type: 'main',
+      msg: summary === '' ? t('timeline.noRevision') : summary,
+      author: event.actor === undefined || event.actor === '' ? t('common.unknown') : event.actor,
+      time: whenLabel(event.timestamp, deps, now),
+      add: stats.additions ?? 0,
+      del: stats.deletions ?? 0,
+      files: fileCount,
+      branch: event.branch ?? currentBranch,
+      isToday: F.localDayKey(event.timestamp) === todayKey,
+      ...(merge ? { isMerge: true } : {}),
+      dayKey: F.localDayKey(event.timestamp) ?? 'unknown',
+      ...(dayLabel === '' ? {} : { dayLabel }),
+      hash: revised !== '' ? revised : revision,
+      ...(attribution === null ? {} : { attribution }),
+    })
+  }
+  return commits
+}
+
+/**
+ * Build the swimlane's localized label bundle from the panel dictionary.
+ *
+ * Every string comes from the shared dictionary so the timeline stays in the
+ * same language as the rest of the panel; nothing here is hard-coded copy.
+ * @param deps - dictionary dependency.
+ * @returns the labels the swimlane header/toolbar/timeline render.
+ */
+export function swimlaneLabels(deps: PanelDeps): SwimlaneLabels {
+  const { t } = deps
+  return {
+    today: t('group.today'),
+    yesterday: t('group.yesterday'),
+    earlier: t('group.earlier'),
+    merge: t('timeline.merge'),
+    head: t('timeline.head'),
+    filesPane: t('tree.title'),
+    search: t('filter.search.placeholder'),
+    legend: t('timeline.legend'),
+    timelineTab: t('source.timeline'),
+    pendingTab: t('source.pending'),
+    prTab: t('source.pr'),
+    empty: { title: t('timeline.empty'), hint: t('timeline.empty.hint') },
+    files: (count) => fileCountLabel(count, t),
+    commits: (count) => t('timeline.count.label', { count }),
+    additions: (count) => t('detail.additions', { count }),
+    deletions: (count) => t('detail.deletions', { count }),
+    changes: (count) => t('tree.stats.files', { count }),
+    branchTitle: (branch) => t('timeline.filterBranch', { branch }),
+    rowAria: (label) => t('aria.timelineRow', { label }),
+    scope: { all: t('timeline.branchScope.all'), current: t('timeline.branchScope.current') },
+    actions: {
+      pull: t('op.pull'),
+      push: t('op.push'),
+      refresh: t('common.refresh'),
+      more: t('aria.writeMenu'),
+    },
+    attribution: {
+      audit: t('timeline.attribution.audit'),
+      inferred: t('timeline.attribution.inferred'),
+      auditHint: t('timeline.attribution.audit.hint'),
+      inferredHint: t('timeline.attribution.inferred.hint'),
+    },
   }
 }
 
@@ -518,13 +639,27 @@ export function renderHistory(
   const showAudit = state.filters.auditInTimeline && state.source === 'timeline'
   let listBody: React.ReactElement
   if (!showAudit) {
-    listBody = h(React.Fragment, null, groupEventsByDay(rows).map((group) => h('section', {
-      key: group.key,
-      className: 'dvt-tl-group',
-    },
-    h(DayHeader, { group, audits: 0, deps, now }),
-    h('ul', { className: 'dvt-tl-list' }, group.events.map((event) => commitRow(event))),
-    )))
+    // Normal commit list: the multi-lane swimlane owns the day groups, the lane
+    // legend and the rows; this view only maps the loaded page onto its rows
+    // and forwards the two intents (open a commit, narrow to a branch).
+    const { commits: laned, lanes } = assignLanes(toGitCommits(rows, deps, now, {
+      ...(repository.currentBranch === undefined ? {} : { currentBranch: repository.currentBranch }),
+      attributionOf,
+    }))
+    const head = rows.find((event) => isHeadEvent(event, repository.currentRevision))
+    const eventById = new Map(rows.map((event) => [event.id, event]))
+    listBody = h(SwimlaneTimeline, {
+      commits: laned,
+      lanes,
+      labels: swimlaneLabels(deps),
+      ...(head === undefined ? {} : { headId: head.id }),
+      selectedId: state.changeSet.event === null ? null : state.changeSet.event.id,
+      onOpenCommit: (id: string) => {
+        const event = eventById.get(id)
+        if (event !== undefined) handlers.onOpenEvent(event)
+      },
+      onSelectBranch: handlers.onSelectBranch,
+    })
   } else {
     interface MergedGroup {
       key: string

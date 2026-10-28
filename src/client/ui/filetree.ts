@@ -162,6 +162,35 @@ export function renderFileTree(
         onChange: (event: React.ChangeEvent<HTMLInputElement>) => handlers.onTreeQueryChange(event.currentTarget.value),
       }),
     ),
+    // Stat pills repeat the totals of exactly the files rendered below them, so
+    // the tree never claims a change its rows cannot show. An empty window drops
+    // the row entirely instead of printing "0 files", and a zero add/delete pill
+    // is omitted because 0 is not a change. Sign and value stay separate spans:
+    // the sign is decoration, and a row must not read as a fake "+0/+12" stat.
+    view.visibleFiles.length === 0
+      ? null
+      : h('div', { className: 'dvt-row dvt-tree-stats' },
+        view.totals.additions > 0
+          ? h('span', {
+            className: 'dvt-pill dvt-pill-add dvt-tag dvt-stat-add',
+            title: t('tree.stats.add', { count: view.totals.additions }),
+          },
+          h('span', { className: 'dvt-pill-sign', 'aria-hidden': 'true' }, '+'),
+          h('span', { className: 'dvt-pill-value' }, String(view.totals.additions)),
+          )
+          : null,
+        view.totals.deletions > 0
+          ? h('span', {
+            className: 'dvt-pill dvt-pill-del dvt-tag dvt-stat-del',
+            title: t('tree.stats.del', { count: view.totals.deletions }),
+          },
+          h('span', { className: 'dvt-pill-sign', 'aria-hidden': 'true' }, '−'),
+          h('span', { className: 'dvt-pill-value' }, String(view.totals.deletions)),
+          )
+          : null,
+        h('span', { className: 'dvt-pill dvt-tag', title: t('tree.stats.files', { count: view.totals.files }) },
+          t('tree.stats.files', { count: view.totals.files })),
+      ),
     h('div', { className: 'dvt-tree-chips', role: 'group', 'aria-label': t('tree.statusFilter') },
       STATUS_TABS.map((tab) => {
         const count = tab.status === 'all' ? counts.all : counts[tab.status]

@@ -75,20 +75,74 @@ function RepositoryPicker(props: {
   )
 }
 
-/** Branch / revision chip, hidden when the repository has neither. */
-function BranchChip(props: { repository: Repository | null; t: PanelDeps['t'] }): React.ReactElement | null {
-  const repository = props.repository
+/** Distinct branch decorations of the loaded page, current branch first. */
+function branchDecorations(state: PanelState, repository: Repository): string[] {
+  const seen = new Set<string>()
+  const branches: string[] = []
+  const add = (branch: string | undefined): void => {
+    const name = branch === undefined ? '' : branch.trim()
+    if (name === '' || seen.has(name)) return
+    seen.add(name)
+    branches.push(name)
+  }
+  add(repository.currentBranch)
+  for (const event of state.timeline.events) add(event.branch)
+  return branches
+}
+
+/**
+ * Branch filter chip, hidden when the repository has neither branch nor revision.
+ *
+ * The wrapper keeps the `dvt-branch` hook so the stylesheet stays stable, but
+ * the label is a native `<select>`: filtering then works with the keyboard and
+ * the platform picker instead of a custom popover. The first option clears the
+ * filter, which is why its value is the empty string. SVN exposes no branch
+ * decorations, so it keeps the read-only branch/revision chip.
+ */
+function BranchChip(props: {
+  state: PanelState
+  handlers: PanelHandlers
+  t: PanelDeps['t']
+  repository: Repository | null
+}): React.ReactElement | null {
+  const { state, handlers, t, repository } = props
   if (repository === null) return null
-  const text = repository.currentBranch ?? F.shortHash(repository.currentRevision, 8)
-  if (text === '') return null
+  const current = repository.currentBranch ?? ''
+  if (repository.vcsType !== 'git') {
+    const text = current === '' ? F.shortHash(repository.currentRevision, 8) : current
+    if (text === '') return null
+    return h('span', {
+      className: 'dvt-branch',
+      title: current === '' ? t('repo.revisionLabel', { revision: text }) : t('repo.branchLabel', { branch: current }),
+    },
+    h(IconBranch, { size: 11 }),
+    h('span', null, F.truncate(text, 16)),
+    )
+  }
+  const branches = branchDecorations(state, repository)
+  const selected = state.filters.branch
+  // A filter can outlive the loaded page (refresh, branch renamed): keep the
+  // value selectable so the dropdown never silently shows another branch.
+  if (selected !== '' && !branches.includes(selected)) branches.push(selected)
   return h('span', {
     className: 'dvt-branch',
-    title: repository.currentBranch !== undefined && repository.currentBranch !== ''
-      ? props.t('repo.branchLabel', { branch: repository.currentBranch })
-      : props.t('repo.revisionLabel', { revision: text }),
+    title: current === '' ? t('toolbar.branch.placeholder') : t('repo.branchLabel', { branch: current }),
   },
   h(IconBranch, { size: 11 }),
-  h('span', null, F.truncate(text, 16)),
+  h('select', {
+    className: 'dvt-branch-select',
+    'aria-label': t('aria.branchSelect'),
+    value: selected,
+    disabled: state.boot === 'loading',
+    onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const value = event.currentTarget.value
+      if (value === '') handlers.onClearBranchFilter()
+      else handlers.onSelectBranch(value)
+    },
+  },
+  h('option', { value: '' }, t('toolbar.branch.all')),
+  branches.map((branch) => h('option', { key: branch, value: branch }, branch)),
+  ),
   )
 }
 
@@ -302,11 +356,37 @@ export function renderChrome(
   const { t } = deps
   const repository = selectedRepository(state)
   const menuOpen = state.menuOpen && repository !== null
+  const gitRepository = repository !== null && repository.vcsType === 'git'
+  // Write operations must not start while another one is being confirmed (the
+  // dialog owns the single-use confirmation token) or before the first boot
+  // read, because the preview would describe stale branch/cleanliness state.
+  const operationLocked = state.dialog !== null || state.boot === 'loading'
+  const operationButton = (
+    operation: 'pull' | 'push',
+    label: string,
+    hint: string,
+    Icon: typeof IconDownload,
+  ): React.ReactElement => h('button', {
+    key: operation,
+    type: 'button',
+    className: 'dvt-toolbar-op',
+    title: hint,
+    // The label span is hidden at sidebar widths, so the accessible name must
+    // be the operation itself, not the long hint.
+    'aria-label': label,
+    disabled: operationLocked,
+    onClick: () => handlers.onStartOperation(operation),
+  },
+  h(Icon, { size: 12 }),
+  h('span', null, label),
+  )
   return h('div', { className: 'dvt-chrome' },
     h('div', { className: 'dvt-toolbar' },
       h(RepositoryPicker, { state, handlers, t }),
-      h(BranchChip, { repository, t }),
+      h(BranchChip, { state, handlers, t, repository }),
       h('span', { className: 'dvt-toolbar-actions' },
+        gitRepository ? operationButton('pull', t('toolbar.pull'), t('toolbar.hint.pull'), IconDownload) : null,
+        gitRepository ? operationButton('push', t('toolbar.push'), t('toolbar.hint.push'), IconUpload) : null,
         h(IconButton, {
           label: t('addRepo.title'),
           icon: IconRepo,
