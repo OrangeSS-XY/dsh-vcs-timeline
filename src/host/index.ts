@@ -18,6 +18,7 @@ import { createSvnAdapter } from './adapters/svn/adapter.ts'
 import { createAuditService } from './audit/audit-service.ts'
 import { createDiagnosticsProvider } from './diagnostics.ts'
 import { createRepositoryRegistry, type WorkspaceInfo } from './discovery.ts'
+import { createPullRequestService } from './pr/service.ts'
 import { registerVcsRoutes } from './routes.ts'
 import { createRunner } from './runner.ts'
 import { resolveDataDir } from './security.ts'
@@ -67,9 +68,10 @@ export function apply(ctx: Context, config?: PluginConfig): void {
   })
   const timeline = createTimelineService({ resolver, registry, store, diagnostics })
   const operations = createOperationService({ resolver, runner, store, audit, log })
+  const pullRequests = createPullRequestService({ resolver, runner, dataDir })
 
   ctx.effect(() => {
-    const disposeRoutes = registerVcsRoutes(ctx, { timeline, operations, diagnostics, log })
+    const disposeRoutes = registerVcsRoutes(ctx, { timeline, operations, pullRequests, diagnostics, log })
     return () => {
       disposeRoutes()
       void store.close()

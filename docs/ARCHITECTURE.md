@@ -27,6 +27,7 @@ Client (浏览器)                          Host (DSH 主进程)
 │  ├ conversation.view 页签  │ ─────────► │  ├ services/timeline-service.ts  只读服务   │
 │  ├ panel.ts 状态编排      │ ◄───────── │  ├ services/operation-service.ts 写服务     │
 │  ├ file-index.ts 文件索引 │  信封      │  ├ discovery.ts     仓库发现 + 路径闸门     │
+│  ├ graph.ts 多泳道路由     │            │  ├ pr/*             PR 读取（远端/凭据/API）  │
 │  ├ components.ts 纯视图   │            │  ├ adapters/git/**  Git 适配器              │
 │  ├ api.ts 信封客户端      │            │  ├ adapters/svn/**  SVN 适配器              │
 │  ├ i18n.ts / format.ts    │            │  ├ storage/jsonl.ts  JSONL 存储             │
@@ -60,6 +61,15 @@ POST vcs/timeline {repositoryId, cursor, filters, includeFiles:true}
   → Client：file-index.ts 聚合为文件条目 + 目录树；左右两栏从同一结果派生
 POST vcs/changeset / vcs/diff / vcs/status
   → adapter.changeSet() / diff() / status() → 文件状态、统一 diff 文本、工作区状态
+```
+
+```
+POST vcs/pr/list {repositoryId, refresh?}
+  → registry.gate(repositoryId) → 读取 origin 远端（git config，凭据剥离）
+  → 识别 provider（github/gitlab）→ 凭据链（env → ~/.git-credentials → pr-auth.json → 匿名）
+  → 有令牌：GitHub GraphQL 一次调用拿到 viewer/PR/评审/CI/可合并；无令牌：匿名 REST 基础字段
+  → 纯函数 deriveActions(PR 事实, viewer) → 「需要我做什么」
+  → 60s 列表缓存；令牌永不出现在返回值/错误/日志中
 ```
 
 **对话区页签**（`conversation.view`）只负责注册一个 View 与标签；
@@ -106,7 +116,26 @@ beforeState / planOperation`。各自保留语义：
 用户输入（提交信息、远端、分支、文件路径、revision）从不进入 shell 字符串；
 分支/远端名经过白名单字符校验，revision 只允许数字，路径必须留在仓库根内。
 
-### 4.1 仓库发现策略
+### 4.1 PR / MR 提供方（只读）
+
+| | GitHub | GitLab |
+| --- | --- | --- |
+| 远端解析 | `https://github.com/owner/repo(.git)`、`git@github.com:owner/repo.git`、`ssh://…` | 同上，host 含 gitlab |
+| 列表（有令牌） | GraphQL `repository.pullRequests` 一次调用：评审决策、评审请求、review 列表、CI rollup、可合并、行数/文件数/提交数 | REST `/merge_requests`（PRIVATE-TOKEN），评审/CI 只取能如实映射的字段 |
+| 列表（匿名） | REST `/repos/{owner}/{repo}/pulls`，只映射基础字段；评审/CI 为空、可合并未知 | 私有项目 → auth-required；公开项目基础字段 |
+| 详情 | PR 描述 + `/pulls/{n}/files`（≤100 文件） | `/merge_requests/{iid}` + `/diffs` |
+| 凭据 | `GITHUB_TOKEN`/`GH_TOKEN` → `~/.git-credentials` → `<dataDir>/pr-auth.json` → 匿名 | `GITLAB_TOKEN`/`GL_TOKEN` 同上 |
+| 失败映射 | 401/403（非限流）→ auth-required；限流 → rate-limited（附 resetAt）；网络/超时 → network-unknown；>1MiB → output-too-large | 同左 |
+
+- **动作推导是纯函数**（`src/host/pr/actions.ts`）：只依据真实读到的评审请求、评审决策、CI、可合并性
+  给出 review / address-feedback / merge / fix-ci / fix-conflicts / wait / unknown 之一；
+  未认证时只给 `unknown` + `needs-auth`，绝不猜测。
+- **安全**：令牌只进入请求头；不写日志、不返回、不进缓存；错误文本经 `redact`；
+  fetch 有 10s 超时、1 MiB 响应上限、2 并发闸门。
+- **本机事实**：Host 进程出网到 api.github.com 超时（直接 node 进程可通），匿名也无令牌可用，
+  因此真实页面显示 network-unknown 错误态；这一限制已写进 README/TEST-REPORT。
+
+### 4.2 仓库发现策略
 
 - 默认只扫描 DSH 已注册的工作区（`ctx.workspaceRegistry.list()`），**不扫描整盘**。
 - 工作区根自身是仓库则直接采用；否则有界 BFS（深度 3、条目上限 4000），
@@ -201,6 +230,14 @@ dvt-root (flex column, 100%, overflow hidden)
   聊天记录与输入框不受影响；切回「对话」即恢复聊天，不存在覆盖层或焦点陷阱。
 - **容器查询而非媒体查询**：侧栏宽度与窗口宽度无关，`@container (max-width: 520px)`
   按**面板**宽度隐藏行内分支标签等次要信息；400px 侧栏仍可读，1600px 对话区不浪费空间。
+- **多泳道提交图**：`graph.ts` 用父哈希单页扫出泳道（`opened` 标记页边界、父已在其他泳道则汇入避免重复线），
+  UI 用每行一个 SVG 画通栏线段/节点/合并曲线；颜色按泳道 HSL 固定，节点填充用主题底色避免暗色白圈。
+- **列表/详情分栏**：右栏固定为 list（flex 撑满）+ detail（42% 高，min 150px），详情含
+  提交/文件 Diff/审计记录/PR 详情四种；列表与左树永不因打开详情而消失。
+- **文件视图**：点左树文件 → 列表按路径收窄 + 路径条显示最近作者/作者数/提交数，
+  同时打开最新提交的该文件 Diff（`openLatestFileDiff`，revision 取事件 hash，SVN 取 revision）。
+- **PR 与审计**：PR 页签与审计页签复用同一 list/detail 分栏；审计顶部状态 chips 为客户端筛选，
+  计数来自已加载记录；PR 的动作徽章/评审/CI 全部来自 Host 读到的真实事实。
 - **时间线优先**：竖轴 + 日期分组让"谁在什么时候做了什么"一眼可读；行高约 51px（两行），
   树行 23px、详情文件行 26px、Diff 行 16px；控件高度统一 22/24px；
   字号层级 12 / 11.5 / 10.5 / 10px；圆角 3–8px。
@@ -215,3 +252,5 @@ dvt-root (flex column, 100%, overflow hidden)
 5. 客户端不可传入任意命令、任意工作区外的路径或任意 revision 语法。
 6. 左右两栏由同一份派生视图渲染：目录计数、状态计数、时间线行必须能互相解释；
    未提供的数据显示为“未提供”，绝不补零或编造文件/提交。
+7. PR 事实只来自宿主实际读取的 API：未认证/未读到的评审、CI、可合并性显示为未知；
+   动作建议是纯函数推导，不含猜测；令牌不离开 Host 请求头。

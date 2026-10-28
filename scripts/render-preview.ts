@@ -138,7 +138,7 @@ function commit(input: {
     actor: input.actor,
     summary: input.summary,
     commitHash: input.hash.padEnd(40, '0'),
-    parentHashes: input.parents ?? ['0000000000000000000000000000000000000000'],
+    parentHashes: (input.parents ?? []).map((parent) => parent.padEnd(40, '0')),
     ...(input.branch === undefined ? {} : { branch: input.branch }),
     ...(input.stats === undefined
       ? {}
@@ -160,6 +160,7 @@ const events: VcsEvent[] = [
     actor: 'Lin Wei',
     time: '2026-10-27T09:12:00.000Z',
     branch: 'feature/sidebar-timeline',
+    parents: ['9d2f41ab'],
     stats: { files: 7, additions: 214, deletions: 158 },
     files: [
       { path: 'src/client/ui/toolbar.ts', status: 'added', additions: 186, deletions: 0 },
@@ -176,6 +177,7 @@ const events: VcsEvent[] = [
     summary: 'refactor: 把审计页签拆到独立视图模块',
     actor: 'Chen Yu',
     time: '2026-10-27T08:41:00.000Z',
+    parents: ['73ac90fe'],
     stats: { files: 3, additions: 96, deletions: 210 },
     files: [
       { path: 'src/client/ui/audit.ts', status: 'added', additions: 96, deletions: 0 },
@@ -188,7 +190,7 @@ const events: VcsEvent[] = [
     summary: 'Merge branch \'fix/unicode-paths\' into main',
     actor: 'Lin Wei',
     time: '2026-10-26T17:05:00.000Z',
-    parents: ['1a2b3c4d5e6f', '9d2f41ab0000'],
+    parents: ['41ee77c2', '0c58b3d1'],
     files: [],
   }),
   commit({
@@ -196,6 +198,7 @@ const events: VcsEvent[] = [
     summary: 'fix: 提交详情中的重命名路径显示旧文件名，并补齐二进制标记',
     actor: 'Zhao Min',
     time: '2026-10-26T11:28:00.000Z',
+    parents: ['0c58b3d1'],
     stats: { files: 2, additions: 18, deletions: 6 },
     files: [
       { path: 'src/client/ui/detail.ts', status: 'modified', additions: 18, deletions: 6 },
@@ -207,6 +210,7 @@ const events: VcsEvent[] = [
     summary: 'chore: 引入 JSONL 审计存储与写入串行化',
     actor: 'Chen Yu',
     time: '2026-10-25T15:02:00.000Z',
+    parents: ['f1c0a9e4'],
     stats: { files: 5, additions: 432, deletions: 12 },
     files: [
       { path: 'src/host/storage/jsonl.ts', status: 'added', additions: 402, deletions: 0 },
@@ -240,6 +244,91 @@ const changeSet: ChangeSet = {
     { path: 'assets/branch-graph.svg', status: 'added', binary: true },
     { path: 'src/client/ui/detail.ts', status: 'modified', additions: 48, deletions: 22 },
   ],
+}
+
+const pullRequest = (input: {
+  number: number
+  title: string
+  author: string
+  branch: string
+  state?: 'open' | 'draft'
+  reviewState?: 'approved' | 'changes-requested' | 'review-required' | 'none'
+  checksState?: 'success' | 'failure' | 'pending' | 'none'
+  mergeable?: boolean | null
+  action?: { kind: 'review' | 'wait' | 'merge' | 'fix-ci'; reason: string }
+  updatedAt: string
+}) => ({
+  schemaVersion: 1 as const,
+  id: `${repository.id}#${input.number}`,
+  repositoryId: repository.id,
+  provider: 'github' as const,
+  number: input.number,
+  title: input.title,
+  url: `https://github.com/example/web-console/pull/${input.number}`,
+  state: input.state ?? 'open',
+  author: { login: input.author },
+  branch: input.branch,
+  baseBranch: 'main',
+  createdAt: input.updatedAt,
+  updatedAt: input.updatedAt,
+  reviewState: input.reviewState ?? 'none',
+  checksState: input.checksState ?? 'none',
+  mergeable: input.mergeable ?? null,
+  reviews: [],
+  checks: [],
+  pendingReviewers: [],
+  requestedFromViewer: input.action?.kind === 'review',
+  actions: input.action === undefined ? [] : [input.action],
+  changedFiles: 4,
+  additions: 96,
+  deletions: 24,
+  commitCount: 3,
+  commentCount: 2,
+})
+
+const pullRequests = {
+  repositoryId: repository.id,
+  provider: 'github' as const,
+  host: 'github.com',
+  remotePath: 'example/web-console',
+  viewer: 'linwei',
+  authenticated: true,
+  pullRequests: [
+    pullRequest({
+      number: 42,
+      title: 'feat: 文件中心的双栏变更浏览器',
+      author: 'linwei',
+      branch: 'feat/file-browser',
+      reviewState: 'review-required',
+      checksState: 'success',
+      mergeable: true,
+      action: { kind: 'review', reason: 'review-requested' },
+      updatedAt: '2026-10-27T09:20:00.000Z',
+    }),
+    pullRequest({
+      number: 41,
+      title: 'fix: 重命名路径在详情中的显示',
+      author: 'zhaomin',
+      branch: 'fix/rename-path',
+      reviewState: 'changes-requested',
+      checksState: 'failure',
+      mergeable: false,
+      action: { kind: 'fix-ci', reason: 'checks-failed' },
+      updatedAt: '2026-10-27T08:40:00.000Z',
+    }),
+    pullRequest({
+      number: 39,
+      title: 'docs: 补全 PR 与审计说明',
+      author: 'chenyu',
+      branch: 'docs/pr-and-audit',
+      reviewState: 'approved',
+      checksState: 'success',
+      mergeable: true,
+      action: { kind: 'merge', reason: 'ready-to-merge' },
+      updatedAt: '2026-10-26T15:10:00.000Z',
+    }),
+  ],
+  fetchedAt: '2026-10-27T09:30:00.000Z',
 }
 
 const diff: DiffResult = {
@@ -381,6 +470,34 @@ const scenarios: Scenario[] = [
     }),
   },
   {
+    name: 'pr-list-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({ source: 'pr', pullRequests: { ...initial.pullRequests, data: pullRequests } }),
+  },
+  {
+    name: 'pr-auth-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, error: { code: 'auth-required', message: 'token missing' } },
+    }),
+  },
+  {
+    name: 'file-diff-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      selectedFilePath: 'src/client/ui/history.ts',
+      expandedDirs: { src: true, 'src/client': true, 'src/client/ui': true },
+      diff: { filePath: 'src/client/ui/history.ts', data: diff, loading: false, error: null },
+    }),
+  },
+  {
     name: 'detail-light',
     theme: 'light',
     state: stateWith({
@@ -515,8 +632,8 @@ await writeFile(resolve(outDir, 'render.md'), [
   'node scripts/preview-shots.mjs   # 用本机 Edge 无头模式截图',
   '```',
   '',
-  '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件时间线、提交详情、Diff、',
-  '审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
+  '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件 + Diff 分栏、提交详情、',
+  'PR 列表 / 未认证提示、审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
 ].join('\n'), 'utf8')
 
 console.log(`rendered ${scenarios.length} preview pages into ${outDir}`)

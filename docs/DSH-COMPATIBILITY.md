@@ -162,6 +162,18 @@ DSH 桌面端为 Chromium ≥ 110，容器查询可用（真实页面截图验�
 - 实测：`POST /vcs/diagnostics` 等 13 条路由全部返回预期信封；非 JSON content-type 返回 415；
   未知路由 404；跨源被拒（同源校验）。
 
+## 4.2 PR / MR 路由与运行环境（实测）
+
+- 新增只读路由：`POST /vcs/pr/list {repositoryId, refresh?}`、`POST /vcs/pr/detail {repositoryId, number}`，
+  复用同一套 loopback/同源/JSON/256 KiB 加固；`number` 非正整数返回 invalid-request（实测负值被拒）。
+- 远端解析用 `git config --get remote.origin.url`（仓库根内），支持 https / scp / ssh 形式并剥离凭据；
+  远端 host 不含 github/gitlab 时返回 `unsupported-remote`（实测：无远端临时仓库 → 该错误）。
+- 凭据链：env（provider 限定）→ `~/.git-credentials` → `<dataDir>/pr-auth.json` → 匿名。
+  本机实测：四类环境变量与 `~/.git-credentials`/`pr-auth.json` 均缺失 → 只能匿名；
+  匿名 GitHub REST 对公开仓库可用（用直连 node 进程验证过），但 **Host 进程出网到 api.github.com 超时**
+  （10s → `network-unknown`，retryable），这是环境/网络策略问题，不是插件代码问题。
+- 匿名列表在热门仓库可能超过 1 MiB 响应上限 → 映射 `output-too-large`；GitHub 匿名限流 → `rate-limited`。
+
 ## 5. Host 运行时能力（实测）
 
 - **子进程**：`ctx.subprocess.spawn({ argv, cwd, stdio: { stdin: 'ignore', stdout: { maxBytes }, stderr: { maxBytes } }, graceMs, signal })`
@@ -202,3 +214,5 @@ asar 内没有 `.d.ts`，因此：
    本插件只使用已被 `dsh-context` 证实的字段子集。
 5. **`conversation.view` 的 owner 语义**：页签按 session 注册；若未来 shell 移除该 slot，
    注册会被 try/catch 降级为“无对话区页签”，右侧栏页签仍可用。
+6. **PR 数据依赖网络与凭据**：本机 Host 进程无外网到 api.github.com，匿名也只覆盖公开仓库基础字段；
+   评审/CI/可合并状态需配置令牌（env / ~/.git-credentials / pr-auth.json），未配置时 UI 明确提示。

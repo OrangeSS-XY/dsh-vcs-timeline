@@ -16,7 +16,10 @@ import type {
   FileChangeStatus,
   OperationAttempt,
   OperationPreview,
+  OperationState,
   OperationType,
+  PullRequestDetail,
+  PullRequestList,
   Repository,
   VcsEvent,
   VcsEventType,
@@ -27,7 +30,7 @@ import type { VcsClient } from './api.ts'
 import type { TranslateFn } from './i18n.ts'
 
 /** Which source the panel body currently lists. */
-export type PanelSource = 'timeline' | 'audit'
+export type PanelSource = 'timeline' | 'pr' | 'audit'
 
 /** Server-side history window presets offered by the time filter. */
 export type TimePreset = 'all' | '24h' | '7d' | '30d'
@@ -48,6 +51,8 @@ export interface FilterState {
   treeQuery: string
   /** Change-status filter shared by the tree and the timeline (client-side). */
   fileStatus: FileChangeStatus | 'all'
+  /** Audit lifecycle filter (client-side, audit source only). */
+  auditState: OperationState | 'all'
   /** History window preset, applied by the Host when the page is fetched. */
   timePreset: TimePreset
 }
@@ -93,6 +98,20 @@ export interface AuditSlice {
   selected: OperationAttempt | null
 }
 
+/** Pull-request list/detail state. */
+export interface PullRequestSlice {
+  data: PullRequestList | null
+  loading: boolean
+  error: ApiError | null
+  /** Selected pull-request number; null means the list only. */
+  selectedNumber: number | null
+  detail: PullRequestDetail | null
+  detailLoading: boolean
+  detailError: ApiError | null
+  /** Bumped by the refresh control. */
+  refreshTick: number
+}
+
 /** Lifecycle of the write-operation confirmation dialog. */
 export type DialogPhase = 'previewing' | 'previewed' | 'blocked' | 'error' | 'executing' | 'result'
 
@@ -133,6 +152,7 @@ export interface PanelState {
   changeSet: ChangeSetSlice
   diff: DiffSlice
   audit: AuditSlice
+  pullRequests: PullRequestSlice
   status: WorkingTreeStatus | null
   statusLoading: boolean
   statusError: ApiError | null
@@ -178,6 +198,14 @@ export interface PanelHandlers {
   onCopyDiff(): void
   onLoadMoreAudit(): void
   onRetryAudit(): void
+  /** Reload the pull-request list (bypasses the Host cache). */
+  onRefreshPullRequests(): void
+  /** Open one pull request's detail in the detail pane. */
+  onSelectPullRequest(number: number): void
+  /** Close the pull-request detail pane. */
+  onClosePullRequest(): void
+  /** Change the audit lifecycle filter. */
+  onSetAuditState(state: OperationState | 'all'): void
   onOpenOperation(attempt: OperationAttempt): void
   onBackFromAuditDetail(): void
   onStartOperation(operation: OperationType): void
@@ -263,6 +291,20 @@ export function createAuditSlice(): AuditSlice {
   }
 }
 
+/** Empty pull-request slice. */
+export function createPullRequestSlice(): PullRequestSlice {
+  return {
+    data: null,
+    loading: false,
+    error: null,
+    selectedNumber: null,
+    detail: null,
+    detailLoading: false,
+    detailError: null,
+    refreshTick: 0,
+  }
+}
+
 /** Fully empty panel state; tests start from here and override slices. */
 export function createInitialState(): PanelState {
   return {
@@ -282,6 +324,7 @@ export function createInitialState(): PanelState {
       showAuthor: false,
       treeQuery: '',
       fileStatus: 'all',
+      auditState: 'all',
       timePreset: 'all',
     },
     selectedFilePath: null,
@@ -292,6 +335,7 @@ export function createInitialState(): PanelState {
     changeSet: createChangeSetSlice(),
     diff: createDiffSlice(),
     audit: createAuditSlice(),
+    pullRequests: createPullRequestSlice(),
     status: null,
     statusLoading: false,
     statusError: null,
@@ -331,6 +375,10 @@ export function createNoopHandlers(): PanelHandlers {
     onCopyDiff: noop,
     onLoadMoreAudit: noop,
     onRetryAudit: noop,
+    onRefreshPullRequests: noop,
+    onSelectPullRequest: noop,
+    onClosePullRequest: noop,
+    onSetAuditState: noop,
     onOpenOperation: noop,
     onBackFromAuditDetail: noop,
     onStartOperation: noop,

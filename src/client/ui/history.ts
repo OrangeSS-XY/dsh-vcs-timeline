@@ -15,6 +15,8 @@ import type { FileChangeStatus, VcsEvent } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
 import type { DayGroup, TimelineView } from '../file-index.ts'
 import { groupEventsByDay } from '../file-index.ts'
+import type { GraphModel, GraphRow } from '../graph.ts'
+import { renderGraphGutter } from './graph.ts'
 import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
 import { IconBranch, IconClock, IconClose, IconError, IconFile, IconRepo, IconTimeline } from './icons.ts'
 import {
@@ -117,9 +119,13 @@ function TimelineRow(props: {
   visiblePaths: ReadonlySet<string> | null
   /** The repository's current HEAD/revision, for the HEAD marker. */
   headRevision: string | undefined
+  /** Lane placement of this commit on the page graph. */
+  graphRow: GraphRow | null
+  /** Total lanes on the page, so every gutter keeps one width. */
+  graphLanes: number
   now: number
 }): React.ReactElement {
-  const { event, deps, handlers, selectedPath, visiblePaths, headRevision, now } = props
+  const { event, deps, handlers, selectedPath, visiblePaths, headRevision, graphRow, graphLanes, now } = props
   const { t } = deps
   const merge = F.isMergeCommit(event)
   const head = isHeadEvent(event, headRevision)
@@ -136,9 +142,9 @@ function TimelineRow(props: {
     label: `${revision === '' ? event.id : revision} ${F.truncate(event.summary, 80)}`,
   })
   return h('li', { className: 'dvt-tl-row' },
-    h('span', { className: 'dvt-tl-rail', 'aria-hidden': 'true' },
-      h('span', { className: `dvt-tl-node${merge ? ' dvt-tl-node-merge' : ''}` }),
-    ),
+    graphRow === null
+      ? h('span', { className: 'dvt-tl-graph', 'aria-hidden': 'true' })
+      : renderGraphGutter({ row: graphRow, lanes: graphLanes }),
     h('button', {
       type: 'button',
       className: 'dvt-tl-card',
@@ -177,7 +183,9 @@ function TimelineRow(props: {
       hash === '' ? null : h('span', { className: 'dvt-tl-hash dvt-mono' }, hash),
       head ? h('span', { className: 'dvt-tag dvt-tl-head', title: t('timeline.head') }, 'HEAD') : null,
       merge ? h('span', { className: 'dvt-tag dvt-tag-merge', title: t('timeline.merge') }, t('timeline.merge')) : null,
-      event.branch === undefined || event.branch === ''
+      // A detached HEAD reports the literal pseudo-branch "HEAD"; the HEAD
+      // marker already says that, so the tag would duplicate it.
+      event.branch === undefined || event.branch === '' || event.branch === 'HEAD'
         ? null
         : h('span', { className: 'dvt-tag dvt-tl-branch', title: event.branch },
           h(IconBranch, { size: 9 }),
@@ -209,10 +217,14 @@ function SelectionHeader(props: {
   path: string
   status: FileChangeStatus
   count: number
+  /** Newest change of this file in the loaded window. */
+  latest?: { author: string; when: string }
+  /** Distinct authors that changed this file in the loaded window. */
+  authorCount: number
   deps: PanelDeps
   handlers: PanelHandlers
 }): React.ReactElement {
-  const { path, status, count, deps, handlers } = props
+  const { path, status, count, latest, authorCount, deps, handlers } = props
   const { t } = deps
   const { dir, name } = F.splitRepoPath(path)
   return h('div', { className: 'dvt-selection' },
@@ -222,6 +234,12 @@ function SelectionHeader(props: {
       dir === '' ? null : h('span', { className: 'dvt-file-dir' }, dir),
       h('span', { className: 'dvt-selection-name' }, name),
     ),
+    latest === undefined
+      ? null
+      : h('span', { className: 'dvt-selection-meta dvt-selection-who', title: t('file.whoTitle') },
+        h('span', null, t('file.latestBy', { author: latest.author, when: latest.when })),
+        authorCount > 0 ? h('span', { className: 'dvt-selection-authors' }, t('file.authors', { count: authorCount })) : null,
+      ),
     h('span', { className: 'dvt-selection-meta' }, t('timeline.count.label', { count })),
     h(IconButton, {
       label: t('tree.showAll'),
@@ -238,10 +256,12 @@ export function renderHistory(
   deps: PanelDeps,
   handlers: PanelHandlers,
   view: TimelineView,
+  graph: GraphModel,
 ): React.ReactElement {
   const { t } = deps
   const repository = selectedRepository(state)
   const timeline = state.timeline
+  const now = Date.now()
 
   if (state.boot === 'loading') return h(SkeletonRows, { rows: 6 })
   if (state.boot === 'error') {
@@ -293,12 +313,32 @@ export function renderHistory(
   const rows = view.visibleEvents
   const fileFilterActive = state.filters.treeQuery.trim() !== '' || state.filters.fileStatus !== 'all'
   const visiblePaths = fileFilterActive ? new Set(view.visibleFiles.map((entry) => entry.path)) : null
+  const graphRowById = new Map(graph.rows.map((entry) => [entry.id, entry]))
+  const latest = rows[0]
+  const latestRelative = latest === undefined ? null : F.relativeTime(latest.timestamp, now)
+  const latestWhen = latest === undefined
+    ? ''
+    : latestRelative === null
+      ? F.formatCompactTime(latest.timestamp, deps.locale)
+      : latestRelative.unit === 'justNow'
+        ? t('rel.justNow')
+        : latestRelative.unit === 'minutes'
+          ? t('rel.minutesAgo', { count: latestRelative.count })
+          : latestRelative.unit === 'hours'
+            ? t('rel.hoursAgo', { count: latestRelative.count })
+            : t('rel.daysAgo', { count: latestRelative.count })
+  const authorSet = new Set<string>()
+  for (const entry of rows) if (typeof entry.actor === 'string' && entry.actor !== '') authorSet.add(entry.actor)
   const header = view.selected === null
     ? null
     : h(SelectionHeader, {
       path: view.selected.path,
       status: view.selected.status,
       count: rows.length,
+      ...(latest === undefined || latest.actor === undefined || latest.actor === ''
+        ? {}
+        : { latest: { author: latest.actor, when: latestWhen } }),
+      authorCount: authorSet.size,
       deps,
       handlers,
     })
@@ -339,7 +379,6 @@ export function renderHistory(
     })
   }
 
-  const now = Date.now()
   const groups = groupEventsByDay(rows)
   return h('div', { className: 'dvt-col dvt-timeline-col' },
     timeline.partial
@@ -367,6 +406,8 @@ export function renderHistory(
             selectedPath: state.selectedFilePath,
             visiblePaths,
             headRevision: repository.currentRevision,
+            graphRow: graphRowById.get(event.id) ?? null,
+            graphLanes: graph.lanes,
             now,
           })),
         ),

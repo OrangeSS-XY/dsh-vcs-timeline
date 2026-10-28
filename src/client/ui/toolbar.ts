@@ -18,6 +18,7 @@ import {
   IconDownload,
   IconFilter,
   IconMore,
+  IconPr,
   IconRefresh,
   IconRepo,
   IconSearch,
@@ -137,6 +138,7 @@ function SourceTabs(props: {
 }): React.ReactElement {
   const { state, handlers, t } = props
   const timelineCount = state.timeline.events.length
+  const prCount = state.pullRequests.data?.pullRequests.length ?? 0
   const auditCount = state.audit.operations.length
   const tab = (source: PanelSource, label: string, count: number, Icon: typeof IconTimeline): React.ReactElement => h('button', {
     type: 'button',
@@ -151,6 +153,7 @@ function SourceTabs(props: {
   )
   return h('div', { role: 'tablist', className: 'dvt-tabstrip', 'aria-label': t('tab.title') },
     tab('timeline', t('source.timeline'), timelineCount, IconTimeline),
+    tab('pr', t('source.pr'), prCount, IconPr),
     tab('audit', t('source.audit'), auditCount, IconAudit),
   )
 }
