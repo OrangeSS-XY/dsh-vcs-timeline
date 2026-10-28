@@ -25,6 +25,7 @@ import { StoreError } from './storage/interface.ts'
 import { ServiceError, type TimelineService } from './services/timeline-service.ts'
 import type { OperationService } from './services/operation-service.ts'
 import type { PullRequestService } from './pr/service.ts'
+import type { BranchService } from './branch/service.ts'
 
 /** Largest accepted request body. */
 const BODY_MAX_BYTES = 256 * 1024
@@ -34,6 +35,7 @@ export interface VcsRoutesDeps {
   timeline: TimelineService
   operations: OperationService
   pullRequests: PullRequestService
+  branch: BranchService
   diagnostics: () => Promise<Diagnostics>
   log?: (message: string) => void
 }
@@ -306,6 +308,14 @@ export function registerVcsRoutes(ctx: Context, deps: VcsRoutesDeps): () => void
             number: requiredPositiveInt(payload, 'number'),
           })))
           return
+        case '/vcs/branch/compare': {
+          const baseBranch = optionalString(payload, 'baseBranch', 200)
+          writeJson(res, 200, ok(await deps.branch.compare({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(baseBranch === undefined || baseBranch.trim() === '' ? {} : { baseBranch: baseBranch.trim() }),
+          })))
+          return
+        }
         default:
           res.writeHead(404)
           res.end()

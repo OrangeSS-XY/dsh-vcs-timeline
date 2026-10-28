@@ -28,6 +28,8 @@ Client (浏览器)                          Host (DSH 主进程)
 │  ├ panel.ts 状态编排      │ ◄───────── │  ├ services/operation-service.ts 写服务     │
 │  ├ file-index.ts 文件索引 │  信封      │  ├ discovery.ts     仓库发现 + 路径闸门     │
 │  ├ graph.ts 多泳道路由     │            │  ├ pr/*             PR 读取（远端/凭据/API）  │
+│  ├ ui/fileinfo.ts 文件活动 │            │  ├ branch/*         本地分支洞察（离线 PR）  │
+│  ├ ui/addrepo.ts 添加仓库  │            │  ├ toolchain.ts     可执行文件探测/vcs-config │
 │  ├ components.ts 纯视图   │            │  ├ adapters/git/**  Git 适配器              │
 │  ├ api.ts 信封客户端      │            │  ├ adapters/svn/**  SVN 适配器              │
 │  ├ i18n.ts / format.ts    │            │  ├ storage/jsonl.ts  JSONL 存储             │
@@ -70,6 +72,14 @@ POST vcs/pr/list {repositoryId, refresh?}
   → 有令牌：GitHub GraphQL 一次调用拿到 viewer/PR/评审/CI/可合并；无令牌：匿名 REST 基础字段
   → 纯函数 deriveActions(PR 事实, viewer) → 「需要我做什么」
   → 60s 列表缓存；令牌永不出现在返回值/错误/日志中
+```
+
+```
+POST vcs/branch/compare {repositoryId, baseBranch?}
+  → registry.gate → git 本地计算：current、base（query → default → main/master）、
+    rev-list 领先/落后、log（领先提交，≤30）、shortstat（文件/±）、merge-tree（潜在冲突）、
+    上游（@{u} + 未推送计数）→ 纯函数动作表 push/create-pr/pull/fix-conflicts/wait
+  → SVN 返回 available:false（不伪造分支语义）；空仓库/分离 HEAD 不抛错
 ```
 
 **对话区页签**（`conversation.view`）只负责注册一个 View 与标签；
@@ -135,7 +145,21 @@ beforeState / planOperation`。各自保留语义：
 - **本机事实**：Host 进程出网到 api.github.com 超时（直接 node 进程可通），匿名也无令牌可用，
   因此真实页面显示 network-unknown 错误态；这一限制已写进 README/TEST-REPORT。
 
-### 4.2 仓库发现策略
+### 4.2 本地分支洞察与工具链（离线能力）
+
+- **本地分支洞察**（`src/host/branch/*`）：只用本地 git 计算「当前分支 vs 基准分支」的领先/落后、
+  领先提交列表、变更文件/±、`merge-tree` 潜在冲突、上游未推送数，并推导
+  push / create-pr / pull / fix-conflicts / wait 动作。它让 PR 页在无网络/无令牌时仍然可读
+  （客户端以「本地分支洞察」卡片展示；有真实 PR 时退化为列表上方一条紧凑条）。
+- **可执行文件探测与配置**（`src/host/toolchain.ts`）：挂载时按 `<dataDir>/vcs-config.json`
+  → PATH → 常见 Windows 安装目录（Git / TortoiseSVN / SlikSVN / VisualSVN）解析 git/svn，
+  `Runner` 在 argv[0] 为 `git`/`svn` 时改写为绝对路径；解析结果与失败原因进入诊断。
+  配置只在挂载时读取一次，修改后需重新挂载/重启。
+- **添加工作区之外的仓库**：发现只扫 DSH 工作区，客户端提供「添加仓库」对话框按路径加入
+  （服务端仍校验 `.git`/`.svn` 元数据与路径闸门）；VCS 客户端缺失时 `add` 返回
+  `vcs-not-installed` 并在界面给出安装/配置指引。
+
+### 4.3 仓库发现策略
 
 - 默认只扫描 DSH 已注册的工作区（`ctx.workspaceRegistry.list()`），**不扫描整盘**。
 - 工作区根自身是仓库则直接采用；否则有界 BFS（深度 3、条目上限 4000），
@@ -234,6 +258,14 @@ dvt-root (flex column, 100%, overflow hidden)
   UI 用每行一个 SVG 画通栏线段/节点/合并曲线；颜色按泳道 HSL 固定，节点填充用主题底色避免暗色白圈。
 - **列表/详情分栏**：右栏固定为 list（flex 撑满）+ detail（42% 高，min 150px），详情含
   提交/文件 Diff/审计记录/PR 详情四种；列表与左树永不因打开详情而消失。
+- **文件视图是三栏**：文件树 | Diff（`dvt-file-diffpane`，主区域）| 操作信息（`dvt-fileinfo`，右侧）。
+  操作信息含：路径/状态/未提交标记、最近作者与相对时间、提交数/作者数/累计 ±、作者分布条形图、
+  逐提交记录（点击切换中间 Diff，当前项高亮）、打开审计入口。所有派生自同一份过滤事件。
+- **Composer 隐藏**：面板挂载时把 `[data-conversation-scroll]` 内除自己以外的兄弟节点
+  （聊天输入框 seat）设为 `display:none` 并记录原值，高度按滚动容器重算；卸载时恢复，
+  切回「对话」输入框自动回来。
+- **添加入口与快捷键**：工具栏仓库图标 / `⋯` → 仓库 →「添加仓库」；`Alt+1/2/3` 切来源、
+  `Alt+R` 刷新。
 - **文件视图**：点左树文件 → 列表按路径收窄 + 路径条显示最近作者/作者数/提交数，
   同时打开最新提交的该文件 Diff（`openLatestFileDiff`，revision 取事件 hash，SVN 取 revision）。
 - **PR 与审计**：PR 页签与审计页签复用同一 list/detail 分栏；审计顶部状态 chips 为客户端筛选，

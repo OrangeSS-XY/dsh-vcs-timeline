@@ -165,6 +165,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
     const auditTokenRef = React.useRef<number>(0)
     const prListTokenRef = React.useRef<number>(0)
     const prDetailTokenRef = React.useRef<number>(0)
+    const compareTokenRef = React.useRef<number>(0)
     const statusTokenRef = React.useRef<number>(0)
     const detailTokenRef = React.useRef<number>(0)
     const diffTokenRef = React.useRef<number>(0)
@@ -502,6 +503,53 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       }))
     }
 
+    /** Load the local branch insight (works without provider network). */
+    const loadBranchCompare = async (repositoryId: string): Promise<void> => {
+      const token = ++compareTokenRef.current
+      setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, compareLoading: true, compareError: null } }))
+      const result = await deps.api.branchCompare({ repositoryId })
+      if (!aliveRef.current || token !== compareTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, compareLoading: false, compareError: result.error } }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pullRequests: { ...prev.pullRequests, compareLoading: false, compareError: null, compare: result.value },
+      }))
+    }
+
+    /** Validate the typed path and add it as a repository (outside workspaces). */
+    const submitAddRepository = async (): Promise<void> => {
+      const path = stateRef.current.addRepository.path.trim()
+      if (path === '') return
+      setState((prev) => ({ ...prev, addRepository: { ...prev.addRepository, loading: true, error: null } }))
+      const result = await deps.api.addRepository(path)
+      if (!aliveRef.current) return
+      if (!result.ok) {
+        setState((prev) => ({
+          ...prev,
+          addRepository: { ...prev.addRepository, loading: false, error: result.error },
+        }))
+        return
+      }
+      const added = result.value
+      setState((prev) => ({
+        ...prev,
+        addRepository: { open: false, path: '', loading: false, error: null },
+        selectedRepositoryId: added.id,
+        selectedFilePath: null,
+        expandedDirs: {},
+        timeline: createTimelineSlice(),
+        changeSet: createChangeSetSlice(),
+        diff: createDiffSlice(),
+        audit: createAuditSlice(),
+        pullRequests: createPullRequestSlice(),
+      }))
+      void reloadRepositories()
+    }
+
     /** Copy the current diff text, when the platform allows it. */
     const copyDiff = async (): Promise<void> => {
       const text = stateRef.current.diff.data?.text ?? ''
@@ -683,32 +731,43 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       if (element === null || typeof window === 'undefined') return undefined
       const scroller = element.closest('[data-conversation-scroll]')
       if (!(scroller instanceof HTMLElement)) return undefined
-      const observed: Element[] = [scroller, ...Array.from(scroller.children)]
+      // The Conversation View replaces the chat: the composer seat and any
+      // other sibling of our area are hidden while this view is mounted, and
+      // restored verbatim on unmount (switching back to 对话).
+      const hidden: Array<{ node: HTMLElement; display: string }> = []
+      const hideSiblings = (): void => {
+        for (const child of Array.from(scroller.children)) {
+          if (!(child instanceof HTMLElement)) continue
+          if (child === element || child.contains(element)) continue
+          if (child.dataset.dvtHidden === '1') continue
+          hidden.push({ node: child, display: child.style.display })
+          child.dataset.dvtHidden = '1'
+          child.style.display = 'none'
+        }
+      }
       const update = (): void => {
+        hideSiblings()
         const scrollerRect = scroller.getBoundingClientRect()
         const elementRect = element.getBoundingClientRect()
-        // Sibling "seats" (the composer) below the view area are not part of
-        // the panel; fixed/absolute siblings report a box but no flow space.
-        let reserved = 0
-        for (const child of Array.from(scroller.children)) {
-          if (child.contains(element)) continue
-          if (child.getBoundingClientRect().height <= 0) continue
-          const position = window.getComputedStyle(child).position
-          if (position === 'absolute' || position === 'fixed') continue
-          reserved += child.getBoundingClientRect().height
-        }
         const offset = Math.max(0, elementRect.top - scrollerRect.top)
-        const available = Math.max(240, Math.floor(scroller.clientHeight - offset - reserved))
+        const available = Math.max(240, Math.floor(scroller.clientHeight - offset))
         element.style.height = `${available}px`
       }
       update()
       const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { update() }) : null
-      if (observer !== null) for (const target of observed) observer.observe(target)
+      observer?.observe(scroller)
+      const mutations = typeof MutationObserver === 'function' ? new MutationObserver(() => { update() }) : null
+      mutations?.observe(scroller, { childList: true })
       window.addEventListener('resize', update)
       return () => {
         observer?.disconnect()
+        mutations?.disconnect()
         window.removeEventListener('resize', update)
         element.style.height = ''
+        for (const entry of hidden) {
+          entry.node.style.display = entry.display
+          delete entry.node.dataset.dvtHidden
+        }
       }
     }, [])
 
@@ -748,6 +807,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       const repositoryId = state.selectedRepositoryId
       if (repositoryId === null || state.source !== 'pr') return
       void loadPullRequests(repositoryId, false)
+      void loadBranchCompare(repositoryId)
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [state.selectedRepositoryId, state.source, state.pullRequests.refreshTick])
 
@@ -822,6 +882,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           ...prev,
           menuOpen: false,
           source,
+          selectedFilePath: null,
           changeSet: createChangeSetSlice(),
           diff: createDiffSlice(),
           audit: { ...prev.audit, selected: null },
@@ -840,6 +901,22 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         if (repositoryId === null) return
         void loadPullRequestDetail(repositoryId, number)
       },
+      onOpenFileRevision: (revision: string) => {
+        const path = stateRef.current.selectedFilePath
+        if (path === null || path === '') return
+        void openDiff(path, revision)
+      },
+      onToggleAddRepository: () => setState((prev) => ({
+        ...prev,
+        addRepository: prev.addRepository.open
+          ? { ...prev.addRepository, open: false, error: null }
+          : { ...prev.addRepository, open: true, error: null },
+      })),
+      onAddRepositoryPathChange: (path: string) => setState((prev) => ({
+        ...prev,
+        addRepository: { ...prev.addRepository, path },
+      })),
+      onAddRepositorySubmit: () => { void submitAddRepository() },
       onClosePullRequest: () => setState((prev) => ({
         ...prev,
         pullRequests: { ...prev.pullRequests, selectedNumber: null, detail: null, detailError: null, detailLoading: false },
@@ -1012,6 +1089,28 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       onCloseWriteMenu: () => setState((prev) => (prev.menuOpen ? { ...prev, menuOpen: false } : prev)),
       onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
     }
+
+    // Cheap keyboard navigation: Alt+1/2/3 switch source, Alt+R refreshes.
+    const handlersRef = React.useRef(handlers)
+    handlersRef.current = handlers
+    React.useEffect(() => {
+      if (typeof document === 'undefined') return undefined
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+        const current = handlersRef.current
+        if (event.key === '1' || event.key === '2' || event.key === '3') {
+          event.preventDefault()
+          current.onSetSource(event.key === '1' ? 'timeline' : event.key === '2' ? 'pr' : 'audit')
+          return
+        }
+        if (event.key.toLowerCase() === 'r') {
+          event.preventDefault()
+          current.onRefreshRepositories()
+        }
+      }
+      document.addEventListener('keydown', onKeyDown)
+      return () => document.removeEventListener('keydown', onKeyDown)
+    }, [])
 
     return renderPanelView({ state, deps, handlers, rootRef })
   }

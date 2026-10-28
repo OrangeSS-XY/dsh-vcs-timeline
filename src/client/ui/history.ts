@@ -274,19 +274,23 @@ export function renderHistory(
     })
   }
   if (repository === null) {
+    const actions = h(React.Fragment, null,
+      h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm dvt-btn-primary', onClick: handlers.onToggleAddRepository }, t('addRepo.title')),
+      h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.refresh')),
+    )
     if (state.noWorkspace) {
       return h(EmptyState, {
         icon: IconRepo,
         title: t('state.noWorkspace.title'),
         hint: t('state.noWorkspace.hint'),
-        actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.refresh')),
+        actions,
       })
     }
     return h(EmptyState, {
       icon: IconRepo,
       title: t('state.noRepositories.title'),
       hint: t('state.noRepositories.hint'),
-      actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.refresh')),
+      actions,
     })
   }
   const tool = missingTool(state, repository)
@@ -295,7 +299,7 @@ export function renderHistory(
       icon: IconError,
       tone: 'error',
       title: t('state.missingTool', { vcs: tool === 'git' ? 'Git' : 'SVN', tool: tool === 'git' ? 'Git' : 'SVN' }),
-      hint: t('error.vcs-not-installed'),
+      hint: tool === 'svn' ? t('addRepo.svnHint') : t('error.vcs-not-installed'),
       actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.retry')),
     })
   }

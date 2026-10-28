@@ -10,6 +10,7 @@
 
 import type {
   ApiError,
+  BranchCompare,
   ChangeSet,
   Diagnostics,
   DiffResult,
@@ -108,8 +109,21 @@ export interface PullRequestSlice {
   detail: PullRequestDetail | null
   detailLoading: boolean
   detailError: ApiError | null
+  /** Local branch insight (works without any provider network/credentials). */
+  compare: BranchCompare | null
+  compareLoading: boolean
+  compareError: ApiError | null
   /** Bumped by the refresh control. */
   refreshTick: number
+}
+
+/** State of the manual "add repository" dialog. */
+export interface AddRepositoryState {
+  open: boolean
+  /** Path typed by the user (repository root or a directory inside it). */
+  path: string
+  loading: boolean
+  error: ApiError | null
 }
 
 /** Lifecycle of the write-operation confirmation dialog. */
@@ -162,6 +176,8 @@ export interface PanelState {
   menuOpen: boolean
   /** The collapsible diagnostics block above the status bar is open. */
   diagnosticsOpen: boolean
+  /** Manual repository addition (needed for checkouts outside DSH workspaces). */
+  addRepository: AddRepositoryState
 }
 
 /** Every user intent the views can raise. */
@@ -202,6 +218,14 @@ export interface PanelHandlers {
   onRefreshPullRequests(): void
   /** Open one pull request's detail in the detail pane. */
   onSelectPullRequest(number: number): void
+  /** Show the newest/another commit's diff for the selected file. */
+  onOpenFileRevision(revision: string): void
+  /** Open/close the manual add-repository dialog. */
+  onToggleAddRepository(): void
+  /** Update the typed repository path. */
+  onAddRepositoryPathChange(path: string): void
+  /** Validate and add the typed repository path. */
+  onAddRepositorySubmit(): void
   /** Close the pull-request detail pane. */
   onClosePullRequest(): void
   /** Change the audit lifecycle filter. */
@@ -301,8 +325,16 @@ export function createPullRequestSlice(): PullRequestSlice {
     detail: null,
     detailLoading: false,
     detailError: null,
+    compare: null,
+    compareLoading: false,
+    compareError: null,
     refreshTick: 0,
   }
+}
+
+/** Empty add-repository dialog state. */
+export function createAddRepositoryState(): AddRepositoryState {
+  return { open: false, path: '', loading: false, error: null }
 }
 
 /** Fully empty panel state; tests start from here and override slices. */
@@ -343,6 +375,7 @@ export function createInitialState(): PanelState {
     copied: false,
     menuOpen: false,
     diagnosticsOpen: false,
+    addRepository: createAddRepositoryState(),
   }
 }
 
@@ -378,6 +411,10 @@ export function createNoopHandlers(): PanelHandlers {
     onRefreshPullRequests: noop,
     onSelectPullRequest: noop,
     onClosePullRequest: noop,
+    onOpenFileRevision: noop,
+    onToggleAddRepository: noop,
+    onAddRepositoryPathChange: noop,
+    onAddRepositorySubmit: noop,
     onSetAuditState: noop,
     onOpenOperation: noop,
     onBackFromAuditDetail: noop,

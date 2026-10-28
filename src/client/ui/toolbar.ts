@@ -127,6 +127,24 @@ function WriteMenu(props: {
       ),
       )),
     ]),
+    h('div', { key: 'sep-repo', className: 'dvt-menu-sep' }),
+    h('div', { key: 'group-repo', className: 'dvt-menu-group' }, t('addRepo.menuGroup')),
+    h('button', {
+      key: 'add-repo',
+      type: 'button',
+      role: 'menuitem',
+      className: 'dvt-menu-item',
+      onClick: () => {
+        handlers.onCloseWriteMenu()
+        handlers.onToggleAddRepository()
+      },
+    },
+    h('span', { className: 'dvt-menu-icon' }, h(IconRepo, { size: 12 })),
+    h('span', { className: 'dvt-menu-labels' },
+      h('span', { className: 'dvt-menu-label' }, t('addRepo.title')),
+      h('span', { className: 'dvt-menu-hint' }, t('addRepo.menuHint')),
+    ),
+    ),
   )
 }
 
@@ -252,6 +270,11 @@ export function renderChrome(
       h(BranchChip, { repository, t }),
       h('span', { className: 'dvt-toolbar-actions' },
         h(IconButton, {
+          label: t('addRepo.title'),
+          icon: IconRepo,
+          onClick: handlers.onToggleAddRepository,
+        }),
+        h(IconButton, {
           label: t('aria.refresh'),
           icon: IconRefresh,
           disabled: state.boot === 'loading',
@@ -273,6 +296,7 @@ export function renderChrome(
     menuOpen && repository !== null
       ? h(WriteMenu, { repository, handlers, t })
       : null,
+
     h(SourceTabs, { state, handlers, t }),
     state.source === 'timeline' ? h(FilterBar, { state, handlers, t }) : null,
     state.boot === 'error' && state.repositories.length > 0 && state.bootError !== null

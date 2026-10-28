@@ -16,6 +16,7 @@ import {
   isDiagnostics,
   isOperationAttempt,
   isOperationPage,
+  isBranchCompare,
   isPullRequestDetail,
   isPullRequestList,
   isRepository,
@@ -34,6 +35,8 @@ import type {
   OperationPreview,
   OperationQuery,
   OperationRequest,
+  BranchCompare,
+  BranchCompareQuery,
   PullRequestDetail,
   PullRequestDetailQuery,
   PullRequestList,
@@ -65,6 +68,7 @@ export type ApiResult<T> =
 export interface VcsClient {
   diagnostics(): Promise<ApiResult<Diagnostics>>
   listRepositories(workspacePath: string | null): Promise<ApiResult<RepositoryList>>
+  addRepository(path: string): Promise<ApiResult<Repository>>
   repository(repositoryId: string): Promise<ApiResult<Repository>>
   timeline(query: TimelineQuery): Promise<ApiResult<TimelinePage>>
   changeSet(repositoryId: string, revision: string): Promise<ApiResult<ChangeSet>>
@@ -76,6 +80,7 @@ export interface VcsClient {
   getOperation(operationId: string): Promise<ApiResult<OperationAttempt>>
   listPullRequests(query: PullRequestQuery): Promise<ApiResult<PullRequestList>>
   pullRequestDetail(query: PullRequestDetailQuery): Promise<ApiResult<PullRequestDetail>>
+  branchCompare(query: BranchCompareQuery): Promise<ApiResult<BranchCompare>>
 }
 
 /** Stable codes the Host may return; anything else is folded into `internal`. */
@@ -202,6 +207,11 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
       isRepositoryList,
     ),
 
+    addRepository: (path) => guarded(
+      post(fetchImpl, 'vcs/repos/add', { path }),
+      isRepository,
+    ),
+
     repository: (repositoryId) => guarded(
       post(fetchImpl, 'vcs/repository', { repositoryId }),
       isRepository,
@@ -255,6 +265,11 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
     pullRequestDetail: (query) => guarded(
       post(fetchImpl, 'vcs/pr/detail', { ...query }),
       isPullRequestDetail,
+    ),
+
+    branchCompare: (query) => guarded(
+      post(fetchImpl, 'vcs/branch/compare', { ...query }),
+      isBranchCompare,
     ),
   }
 }

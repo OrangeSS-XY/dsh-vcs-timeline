@@ -669,6 +669,91 @@ export const STYLES = `
   color: inherit; font-size: 11px; cursor: pointer;
 }
 
+/* ---------- file view: tree | diff | activity ---------- */
+.dvt-file-split { align-items: stretch; }
+.dvt-file-diffpane { flex: 1 1 auto; min-width: 0; }
+.dvt-file-diff-empty { padding: 18px; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.dvt-fileinfo {
+  flex: 0 0 auto; width: clamp(250px, 23%, 340px); min-width: 0;
+  display: flex; flex-direction: column; min-height: 0; overflow-y: auto;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dvt-fileinfo-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.dvt-fileinfo-title { flex: 1 1 auto; min-width: 0; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary); }
+.dvt-fileinfo-path { display: flex; align-items: center; gap: 6px; padding: 7px 10px 3px; min-width: 0; }
+.dvt-fileinfo-name { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dvt-fileinfo-dirty { flex: 0 0 auto; padding: 0 4px; height: 15px; line-height: 15px; border-radius: 3px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-state-warn-primary); font-size: 9px; font-weight: 600; }
+.dvt-fileinfo-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 10px 7px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.dvt-fileinfo-latest { color: var(--dsw-alias-label-secondary); }
+.dvt-fileinfo-lines { display: inline-flex; gap: 5px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.dvt-fileinfo-section { padding: 6px 10px 4px; font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary); border-top: 1px solid var(--dsw-alias-border-l1); }
+.dvt-fileinfo-empty { padding: 4px 10px 8px; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-author-list { margin: 0; padding: 0 8px 6px; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.dvt-author-row-item { display: flex; align-items: center; gap: 6px; min-width: 0; height: 20px; }
+.dvt-author-row-item .dvt-tl-avatar { width: 15px; height: 15px; font-size: 8px; }
+.dvt-author-name { flex: 0 1 auto; max-width: 96px; font-size: 10.5px; color: var(--dsw-alias-label-secondary); }
+.dvt-author-bar { flex: 1 1 auto; min-width: 24px; height: 5px; border-radius: 3px; background: var(--dsw-alias-bg-layer-2); overflow: hidden; }
+.dvt-author-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--dsw-alias-brand-primary); opacity: .55; }
+.dvt-author-count { flex: 0 0 auto; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.dvt-fileinfo-commits { margin: 0; padding: 0 6px 4px; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.dvt-fileinfo-commit-btn {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 4px 5px;
+  border: 0; border-radius: 3px; background: transparent; text-align: left; cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+}
+.dvt-fileinfo-commit-btn:hover { background: var(--dsw-alias-interactive-hover); }
+.dvt-fileinfo-commit-active { background: var(--dsw-alias-interactive-selected); box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary); }
+.dvt-fileinfo-commit-top { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-fileinfo-commit-author { flex: 0 1 auto; max-width: 90px; color: var(--dsw-alias-label-secondary); }
+.dvt-fileinfo-commit-time { flex: 0 0 auto; }
+.dvt-fileinfo-commit-hash { flex: 0 0 auto; margin-left: auto; }
+.dvt-fileinfo-commit-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10.5px; color: var(--dsw-alias-label-primary); }
+.dvt-fileinfo-commit-stats { display: inline-flex; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+.dvt-fileinfo-more { padding: 0 10px 6px; font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-fileinfo-related { padding: 0 10px 10px; }
+
+/* ---------- local branch insight (offline PR fallback) ---------- */
+.dvt-local-strip {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-width: 0;
+  height: 28px; padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1); font-size: 10px; color: var(--dsw-alias-label-tertiary);
+}
+.dvt-local-strip-label { flex: 0 0 auto; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.dvt-local-strip .dvt-local-branches { flex: 0 1 auto; }
+.dvt-local-chips { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
+.dvt-local-chip { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 3px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font-size: 9.5px; white-space: nowrap; }
+.dvt-local-chip-muted { color: var(--dsw-alias-label-tertiary); }
+.dvt-local-chip-warn { color: var(--dsw-alias-state-error-primary); }
+.dvt-local-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.dvt-local-refresh { margin-left: auto; }
+.dvt-local-insight {
+  margin: 8px 10px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1); overflow: hidden;
+}
+.dvt-local-insight-loading { padding: 8px 10px; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-local-insight-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px 4px; }
+.dvt-local-title { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dvt-local-branches { font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.dvt-local-hint { padding: 0 10px 6px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.dvt-local-insight .dvt-local-chips { padding: 0 10px 6px; }
+.dvt-local-insight .dvt-local-actions { padding: 0 10px 7px; flex-wrap: wrap; }
+.dvt-local-empty { padding: 2px 10px 8px; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.dvt-local-commits { margin: 0; padding: 0 6px 6px; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.dvt-local-commit { display: flex; align-items: center; gap: 6px; min-width: 0; height: 20px; padding: 0 4px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.dvt-local-commit-summary { flex: 1 1 auto; min-width: 0; }
+.dvt-local-commit-author { flex: 0 0 auto; max-width: 90px; color: var(--dsw-alias-label-tertiary); }
+.dvt-local-commit-time { flex: 0 0 auto; color: var(--dsw-alias-label-tertiary); }
+.dvt-local-foot { display: flex; justify-content: flex-end; padding: 0 10px 8px; }
+
+/* ---------- add repository dialog ---------- */
+.dvt-addrepo-input { width: 100%; margin-top: 3px; }
+.dvt-addrepo .dvt-dialog-title { display: inline-flex; align-items: center; gap: 5px; }
+
 /* ---------- wide-view sizing ----------
    The view fills the conversation area (a Conversation View tab), so the
    panel is wide; keep the search field and the tree a control, not a banner. */

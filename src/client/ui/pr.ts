@@ -153,6 +153,106 @@ function AuthHint(props: { deps: PanelDeps }): React.ReactElement {
   )
 }
 
+/** Relative-age label for PR/local rows. */
+export function relativeLabel(iso: string, deps: PanelDeps): string {
+  const relative = F.relativeTime(iso, Date.now())
+  if (relative === null) return F.formatCompactTime(iso, deps.locale)
+  const { t } = deps
+  switch (relative.unit) {
+    case 'justNow': return t('rel.justNow')
+    case 'minutes': return t('rel.minutesAgo', { count: relative.count })
+    case 'hours': return t('rel.hoursAgo', { count: relative.count })
+    default: return t('rel.daysAgo', { count: relative.count })
+  }
+}
+
+/**
+ * Local branch insight: what the current branch carries relative to its base,
+ * computed with git only. Shown as a compact strip beside a real PR list and as
+ * the full panel whenever the provider cannot be reached or has no PRs.
+ */
+export function renderLocalInsight(
+  state: PanelState,
+  deps: PanelDeps,
+  handlers: PanelHandlers,
+  compact: boolean,
+): React.ReactElement | null {
+  const { t } = deps
+  const slice = state.pullRequests
+  const compare = slice.compare
+  if (compare === null) {
+    if (!slice.compareLoading) return null
+    return h('div', { className: 'dvt-local-insight dvt-local-insight-loading' }, t('pr.local.loading'))
+  }
+  if (!compare.available) {
+    return h('div', { className: 'dvt-local-insight' },
+      h('div', { className: 'dvt-local-insight-head' }, t('pr.local.title')),
+      h('div', { className: 'dvt-local-hint' }, t('pr.local.unavailable', { reason: compare.unsupportedReason ?? '' })),
+    )
+  }
+  const chips: React.ReactElement[] = []
+  chips.push(h('span', { key: 'ahead', className: 'dvt-local-chip' }, t('pr.local.ahead', { count: compare.ahead })))
+  chips.push(h('span', { key: 'behind', className: 'dvt-local-chip' }, t('pr.local.behind', { count: compare.behind })))
+  chips.push(compare.unpushed === null
+    ? h('span', { key: 'upstream', className: 'dvt-local-chip dvt-local-chip-muted' }, t('pr.local.noUpstream'))
+    : h('span', { key: 'unpushed', className: 'dvt-local-chip' }, t('pr.local.unpushed', { count: compare.unpushed })))
+  chips.push(h('span', { key: 'files', className: 'dvt-local-chip' }, t('pr.local.files', { count: compare.filesChanged })))
+  if (compare.conflictPaths !== null && compare.conflictPaths.length > 0) {
+    chips.push(h('span', { key: 'conflicts', className: 'dvt-local-chip dvt-local-chip-warn' },
+      t('pr.local.conflicts', { count: compare.conflictPaths.length })))
+  }
+  const actionNodes = compare.actions.map((action) => h('span', {
+    key: action.kind + ':' + action.reason,
+    className: 'dvt-pr-action dvt-pr-action-' + action.kind,
+    title: actionReason(action, t),
+  }, actionLabel(action.kind, t)))
+  const branchLine = compare.currentBranch === null || compare.baseBranch === null
+    ? null
+    : h('span', { className: 'dvt-local-branches dvt-mono' },
+      t('pr.local.currentToBase', { current: compare.currentBranch, base: compare.baseBranch }))
+
+  if (compact) {
+    return h('div', { className: 'dvt-local-strip', title: t('pr.local.hint') },
+      h('span', { className: 'dvt-local-strip-label' }, t('pr.local.title')),
+      branchLine,
+      h('span', { className: 'dvt-local-chips' }, chips),
+      h('span', { className: 'dvt-local-actions' }, actionNodes),
+      h('button', {
+        type: 'button',
+        className: 'dvt-iconbtn dvt-local-refresh',
+        'aria-label': t('pr.refresh'),
+        title: t('pr.refresh'),
+        onClick: handlers.onRefreshPullRequests,
+      }, '⟳'),
+    )
+  }
+
+  return h('div', { className: 'dvt-local-insight' },
+    h('div', { className: 'dvt-local-insight-head' },
+      h('span', { className: 'dvt-local-title' }, t('pr.local.title')),
+      branchLine,
+    ),
+    h('div', { className: 'dvt-local-hint' }, t('pr.local.hint')),
+    h('div', { className: 'dvt-local-chips' }, chips),
+    actionNodes.length === 0 ? null : h('div', { className: 'dvt-local-actions' }, actionNodes),
+    compare.commits.length === 0
+      ? h('div', { className: 'dvt-local-empty' }, t('pr.local.empty'))
+      : h('ul', { className: 'dvt-local-commits' },
+        compare.commits.map((commit) => h('li', { key: commit.hash, className: 'dvt-local-commit' },
+          h('span', { className: 'dvt-fileinfo-commit-hash dvt-mono' }, F.shortHash(commit.hash, 7)),
+          h('span', { className: 'dvt-local-commit-summary dvt-clip', title: commit.summary }, F.truncate(commit.summary, 70)),
+          h('span', { className: 'dvt-local-commit-author dvt-clip' },
+            commit.author === undefined || commit.author === '' ? t('common.unknown') : commit.author,
+          ),
+          h('span', { className: 'dvt-local-commit-time' }, relativeLabel(commit.timestamp, deps)),
+        )),
+      ),
+    h('div', { className: 'dvt-local-foot' },
+      h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('pr.refresh')),
+    ),
+  )
+}
+
 /** The pull-request list body. */
 export function renderPullRequests(
   state: PanelState,
@@ -175,37 +275,54 @@ export function renderPullRequests(
   if (repository === null) {
     return h(EmptyState, { icon: IconPr, title: t('state.noRepositories.title'), hint: t('state.noRepositories.hint') })
   }
-  if (slice.loading && slice.data === null) return h(SkeletonRows, { rows: 5 })
+  if (slice.loading && slice.data === null) {
+    return h('div', { className: 'dvt-col dvt-pr-view' },
+      h(SkeletonRows, { rows: 4 }),
+      renderLocalInsight(state, deps, handlers, false),
+    )
+  }
   if (slice.error !== null) {
     const code = slice.error.code
-    return h('div', { className: 'dvt-col dvt-pr-empty' },
+    const title = code === 'auth-required'
+      ? t('pr.auth.title')
+      : code === 'unsupported-remote'
+        ? t('pr.unsupported')
+        : code === 'rate-limited'
+          ? t('pr.rateLimited')
+          : code === 'network-unknown'
+            ? t('pr.networkError')
+            : code === 'internal'
+              ? t('pr.hostOutdated.title')
+              : t('state.error.title')
+    const hint = code === 'auth-required'
+      ? t('pr.auth.hint')
+      : code === 'unsupported-remote'
+        ? t('pr.unsupported.hint')
+        : code === 'rate-limited'
+          ? t('pr.rateLimited.hint')
+          : code === 'network-unknown'
+            ? t('pr.networkError.hint')
+            : code === 'internal'
+              ? t('pr.hostOutdated.hint')
+              : errorText(slice.error, t)
+    return h('div', { className: 'dvt-col dvt-pr-view' },
       h(EmptyState, {
         icon: code === 'auth-required' || code === 'unsupported-remote' ? IconPr : IconError,
         tone: code === 'unsupported-remote' ? 'warn' : 'error',
-        title: code === 'auth-required'
-          ? t('pr.auth.title')
-          : code === 'unsupported-remote'
-            ? t('pr.unsupported')
-            : code === 'rate-limited'
-              ? t('pr.rateLimited')
-              : code === 'network-unknown'
-                ? t('pr.networkError')
-                : t('state.error.title'),
-        hint: code === 'auth-required'
-          ? t('pr.auth.hint')
-          : code === 'unsupported-remote'
-            ? t('pr.unsupported.hint')
-            : code === 'rate-limited'
-              ? t('pr.rateLimited.hint')
-              : code === 'network-unknown'
-                ? t('pr.networkError.hint')
-                : errorText(slice.error, t),
+        title,
+        hint,
         actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('common.retry')),
       }),
+      code === 'auth-required' ? h(AuthHint, { deps }) : null,
+      renderLocalInsight(state, deps, handlers, false),
     )
   }
   const data = slice.data
-  if (data === null) return h(SkeletonRows, { rows: 5 })
+  if (data === null) {
+    return h('div', { className: 'dvt-col dvt-pr-view' },
+      renderLocalInsight(state, deps, handlers, false) ?? h(SkeletonRows, { rows: 5 }),
+    )
+  }
   const mine = data.pullRequests.filter((pr) => needsAttention(pr.actions))
   const others = data.pullRequests.filter((pr) => !needsAttention(pr.actions))
   const selected = slice.selectedNumber
@@ -246,15 +363,21 @@ export function renderPullRequests(
       ? h(Banner, { kind: 'warn', title: t('state.partial.title'), text: (data.warnings ?? []).join('; ') || t('pr.detail.partial') })
       : null,
     data.pullRequests.length === 0
-      ? h(EmptyState, {
-        icon: IconPr,
-        title: t('pr.empty'),
-        hint: t('pr.empty.hint'),
-        actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('common.retry')),
-      })
-      : h('div', { className: 'dvt-pr-sections' },
-        mine.length > 0 ? section(t('pr.section.mine'), mine) : null,
-        others.length > 0 ? section(t('pr.section.others'), others) : null,
+      ? h('div', { className: 'dvt-col dvt-pr-empty' },
+        h(EmptyState, {
+          icon: IconPr,
+          title: t('pr.empty'),
+          hint: t('pr.empty.hint'),
+          actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('common.retry')),
+        }),
+        renderLocalInsight(state, deps, handlers, false),
+      )
+      : h('div', { className: 'dvt-col' },
+        renderLocalInsight(state, deps, handlers, true),
+        h('div', { className: 'dvt-pr-sections' },
+          mine.length > 0 ? section(t('pr.section.mine'), mine) : null,
+          others.length > 0 ? section(t('pr.section.others'), others) : null,
+        ),
       ),
     !data.authenticated ? h(AuthHint, { deps }) : null,
   )

@@ -375,6 +375,10 @@ export type PullRequestActionKind =
   | 'merge'
   | 'fix-ci'
   | 'fix-conflicts'
+  | 'push'
+  | 'create-pr'
+  | 'pull'
+  | 'sync'
   | 'wait'
   | 'unknown'
 
@@ -475,6 +479,54 @@ export interface PullRequestDetailQuery {
   number: number
 }
 
+/** One commit of the local branch insight (newest first). */
+export interface BranchCompareCommit {
+  hash: string
+  summary: string
+  author?: string
+  timestamp: string
+}
+
+/** Input of one local branch-insight request. */
+export interface BranchCompareQuery {
+  repositoryId: string
+  /** Base/target branch; defaults to the repository's default/main branch. */
+  baseBranch?: string
+}
+
+/**
+ * Local branch insight: what the current branch still carries relative to its
+ * base/target. It is computed with git only (no provider API), so the PR tab
+ * still says something useful when the remote is unreachable or unconfigured.
+ */
+export interface BranchCompare {
+  repositoryId: string
+  vcsType: VcsType
+  currentBranch: string | null
+  baseBranch: string | null
+  /** False when this VCS/repo cannot be compared locally (e.g. SVN branches). */
+  available: boolean
+  /** Why the local comparison is unavailable, when it is. */
+  unsupportedReason?: string
+  /** Commits on the current branch that the base branch does not contain. */
+  ahead: number
+  /** Commits on the base branch that the current branch does not contain. */
+  behind: number
+  commits: BranchCompareCommit[]
+  filesChanged: number
+  additions?: number
+  deletions?: number
+  /** Paths both sides changed (potential conflicts); null when unknown. */
+  conflictPaths: string[] | null
+  /** Commits ahead of the configured upstream; null when no upstream exists. */
+  unpushed: number | null
+  hasUpstream: boolean
+  /** Suggested local next steps (push / create-pr / pull / sync / wait). */
+  actions: PullRequestAction[]
+  warnings?: string[]
+  computedAt: string
+}
+
 /** State read before a write operation, used for preview and audit. */
 export interface OperationBeforeState {
   branch?: string
@@ -529,6 +581,7 @@ export interface VcsApi {
   getOperation(operationId: string): Promise<OperationAttempt>
   listPullRequests(query: PullRequestQuery): Promise<PullRequestList>
   pullRequestDetail(query: PullRequestDetailQuery): Promise<PullRequestDetail>
+  branchCompare(query: BranchCompareQuery): Promise<BranchCompare>
 }
 
 /** Largest pull-request page the Host will serve. */
@@ -627,6 +680,17 @@ export function isPullRequestList(value: unknown): value is PullRequestList {
     && (record.provider === 'github' || record.provider === 'gitlab' || record.provider === 'unknown')
     && Array.isArray(record.pullRequests)
     && typeof record.fetchedAt === 'string'
+}
+
+/** Runtime guard for {@link BranchCompare}. */
+export function isBranchCompare(value: unknown): value is BranchCompare {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.repositoryId === 'string'
+    && typeof record.ahead === 'number'
+    && typeof record.behind === 'number'
+    && Array.isArray(record.commits)
+    && typeof record.available === 'boolean'
 }
 
 /** Runtime guard for {@link PullRequestDetail}. */

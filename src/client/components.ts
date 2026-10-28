@@ -18,9 +18,11 @@ import { buildTimelineView } from './file-index.ts'
 import { computeGraph } from './graph.ts'
 import { STYLES } from './styles.ts'
 import type { PanelViewProps } from './types.ts'
+import { renderAddRepositoryDialog } from './ui/addrepo.ts'
 import { auditDetailBody, auditDetailHeader, renderAuditList } from './ui/audit.ts'
 import { commitDetailBody, commitDetailHeader, diffBody, diffHeader } from './ui/detail.ts'
 import { renderDialog } from './ui/dialog.ts'
+import { renderFileInfo } from './ui/fileinfo.ts'
 import { renderFileTree } from './ui/filetree.ts'
 import { renderHistory } from './ui/history.ts'
 import { prDetailBody, prDetailHeader, renderPullRequests } from './ui/pr.ts'
@@ -82,13 +84,33 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     list = renderHistory(state, deps, handlers, view, graph)
   }
 
+  // File view: tree | diff | operation info. The diff is the primary surface
+  // and the info column answers "who touched it, when, how much" beside it.
+  const fileMode = !audit && !pr && state.selectedFilePath !== null
   const pane = renderPane(list, detail)
-  const bodyElement = audit || pr
-    ? pane
-    : h('div', { key: 'split', className: 'dvt-split' },
+  let bodyElement: React.ReactElement
+  if (audit || pr) {
+    bodyElement = pane
+  } else if (fileMode) {
+    const diffPane = h('div', { key: 'diffpane', className: 'dvt-pane dvt-file-diffpane' },
+      detail === null
+        ? h('div', { key: 'empty', className: 'dvt-file-diff-empty' }, deps.t('file.info.pickDiff'))
+        : [
+          h('div', { key: 'head', className: 'dvt-pinned' }, detail.header),
+          h('div', { key: 'body', className: 'dvt-scroll' }, detail.body),
+        ],
+    )
+    bodyElement = h('div', { key: 'split', className: 'dvt-split dvt-file-split' },
+      renderFileTree(state, deps, handlers, view),
+      diffPane,
+      renderFileInfo(state, deps, handlers, view),
+    )
+  } else {
+    bodyElement = h('div', { key: 'split', className: 'dvt-split' },
       renderFileTree(state, deps, handlers, view),
       pane,
     )
+  }
 
   return h('div', {
     className: 'dvt-root',
@@ -102,5 +124,6 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
   renderDiagnostics(state, deps),
   renderStatusBar(state, deps, handlers),
   renderDialog(state, deps, handlers),
+  renderAddRepositoryDialog(state, deps, handlers),
   )
 }
