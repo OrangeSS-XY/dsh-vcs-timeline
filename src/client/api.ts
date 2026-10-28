@@ -16,6 +16,8 @@ import {
   isDiagnostics,
   isOperationAttempt,
   isOperationPage,
+  isPullRequestDetail,
+  isPullRequestList,
   isRepository,
   isTimelinePage,
   isWorkingTreeStatus,
@@ -32,6 +34,10 @@ import type {
   OperationPreview,
   OperationQuery,
   OperationRequest,
+  PullRequestDetail,
+  PullRequestDetailQuery,
+  PullRequestList,
+  PullRequestQuery,
   Repository,
   RepositoryList,
   TimelinePage,
@@ -68,6 +74,8 @@ export interface VcsClient {
   executeOperation(request: OperationRequest): Promise<ApiResult<OperationAttempt>>
   listOperations(query: OperationQuery): Promise<ApiResult<OperationPage>>
   getOperation(operationId: string): Promise<ApiResult<OperationAttempt>>
+  listPullRequests(query: PullRequestQuery): Promise<ApiResult<PullRequestList>>
+  pullRequestDetail(query: PullRequestDetailQuery): Promise<ApiResult<PullRequestDetail>>
 }
 
 /** Stable codes the Host may return; anything else is folded into `internal`. */
@@ -86,6 +94,9 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
   'confirmation-invalid',
   'storage-failure',
   'network-unknown',
+  'unsupported-remote',
+  'auth-required',
+  'rate-limited',
   'internal',
 ])
 
@@ -234,6 +245,16 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
     getOperation: (operationId) => guarded(
       post(fetchImpl, 'vcs/op/get', { operationId }),
       isOperationAttempt,
+    ),
+
+    listPullRequests: (query) => guarded(
+      post(fetchImpl, 'vcs/pr/list', { ...query }),
+      isPullRequestList,
+    ),
+
+    pullRequestDetail: (query) => guarded(
+      post(fetchImpl, 'vcs/pr/detail', { ...query }),
+      isPullRequestDetail,
     ),
   }
 }

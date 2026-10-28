@@ -192,6 +192,16 @@ export const IconAudit = icon('audit', [
   h('path', { key: 'b', d: 'M5.8 7.8 7.4 9.4l3-3.2' }),
 ])
 
+/** Pull-request glyph: two branches joined by a merge arrow. */
+export const IconPr = icon('pull-request', [
+  h('circle', { key: 'a', cx: 4.2, cy: 3.6, r: 1.6 }),
+  h('circle', { key: 'b', cx: 4.2, cy: 12.4, r: 1.6 }),
+  h('path', { key: 'c', d: 'M4.2 5.2v5.6' }),
+  h('circle', { key: 'd', cx: 11.4, cy: 4.2, r: 1.6 }),
+  h('path', { key: 'e', d: 'M11.4 5.8v1.6c0 2.2-1.6 2.6-4.2 3.4' }),
+  h('path', { key: 'f', d: 'M9.6 9.4l2.2 1.2-2.2 1.2' }),
+])
+
 /** Download (fetch/pull/update). */
 export const IconDownload = icon('download', [
   h('path', { key: 'a', d: 'M8 2.6v7.2' }),

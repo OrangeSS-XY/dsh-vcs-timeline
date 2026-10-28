@@ -20,6 +20,11 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
 | 手动添加仓库（校验 VCS 元数据与路径） | implemented / desktop-verified |
 | 对话区页签入口（与 对话/轨迹/上下文/编队 同排，`conversation.view`） | implemented / desktop-verified |
 | IDEA 风格提交时间线（竖轴 + 节点、日期分组、作者头像/姓名、相对时间、HEAD、分支、±） | implemented / unit-tested / desktop-verified |
+| 多泳道提交图（父哈希推导泳道、合并空心节点、分支汇入曲线） | implemented / unit-tested / desktop-verified |
+| IDE 式「列表 + 下方面板」分栏（详情/Diff/审计/PR 不再替换列表） | implemented / unit-tested / desktop-verified |
+| 点文件查看「谁改的 + 最新 Diff」（最近作者、作者数、逐提交状态与 ±） | implemented / unit-tested / desktop-verified |
+| 拉取请求（GitHub/GitLab）：作者、分支、评审、CI、可合并性与「需要我做什么」 | implemented / unit-tested / 本机 Host 无外网（见下） |
+| 审计区可视化：状态计数 chips、状态筛选、记录详情（退出码/correlationId/前后 revision） | implemented / unit-tested / desktop-verified |
 | 双栏变更浏览器：文件树（目录计数、状态字母、文件名搜索、状态筛选）+ 时间线 | implemented / unit-tested / desktop-verified |
 | 单文件变更历史（点文件后只列该文件的提交，逐提交状态与 ± 行） | implemented / unit-tested / desktop-verified |
 | Git 历史分页、关键字/作者/时间范围过滤，逐提交文件清单（name-status + numstat） | implemented / unit-tested / integration-tested / desktop-verified |
@@ -72,6 +77,17 @@ plugin_manager remove_bundle target="dsh-vcs-timeline"
   不再有悬浮在输入框上方的条带，也没有全屏浮层。
 - **34px 工具栏**：仓库选择（原生下拉覆盖层，键盘可用）· 分支 chip · 刷新 · `⋯` 版本控制菜单。
   Fetch / Pull / Commit / Push（SVN 为 Update / Commit）收进菜单，仍然先预览再确认。
+- **多泳道提交图**：由父提交哈希推导泳道（最多 8 条），合并提交画空心节点，分支汇入用曲线连接；
+  同一泳道颜色稳定，跨日期的组头处连线断开（可读性优先）。
+- **IDE 式分栏**：右栏始终是「列表（上）+ 详情面板（下）」。点提交/文件/审计记录只在下方打开详情与 Diff，
+  列表不消失、左树不消失；详情头部有返回/关闭。
+- **文件视图（点左树文件）**：右栏收窄为该文件历史，路径条显示**最近作者 + 相对时间 + 覆盖作者数**，
+  下方直接展示**该文件最新一次提交的 Diff**；点其它提交行则在下方切换为该提交的详情。
+- **拉取请求页签**：显示开放 PR、作者、head → base、评审/CI/可合并状态徽章，以及按紧迫度排序的
+  「需要我评审 / 需要我处理反馈 / 可以合并 / 需要修复 CI / 需要解决冲突 / 等待中」动作；
+  PR 详情在下方分栏展示描述、评审列表、检查列表与变更文件，并可跳转浏览器；未配置凭据时明确提示来源。
+- **审计可视化**：顶部状态计数 chips（成功/失败/未知/运行中/部分，点击筛选）、记录数摘要；
+  记录详情包含操作、状态、退出码、correlationId、前后 revision、耗时。
 - **IDEA 风格提交时间线（右栏）**：一条连续竖轴贯穿所有提交，每个提交一个节点（合并提交为空心节点）；
   按本地日期分组（`今天` / `昨天` / 具体日期 + 星期），分组头吸顶并显示当天提交数。
   每行回答「**谁、做了什么、什么时候**」：
@@ -107,11 +123,26 @@ plugin_manager remove_bundle target="dsh-vcs-timeline"
 1. 打开任意会话，点顶部视图行的「代码时间线」页签 → 对话内容区切换为时间线；再点「对话」回到聊天。
 2. 顶部选择仓库（Git/SVN · 名称 · 当前分支或 base revision）。
 3. 右栏按日期分组浏览提交时间线：谁、什么时候、改了什么；点提交看详情与文件列表，点文件看行号 Diff。
-4. 左栏点目录展开、点文件 → 右栏只剩该文件的变更历史；点“全部文件”或路径条的 `×` 回到全部。
-5. 「审计」查看本插件执行过的写操作（状态、退出码、前后 revision、correlationId）。
-6. 右上 `⋯` → Fetch / Pull / Push / Commit（SVN：Update / Commit）：先弹预览，
+4. 左栏点目录展开、点文件 → 右栏只剩该文件的变更历史，并显示最近作者 + 最新 Diff；
+   点“全部文件”或路径条的 `×` 回到全部。
+5. 「拉取请求」查看开放 PR、谁在等你、需要你做什么；未配置凭据时的提示见下文「PR 凭据」。
+6. 「审计」查看本插件执行过的写操作（状态、退出码、前后 revision、correlationId）；顶部 chips 可按状态筛选。
+7. 右上 `⋯` → Fetch / Pull / Push / Commit（SVN：Update / Commit）：先弹预览，
    显示将执行的确切 argv、当前分支/HEAD/干净状态/暂存数、警告；确认后才真正执行，
    执行结果追加审计。Commit 只提交**已暂存**的改动（插件从不自动 `git add`）。
+
+## PR 凭据（GitHub / GitLab）
+
+PR 的评审、CI、可合并状态需要访问令牌；插件按以下顺序读取（令牌永不展示/回传/写日志）：
+
+1. 环境变量：`GITHUB_TOKEN` / `GH_TOKEN`（GitHub 仓库），`GITLAB_TOKEN` / `GL_TOKEN`（GitLab 仓库）
+2. `~/.git-credentials`（`https://user:token@github.com` 形式的行，按远端 host 匹配）
+3. `<数据目录>/pr-auth.json`，例如 `{"github":"<token>","gitlab":"<token>"}`
+   （数据目录见状态栏“诊断”，本机为 `C:\Users\Lenovo\.dsh\storages\dsh-vcs-timeline`）
+
+都没有时以**匿名**方式读取公开仓库：只显示基础信息（作者/分支/更新时间），评审/CI/可合并显示为未知，
+并在页面提示凭据来源。当前验收机器的 **Host 进程无法访问 api.github.com**（直连 node 进程可以），
+因此页面会显示「无法连接 GitHub/GitLab」网络错误态，这是环境的真实状态而不是插件伪造。
 
 ## 开发
 
@@ -135,6 +166,7 @@ src/host/index.ts                Host 入口：装配服务 + /vcs 路由（ctx.
 src/host/routes.ts               13 条 JSON 路由 + 传输加固 + 错误映射
 src/host/discovery.ts            工作区有界发现 + 路径闸门 + 仓库缓存
 src/host/services/*.ts           只读服务（含 includeFiles 逐提交文件清单）/ 写服务（预览、token、审计、互斥）
+src/host/pr/*                    拉取请求读取：远端解析、凭据链、GitHub GraphQL/REST、GitLab、动作推导
 src/host/adapters/git/*          Git argv 构造与机器可读解析（log/name-status/numstat）+ 适配器
 src/host/adapters/svn/*          无依赖 XML 读取 + SVN argv/解析（log -v 逐路径映射）+ 适配器
 src/host/storage/jsonl.ts        JSONL 存储（串行写、坏行容忍、轮转、索引）
@@ -142,6 +174,9 @@ src/host/audit/*                 追加式审计写入
 src/host/security.ts             脱敏、路径规范化、游标、UTF-8 截断
 src/client/index.ts              对话区页签（conversation.view）+ 右侧栏页签注册
 src/client/file-index.ts         文件中心索引：按提交聚合、目录树、共享过滤（纯函数）
+src/client/graph.ts              多泳道提交图：父哈希 → 泳道/合并边（纯函数）
+src/client/ui/graph.ts           提交图 SVG 渲染（节点/泳道/合并曲线）
+src/client/ui/pr.ts              拉取请求列表与详情（动作、评审、CI、变更文件）
 src/client/panel.ts              面板状态机（数据加载、写操作预览→确认→执行）
 src/client/ui/*                  纯视图：工具栏、文件树、时间线、详情、Diff、审计、对话框
 src/client/styles.ts             仅主题 token 的样式表（含容器查询窄栏适配）
@@ -163,6 +198,9 @@ docs/                            兼容性、架构、安全、测试报告
   详情/Diff、关闭路径、1280/900 尺寸、深色主题，见 [docs/TEST-REPORT.md](docs/TEST-REPORT.md) §6），
   但仍是脚本化的 DOM/计算样式/截图核对，不是人工逐像素签收。
 - 文件树与单文件时间线只覆盖**已加载的提交页**（列表底部明确提示；加载更多会扩大范围）。
+- PR 评审/CI/可合并状态需要令牌；当前机器 Host 进程无外网访问，PR 页显示网络错误态（已在文档/UI 说明）。
+- 提交图为单页推导：页面截断时首行泳道从当前页开始（不越界读取上一页），跨页泳道可能不从顶部延续。
+- 详情分栏高度固定为面板高度的 42%（可读性优先），暂不支持拖拽调整。
 - 未做整进程重启验证（已验证插件重新挂载后审计数据仍可读）。
 - `/vcs` 路由仅接受 loopback（桌面端）；配对设备远程访问不支持。
 - 右侧栏的「代码时间线」tab 类型已注册，但当前桌面端侧栏的加页签 UI 未暴露该类型入口；

@@ -30,7 +30,7 @@
   `changedFilesTruncated`）；SVN 由 `svn log --xml -v` 的逐路径 action/copyfrom 映射
   （仅请求时补一次本地 `svn info` 做路径映射）。未请求时事件**完全不带** `changedFiles`
   （“未请求”≠“没有变更”）；探针失败只降级为 partial 警告，不让整页失败。
-- **Client**（`lib/client.js`，215,478 B，运行时仅 `require("react")`）：本轮改为
+- **Client**（`lib/client.js`，262,214 B，运行时仅 `require("react")`）：本轮改为
   **文件中心双栏**——左文件树（目录计数 / 状态字母 / 文件名搜索 / 状态筛选 / 展开收起）
   + 右变更时间线（单文件历史、逐提交状态与 ± 行）、34px 工具栏 + `⋯` 版本控制菜单、
   统一搜索/时间范围/作者过滤、右栏内提交详情与行号 Diff、审计列表/详情、
@@ -46,12 +46,12 @@
 | # | 命令 | 退出码 | 结果 |
 | --- | --- | --- | --- |
 | 1 | `npx tsc -p tsconfig.json --noEmit` | 0 | **0 errors**（全包，含测试与预览脚本） |
-| 2 | `npm test` | 0 | **223 tests / 223 pass / 0 fail** |
-| 3 | `npm run build` | 0 | `lib/index.js` 176,379 B；`lib/client.js` 215,478 B；client bundle 唯一裸 `require` 为 `react` |
+| 2 | `npm test` | 0 | **265 tests / 265 pass / 0 fail** |
+| 3 | `npm run build` | 0 | `lib/index.js` 230,730 B；`lib/client.js` 262,214 B；client bundle 唯一裸 `require` 为 `react` |
 | 4 | `plugin_manager set_plugin include:dsh-vcs-timeline`（false → true） | 应用成功 | 两次均 `application: "applied"`；Host 行重新挂载，`/vcs/timeline` 立即返回 `changedFiles` |
 | 5 | `node scripts\verify-live.mjs http://127.0.0.1:7283` | 0 | **17/17 live checks passed**（含真实提交统计、token 单次使用、审计落盘） |
-| 6 | `node --experimental-strip-types scripts/render-preview.ts` | 0 | 16 个预览页面（侧栏 400×900、对话区 1600×900，亮/暗） |
-| 7 | `node scripts/preview-shots.mjs` | 0 | 16 张 PNG（无头 Edge，按页面声明尺寸截图） |
+| 6 | `node --experimental-strip-types scripts/render-preview.ts` | 0 | 19 个预览页面（侧栏 400×900、对话区 1600×900，含 PR/文件 Diff 分栏） |
+| 7 | `node scripts/preview-shots.mjs` | 0 | 19 张 PNG（无头 Edge，按页面声明尺寸截图） |
 | 8 | 直接读取 `%DSH_HOME%\storages\dsh-vcs-timeline\*.jsonl` | — | `operations.jsonl` 含同 id 的 `started` + `succeeded` 两条；`events.jsonl` 含 `plugin-audit` 事件 |
 | 9 | 真实页面自动化（Playwright + Edge，多轮全新 page 会话） | — | 两轮 13 项检查：首轮 9/10，修复“详情/Diff 撑高面板”后复验通过 |
 | 10 | 真实桌面端 `POST /vcs/timeline {includeFiles:true}` | 200 | 本仓库最新提交返回 65 个文件；历史全部 2 个提交均带 `changedFiles` |
@@ -69,9 +69,11 @@
 | `git.integration.test.ts` | 14 | **真实临时 Git 仓库**：探针/分页/过滤、每提交统计值、**includeFiles 的逐文件状态与 ±（增/改/删/重命名/二进制）**、**无 includeFiles 时事件不带 changedFiles**、真实 merge 提交 `changedFiles: []`、name-status 探针失败降级为 partial、写计划与降级 |
 | `svn.unit.test.ts` | 65 | `svn --xml` 解析（log/info/status）、summarize、revision 注入拒绝、argv 构造、分页游标、重命名/复制、Diff 截断/二进制、update/commit 计划、缺客户端降级、路径归一回归、**log -v 逐路径映射（copy/rename/info 失败回退/205→200 截断）** |
 | `client.format.test.ts` | 17 | 时间/紧凑时间/哈希/字节、Diff 行分类与行号计算、事件统计读取（含 merge 全 0 抑制）、状态/事件/来源/操作标签、错误映射、字典键一致、插值回退 |
-| `client.fileindex.test.ts` | 12 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
+| `client.fileindex.test.ts` | 12 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
+| `client.graph.test.ts` | 7 | **提交图泳道：线性/合并/父已在其它泳道时汇入/页边界/泳道上限/几何辅助函数** |
+| `pr.test.ts` | 29 | **PR 远端解析（https/scp/ssh/凭据剥离）、凭据链优先级与令牌不外泄、GitHub GraphQL/匿名 REST 映射、详情文件、动作推导全分支、错误映射（401/403/限流/网络/超限）、60s 缓存与 refresh、路由入参校验** |
 | `client.panel.test.ts` | 7 | 写操作 draft 保留/重置、`operationParams`、preview/execute 参数一致性（token 绑定契约） |
-| `client.render.test.ts` | 29 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、单文件收窄、状态筛选、目录展开、“未提供文件清单”、时间线日期分组/HEAD/相对时间**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
+| `client.render.test.ts` | 35 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、单文件收窄、状态筛选、目录展开、“未提供文件清单”、时间线日期分组/HEAD/相对时间**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
 
 ## 4. 桌面端验收
 
@@ -81,7 +83,12 @@
 | 对话区页签入口 | 通过（真实页面） | 顶部视图行（role=tablist，y≈50）：对话 / 轨迹 / 上下文 / 编队 / **代码时间线**（order 40，排最后）+ 宿主“…”；hero 与活动会话里均无插件 dock 条/浮层 |
 | 点击页签在对话内容区渲染 | 通过（真实页面） | `[data-dvt-panel="vcs-timeline"]` rect **280,76,1633×876**，位于 `data-conversation-content` 内；无 overlay/dialog；点「对话」恢复聊天、再点页签恢复面板，URL 不变 |
 | IDEA 风格时间线 | 通过（真实页面） | 3 行 = “3 条提交”；每行有 rail 线 + 节点（节点中心与 rail 中心对齐）、头像/作者/摘要/相对时间（title=精确时间）/7 位 hash/**HEAD 仅 1 个**/分支/±；日期头“今天 / 3 条提交”吸顶；合并空心节点与吸顶滚动因仓库无合并提交/仅 3 条提交未实测 |
-| 真实数据一致性 | 通过（真实页面） | 与 `git log` 一致（最新 26952d8 / XiaoSS / 19:01）；HEAD 唯一；3 行 = “3 条提交” |
+| 真实数据一致性 | 通过（真实页面） | 与 `git log` 一致；HEAD 唯一；行数 = 提交数 |
+| 多泳道提交图 | 通过（真实页面 + 临时 merge 仓库） | SVG 节点/泳道/合并曲线/空心合并节点与“合并”标签；临时仓库实测 lanes{0,1} |
+| 列表/详情分栏 | 通过（真实页面） | 列表保留 + 下方详情；详情内 Diff；返回关闭详情且列表保留 |
+| 文件视图 who + Diff | 通过（真实页面） | “最近：XiaoSS · 13 小时前 / 2 位作者”+ 自动最新 Diff，列表/树可见 |
+| PR 页签 | 通过（真实页面，受限环境） | 网络超时 → 诚实错误态 + 重试；匿名成功 → 未认证 + 空列表；未认证不伪造评审/CI |
+| 审计区（真实记录） | 通过（真实页面 + 插件路由） | 成功/失败记录、chips 计数、状态筛选、空筛选、详情（退出码/前后 revision/correlationId）；临时仓库已清理 |
 | 高度有界（列表/详情/Diff） | 通过（真实页面，修复后复验） | 三种状态面板均 876px；宿主滚动容器 scrollHeight == clientHeight（1004）；内部 `.dvt-scroll` 为滚动容器（723/2062、723/2421）；滚到 800px 时 toolbar y=76、面包屑 y=110、树 y=173、状态栏 y=928 全部固定 |
 | 双栏真实数据一致 | 通过（真实页面） | 110 个文件；展开全部 110 行 = 头部 110、17 个目录 0 处徽标不一致；状态 chips M60/A46/D4；单文件收窄与 × 清除 |
 | 状态筛选 / 搜索 / 时间范围 | 通过（真实页面） | M 60 行、A 46 行、搜索收窄；时间预设 4 次均触发 `/vcs/timeline` 重载且无错误 |
@@ -185,6 +192,11 @@ HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致
    因此「日期头吸顶滚动」与「合并提交空心节点」只做了 DOM/CSS 与单元测试核对，未在真实滚动/合并提交上实测。
 8. **右侧栏入口**：tab 类型注册仍在，但当前桌面端侧栏没有暴露加页签入口（真实页面探针确认：
    侧栏 begin 条只有“开始”，更多工具也无该项）；本轮未做侧栏可达性验收，主入口为对话区页签。
+9. **PR 已认证路径**：本机无任何令牌、Host 进程无外网到 api.github.com，因此只验证了
+   错误态与匿名空列表；评审/CI/可合并的真实渲染、GraphQL 映射、动作徽章在有令牌+网络时未实测
+   （单元测试覆盖了映射与动作推导）。
+10. **真实合并提交的图**：插件仓库本身无 merge，合并泳道用临时 `git merge --no-ff` 仓库验证；
+   未在大型多分支历史上压测。
 
 ## 9. 已知限制 / 未实现
 
@@ -196,6 +208,9 @@ HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致
 - JSONL 轮转后的 `.1.jsonl` 为归档，不被查询读取。
 - 审计页签不自动轮询（写操作终态后刷新时间线与工作区状态）。
 - Host 侧若干文本（warnings、blockedReason、requestSummary、errorCode）按原样展示，可能是英文。
+- 详情分栏高度固定为面板高度的 42%（可读性优先），暂不支持拖拽调整。
+- PR 评审/CI/可合并状态需令牌且需 Host 出网；本机显示网络错误态（已在文档/UI 说明）。
+- 提交图为单页推导：页边界首行泳道从当前页开始，跨页泳道可能不从顶部延续。
 
 ## 10. 验证等级声明
 
@@ -203,11 +218,11 @@ HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致
 | --- | --- |
 | 代码实现 | implemented |
 | 类型检查（0.2.1-rc.3 同版本类型包） | typechecked（`tsc --noEmit` 0 错误） |
-| 单元测试 | unit-tested（223 个测试全通过） |
+| 单元测试 | unit-tested（265 个测试全通过） |
 | 真实仓库集成测试 | integration-tested（Git 临时仓库 14 项；SVN 仅解析器级） |
 | 桌面端 Host 端到端 | desktop-verified（17/17 live checks，含真实 Git 提交、统计、逐文件清单与审计落盘） |
 | 面板视觉（组件渲染） | rendered-verified（400px/1600px、亮/暗无头截图 + 目视检查） |
-| 桌面端真实页面视觉/交互 | desktop-verified（Playwright + Edge：对话区页签、IDEA 时间线、有界高度、双栏、筛选、详情/Diff、1440/1024 尺寸、深色主题） |
+| 桌面端真实页面视觉/交互 | desktop-verified（Playwright + Edge：对话区页签、多泳道图、列表/详情分栏、文件 who+Diff、PR 错误/匿名态、审计真实记录与筛选、有界高度、1440/1024、深色主题） |
 | SVN 实机 | **not-verified**（本机无客户端） |
 | 整进程重启持久化 | **not-verified**（仅验证重新挂载后读取） |
 

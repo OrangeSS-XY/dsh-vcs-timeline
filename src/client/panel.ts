@@ -37,6 +37,7 @@ import {
   createChangeSetSlice,
   createDiffSlice,
   createInitialState,
+  createPullRequestSlice,
   createTimelineSlice,
 } from './types.ts'
 import type {
@@ -162,6 +163,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
     const repreviewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
     const timelineTokenRef = React.useRef<number>(0)
     const auditTokenRef = React.useRef<number>(0)
+    const prListTokenRef = React.useRef<number>(0)
+    const prDetailTokenRef = React.useRef<number>(0)
     const statusTokenRef = React.useRef<number>(0)
     const detailTokenRef = React.useRef<number>(0)
     const diffTokenRef = React.useRef<number>(0)
@@ -410,12 +413,17 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       })
     }
 
-    /** Load the diff of one changed file of the open revision. */
-    const openDiff = async (filePath: string): Promise<void> => {
+    /**
+     * Load the diff of one file at one revision.
+     *
+     * The revision defaults to the open commit's revision (the detail file
+     * list); the file view passes the newest commit that touched the path.
+     */
+    const openDiff = async (filePath: string, revisionOverride?: string): Promise<void> => {
       const snapshot = stateRef.current
       const repositoryId = snapshot.selectedRepositoryId
       if (repositoryId === null) return
-      const revision = snapshot.changeSet.revision
+      const revision = revisionOverride ?? snapshot.changeSet.revision
       const token = ++diffTokenRef.current
       setState((prev) => ({
         ...prev,
@@ -430,6 +438,68 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         return
       }
       setState((prev) => ({ ...prev, diff: { ...prev.diff, loading: false, error: null, data: result.value } }))
+    }
+
+    /**
+     * Open the newest diff of one repository file.
+     *
+     * Selecting a file in the tree must show "who changed it" plus its diff,
+     * so the newest commit touching the path supplies the revision while the
+     * right pane's list stays visible and the detail area shows the diff.
+     */
+    const openLatestFileDiff = (filePath: string): void => {
+      const events = stateRef.current.timeline.events
+      const event = events.find((entry) => Array.isArray(entry.changedFiles)
+        && entry.changedFiles.some((file) => file.path === filePath))
+      if (event === undefined) {
+        setState((prev) => ({ ...prev, diff: createDiffSlice() }))
+        return
+      }
+      const revision = event.commitHash ?? event.revision ?? ''
+      void openDiff(filePath, revision)
+    }
+
+    /** Load the pull-request list for one repository. */
+    const loadPullRequests = async (repositoryId: string, refresh: boolean): Promise<void> => {
+      const token = ++prListTokenRef.current
+      setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, loading: true, error: null } }))
+      const result = await deps.api.listPullRequests(refresh ? { repositoryId, refresh: true } : { repositoryId })
+      if (!aliveRef.current || token !== prListTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, loading: false, error: result.error } }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pullRequests: { ...prev.pullRequests, loading: false, error: null, data: result.value },
+      }))
+    }
+
+    /** Load one pull request's detail (description, changed files). */
+    const loadPullRequestDetail = async (repositoryId: string, number: number): Promise<void> => {
+      const token = ++prDetailTokenRef.current
+      setState((prev) => ({
+        ...prev,
+        pullRequests: {
+          ...prev.pullRequests,
+          selectedNumber: number,
+          detail: null,
+          detailLoading: true,
+          detailError: null,
+        },
+      }))
+      const result = await deps.api.pullRequestDetail({ repositoryId, number })
+      if (!aliveRef.current || token !== prDetailTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, detailLoading: false, detailError: result.error } }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pullRequests: { ...prev.pullRequests, detailLoading: false, detailError: null, detail: result.value },
+      }))
     }
 
     /** Copy the current diff text, when the platform allows it. */
@@ -673,6 +743,14 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       state.refreshTick,
     ])
 
+    // First pull-request page whenever the PR source becomes active.
+    React.useEffect(() => {
+      const repositoryId = state.selectedRepositoryId
+      if (repositoryId === null || state.source !== 'pr') return
+      void loadPullRequests(repositoryId, false)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.selectedRepositoryId, state.source, state.pullRequests.refreshTick])
+
     // Debounce the search box before it reaches the Host.
     React.useEffect(() => {
       const handle = setTimeout(() => {
@@ -734,6 +812,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
             statusError: null,
             statusLoading: false,
             dialog: null,
+            pullRequests: createPullRequestSlice(),
           }
         })
       },
@@ -746,8 +825,29 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           changeSet: createChangeSetSlice(),
           diff: createDiffSlice(),
           audit: { ...prev.audit, selected: null },
+          pullRequests: source === 'pr'
+            ? prev.pullRequests
+            : { ...prev.pullRequests, selectedNumber: null, detail: null, detailError: null, detailLoading: false },
         }
       }),
+      onRefreshPullRequests: () => {
+        setState((prev) => ({ ...prev, pullRequests: { ...prev.pullRequests, refreshTick: prev.pullRequests.refreshTick + 1 } }))
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId !== null) void loadPullRequests(repositoryId, true)
+      },
+      onSelectPullRequest: (number: number) => {
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId === null) return
+        void loadPullRequestDetail(repositoryId, number)
+      },
+      onClosePullRequest: () => setState((prev) => ({
+        ...prev,
+        pullRequests: { ...prev.pullRequests, selectedNumber: null, detail: null, detailError: null, detailLoading: false },
+      })),
+      onSetAuditState: (auditState) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, auditState },
+      })),
       onTextChange: (text: string) => setState((prev) => ({ ...prev, filters: { ...prev.filters, text } })),
       onToggleEventType: (eventType) => setState((prev) => {
         const active = prev.filters.eventTypes.includes(eventType)
@@ -776,10 +876,12 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           showAuthor: prev.filters.showAuthor,
           treeQuery: '',
           fileStatus: 'all',
+          auditState: 'all',
           timePreset: 'all',
         },
       })),
-      onSelectFile: (path: string | null) => setState((prev) => {
+      onSelectFile: (path: string | null) => {
+        setState((prev) => {
         if (path === prev.selectedFilePath) return prev
         const expanded = { ...prev.expandedDirs }
         if (path !== null) {
@@ -791,14 +893,17 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
             expanded[dir] = true
           }
         }
-        return {
-          ...prev,
-          selectedFilePath: path,
-          expandedDirs: expanded,
-          changeSet: createChangeSetSlice(),
-          diff: createDiffSlice(),
-        }
-      }),
+          return {
+            ...prev,
+            selectedFilePath: path,
+            expandedDirs: expanded,
+            changeSet: createChangeSetSlice(),
+            diff: createDiffSlice(),
+          }
+        })
+        // Selecting a file reveals who changed it and its newest diff.
+        if (path !== null) openLatestFileDiff(path)
+      },
       onTreeQueryChange: (treeQuery: string) => setState((prev) => ({
         ...prev,
         filters: { ...prev.filters, treeQuery },
@@ -838,7 +943,9 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       },
       onOpenEvent: (event: VcsEvent) => { void openEvent(event) },
       onBackFromDetail: () => setState((prev) => ({ ...prev, changeSet: createChangeSetSlice() })),
-      onOpenFile: (filePath: string) => { void openDiff(filePath) },
+      onOpenFile: (filePath: string) => {
+        void openDiff(filePath, stateRef.current.changeSet.revision)
+      },
       onBackFromDiff: () => setState((prev) => ({ ...prev, diff: createDiffSlice() })),
       onCopyDiff: () => { void copyDiff() },
       onLoadMoreAudit: () => {

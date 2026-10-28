@@ -59,8 +59,7 @@ function AuditRow(props: {
       className: 'dvt-audit-btn',
       title: attempt.requestSummary,
       'aria-label': t('aria.auditRow', {
-        operation: F.operationLabel(attempt.operation, t),
-        state: F.operationStateLabel(attempt.state, t),
+        label: `${F.operationLabel(attempt.operation, t)} · ${F.operationStateLabel(attempt.state, t)} · ${F.shortHash(attempt.id.replace(/^op-/, ''), 8)}`,
       }),
       onClick: () => handlers.onOpenOperation(attempt),
     },
@@ -128,20 +127,48 @@ export function renderAuditList(state: PanelState, deps: PanelDeps, handlers: Pa
       hint: t('audit.empty.hint'),
     })
   }
-  return h('div', { className: 'dvt-col' },
+  // One glance at what the audit actually recorded, plus a state filter.
+  const states: Array<import('../../shared/contracts.ts').OperationState> = ['succeeded', 'failed', 'unknown', 'running', 'partial']
+  const counts = new Map<string, number>()
+  for (const attempt of audit.operations) counts.set(attempt.state, (counts.get(attempt.state) ?? 0) + 1)
+  const filtered = state.filters.auditState === 'all'
+    ? audit.operations
+    : audit.operations.filter((attempt) => attempt.state === state.filters.auditState)
+  const chip = (value: 'all' | import('../../shared/contracts.ts').OperationState, label: string, count: number): React.ReactElement => h('button', {
+    key: value,
+    type: 'button',
+    className: 'dvt-audit-chip',
+    'aria-pressed': state.filters.auditState === value,
+    onClick: () => handlers.onSetAuditState(value),
+  },
+  h('span', null, label),
+  h('span', { className: 'dvt-audit-chip-count' }, String(count)),
+  )
+  return h('div', { className: 'dvt-col dvt-audit-view' },
     audit.warnings.length > 0
       ? h(Banner, { kind: 'warn', text: t('audit.partial') })
       : null,
-    h('ul', { className: 'dvt-list', 'aria-label': t('source.audit') },
-      audit.operations.map((attempt) => h(AuditRow, {
-        key: attempt.id,
-        attempt,
-        repositoryName: state.repositories.find((entry) => entry.id === attempt.repositoryId)?.displayName ?? null,
-        deps,
-        handlers,
-      })),
+    h('div', { className: 'dvt-audit-chips', role: 'group', 'aria-label': t('audit.filter.state') },
+      chip('all', t('audit.state.all'), audit.operations.length),
+      states.filter((value) => (counts.get(value) ?? 0) > 0).map((value) => chip(value, t(`op.state.${value}`), counts.get(value) ?? 0)),
     ),
-    h('div', { className: 'dvt-list-count' }, t('audit.count', { count: audit.operations.length })),
+    h('div', { className: 'dvt-audit-summary' }, t('audit.summary', { count: audit.operations.length })),
+    filtered.length === 0
+      ? h(EmptyState, {
+        icon: IconAudit,
+        title: t('audit.empty.filtered'),
+        hint: t('audit.empty.filtered.hint'),
+      })
+      : h('ul', { className: 'dvt-list', 'aria-label': t('source.audit') },
+        filtered.map((attempt) => h(AuditRow, {
+          key: attempt.id,
+          attempt,
+          repositoryName: state.repositories.find((entry) => entry.id === attempt.repositoryId)?.displayName ?? null,
+          deps,
+          handlers,
+        })),
+      ),
+    h('div', { className: 'dvt-list-count' }, t('audit.count', { count: filtered.length })),
     audit.hasMore
       ? h('div', { className: 'dvt-list-more' },
         h('button', {

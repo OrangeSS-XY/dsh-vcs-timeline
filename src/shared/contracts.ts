@@ -196,6 +196,9 @@ export type ApiErrorCode =
   | 'confirmation-invalid'
   | 'storage-failure'
   | 'network-unknown'
+  | 'unsupported-remote'
+  | 'auth-required'
+  | 'rate-limited'
   | 'internal'
 
 /** One Host error, safe to show in the Client. */
@@ -325,6 +328,153 @@ export interface RepositoryList {
   diagnostics: Diagnostics
 }
 
+/** Hosting providers this plugin understands for pull/merge requests. */
+export type PullRequestProvider = 'github' | 'gitlab' | 'unknown'
+
+/** Lifecycle state of one pull request. */
+export type PullRequestState = 'open' | 'draft' | 'merged' | 'closed'
+
+/** Aggregated review state of one pull request. */
+export type PullRequestReviewState = 'approved' | 'changes-requested' | 'review-required' | 'none'
+
+/** Aggregated CI/status-check state of one pull request head. */
+export type PullRequestChecksState = 'success' | 'failure' | 'pending' | 'none'
+
+/** One actor (author, reviewer, assignee) as the provider reports it. */
+export interface PullRequestActor {
+  /** Provider login/handle, stable identity for dedupe. */
+  login: string
+  /** Human display name when the provider exposes one. */
+  displayName?: string
+}
+
+/** One review verdict on a pull request. */
+export interface PullRequestReview {
+  author: PullRequestActor
+  state: 'approved' | 'changes-requested' | 'commented' | 'pending' | 'dismissed'
+  submittedAt?: string
+}
+
+/** One CI check / status context of the pull request head. */
+export interface PullRequestCheck {
+  name: string
+  state: 'success' | 'failure' | 'pending' | 'neutral'
+  url?: string
+}
+
+/**
+ * What the viewer should do next about one pull request.
+ *
+ * The Host derives this only from facts it actually read (requested reviewers,
+ * review decision, CI state, mergeability); when the provider did not supply
+ * the fact, the action is `unknown` with a hint instead of a guess.
+ */
+export type PullRequestActionKind =
+  | 'review'
+  | 'address-feedback'
+  | 'merge'
+  | 'fix-ci'
+  | 'fix-conflicts'
+  | 'wait'
+  | 'unknown'
+
+/** One suggested next action, with the reason it was suggested. */
+export interface PullRequestAction {
+  kind: PullRequestActionKind
+  /** Localization key suffix; the Client owns the wording. */
+  reason: string
+}
+
+/** One pull request summary. */
+export interface PullRequest {
+  schemaVersion: SchemaVersion
+  id: string
+  repositoryId: string
+  provider: PullRequestProvider
+  number: number
+  title: string
+  url: string
+  state: PullRequestState
+  author: PullRequestActor
+  /** Head branch name. */
+  branch: string
+  /** Base/target branch name. */
+  baseBranch: string
+  createdAt: string
+  updatedAt: string
+  reviewState: PullRequestReviewState
+  checksState: PullRequestChecksState
+  /** True/false from the provider; null when it did not report mergeability. */
+  mergeable: boolean | null
+  reviews: PullRequestReview[]
+  checks: PullRequestCheck[]
+  /** Reviewers whose review is still pending. */
+  pendingReviewers: PullRequestActor[]
+  /** Whether the current viewer's review is explicitly requested. */
+  requestedFromViewer: boolean
+  /** Suggested next actions, ordered by urgency. */
+  actions: PullRequestAction[]
+  changedFiles?: number
+  additions?: number
+  deletions?: number
+  commitCount?: number
+  commentCount?: number
+  /** Free-form provider data the UI may show verbatim (e.g. labels). */
+  labels?: string[]
+}
+
+/** One page of pull requests plus what the Host could and could not read. */
+export interface PullRequestList {
+  repositoryId: string
+  provider: PullRequestProvider
+  /** Remote host (never credentials). */
+  host: string
+  /** Owner/namespace + repository path on the host. */
+  remotePath: string
+  /** Viewer login when the Host could authenticate; null for anonymous. */
+  viewer: string | null
+  /** True when the Host authenticated (richer facts: reviews, CI, mergeable). */
+  authenticated: boolean
+  pullRequests: PullRequest[]
+  /** True when some provider data could not be read. */
+  partial?: boolean
+  warnings?: string[]
+  fetchedAt: string
+}
+
+/** One changed file of a pull request. */
+export interface PullRequestFile {
+  path: string
+  oldPath?: string
+  status: FileChangeStatus
+  additions?: number
+  deletions?: number
+  binary?: boolean
+}
+
+/** One pull request with its changed-file list. */
+export interface PullRequestDetail {
+  pullRequest: PullRequest
+  files: PullRequestFile[]
+  /** Raw description/body, truncated by the Host. */
+  body?: string
+  truncated?: boolean
+  warnings?: string[]
+}
+
+/** Input of one pull-request list request. */
+export interface PullRequestQuery {
+  repositoryId: string
+  /** Bypass the Host cache (the refresh button). */
+  refresh?: boolean
+}
+
+/** Input of one pull-request detail request. */
+export interface PullRequestDetailQuery {
+  repositoryId: string
+  number: number
+}
+
 /** State read before a write operation, used for preview and audit. */
 export interface OperationBeforeState {
   branch?: string
@@ -377,7 +527,14 @@ export interface VcsApi {
   executeOperation(request: OperationRequest): Promise<OperationAttempt>
   listOperations(query: OperationQuery): Promise<OperationPage>
   getOperation(operationId: string): Promise<OperationAttempt>
+  listPullRequests(query: PullRequestQuery): Promise<PullRequestList>
+  pullRequestDetail(query: PullRequestDetailQuery): Promise<PullRequestDetail>
 }
+
+/** Largest pull-request page the Host will serve. */
+export const MAX_PULL_REQUESTS = 40
+/** How long one pull-request list stays fresh in the Host cache, in ms. */
+export const PULL_REQUEST_CACHE_MS = 60_000
 
 /** Largest timeline page the Host will serve. */
 export const MAX_PAGE_SIZE = 100
@@ -460,6 +617,27 @@ export function isDiagnostics(value: unknown): value is Diagnostics {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
   return typeof record.pluginVersion === 'string' && typeof record.dataDir === 'string' && Array.isArray(record.warnings)
+}
+
+/** Runtime guard for {@link PullRequestList}. */
+export function isPullRequestList(value: unknown): value is PullRequestList {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.repositoryId === 'string'
+    && (record.provider === 'github' || record.provider === 'gitlab' || record.provider === 'unknown')
+    && Array.isArray(record.pullRequests)
+    && typeof record.fetchedAt === 'string'
+}
+
+/** Runtime guard for {@link PullRequestDetail}. */
+export function isPullRequestDetail(value: unknown): value is PullRequestDetail {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  const pr = record.pullRequest
+  return typeof pr === 'object'
+    && pr !== null
+    && typeof (pr as Record<string, unknown>).number === 'number'
+    && Array.isArray(record.files)
 }
 
 /** Whether an operation mutates repository state. */

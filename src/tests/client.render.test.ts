@@ -15,11 +15,12 @@ import type {
   Diagnostics,
   DiffResult,
   OperationAttempt,
+  PullRequest,
   Repository,
   VcsEvent,
   WorkingTreeStatus,
 } from '../shared/contracts.ts'
-import { createInitialState, createNoopHandlers, type PanelState } from '../client/types.ts'
+import { createInitialState, createNoopHandlers, createPullRequestSlice, type PanelState } from '../client/types.ts'
 import { renderPanelView } from '../client/components.ts'
 import { createTranslator, dictionaries } from '../client/i18n.ts'
 import { STYLES } from '../client/styles.ts'
@@ -162,6 +163,47 @@ const unknownAttempt: OperationAttempt = {
   correlationId: 'corr-2',
 }
 
+const pullRequest: PullRequest = {
+  schemaVersion: 1,
+  id: 'github:acme/demo-repo#12',
+  repositoryId: repository.id,
+  provider: 'github',
+  number: 12,
+  title: 'feat: add the timeline widget',
+  url: 'https://github.com/acme/demo-repo/pull/12',
+  state: 'open',
+  author: { login: 'alice', displayName: 'Alice' },
+  branch: 'feat/widget',
+  baseBranch: 'main',
+  createdAt: '2026-01-02T03:04:05.000Z',
+  updatedAt: new Date().toISOString(),
+  reviewState: 'review-required',
+  checksState: 'success',
+  mergeable: true,
+  reviews: [],
+  checks: [{ name: 'build', state: 'success' }],
+  pendingReviewers: [{ login: 'bob' }],
+  requestedFromViewer: true,
+  actions: [{ kind: 'review', reason: 'review-requested' }],
+  changedFiles: 3,
+  additions: 10,
+  deletions: 2,
+}
+
+const mergedPullRequest: PullRequest = {
+  ...pullRequest,
+  id: 'github:acme/demo-repo#9',
+  number: 9,
+  title: 'fix: rename the settings row',
+  state: 'draft',
+  reviewState: 'none',
+  checksState: 'none',
+  mergeable: null,
+  pendingReviewers: [],
+  requestedFromViewer: false,
+  actions: [{ kind: 'wait', reason: 'waiting' }],
+}
+
 const textDiff: DiffResult = {
   repositoryId: repository.id,
   revisionA: null,
@@ -265,14 +307,14 @@ test('a commit row shows summary, short hash, author, compact time, branch and r
   assert.ok(html.includes('+12'))
   assert.ok(html.includes('−4'))
   assert.ok(html.includes(t('timeline.stats.files', { count: 3 })))
-  assert.ok(html.includes('dvt-tl-node'))
+  assert.ok(html.includes('dvt-tl-graph-node'))
   assert.ok(html.includes('dvt-tl-row'))
 })
 
 test('a merge commit renders the merge marker and never fakes 0/0 stats', () => {
   const html = render(ready({ timeline: { ...createInitialState().timeline, events: [mergeEvent] } }))
   assert.ok(html.includes(t('timeline.merge')))
-  assert.ok(html.includes('dvt-tl-node-merge'))
+  assert.ok(html.includes('dvt-tl-graph'))
   assert.ok(!html.includes('+0'))
   assert.ok(!html.includes('−0'))
 })
@@ -587,8 +629,8 @@ test('the change timeline renders a rail, day header, author avatar and "when" l
   }
   const html = render(ready({ timeline: { ...createInitialState().timeline, events: [recent] } }))
   assert.ok(html.includes('dvt-tl'), 'vertical timeline container')
-  assert.ok(html.includes('dvt-tl-rail'), 'continuous rail gutter')
-  assert.ok(html.includes('dvt-tl-node'), 'commit node on the rail')
+  assert.ok(html.includes('dvt-tl-graph'), 'commit graph gutter')
+  assert.ok(html.includes('dvt-tl-graph-node'), 'commit node on the graph')
   assert.ok(html.includes('dvt-tl-day-label'), 'sticky day header')
   assert.ok(html.includes(t('group.today')), 'today header for a current commit')
   assert.ok(html.includes('dvt-tl-avatar'), 'author avatar')
@@ -619,4 +661,110 @@ test('the zh and en dictionaries stay complete and non-empty', () => {
     assert.notEqual(String(dictionaries.zh[key]).trim(), '', `empty zh value for ${key}`)
     assert.notEqual(String(dictionaries.en[key]).trim(), '', `empty en value for ${key}`)
   }
+})
+
+test('opening a commit detail keeps the list visible in the split pane', () => {
+  const html = render(ready({
+    changeSet: { event, revision: changeSet.revision, data: changeSet, loading: false, error: null },
+  }))
+  assert.ok(html.includes('dvt-list-pane'), 'list pane stays mounted')
+  assert.ok(html.includes('dvt-detail'), 'detail pane opens below it')
+  assert.ok(html.includes('dvt-subbar'), 'detail breadcrumb is present')
+  assert.ok(html.includes('feat: add the timeline panel'), 'the timeline row is still rendered')
+  assert.ok(html.includes('dvt-tree'), 'the file tree stays visible')
+})
+
+test('selecting a file shows who changed it and its newest diff', () => {
+  const html = render(ready({
+    timeline: { ...createInitialState().timeline, events: [event, olderEvent] },
+    selectedFilePath: 'src/panel.ts',
+    expandedDirs: { src: true },
+    diff: { filePath: 'src/panel.ts', data: textDiff, loading: false, error: null },
+  }))
+  assert.ok(html.includes('dvt-selection-who'), 'author summary in the selection header')
+  assert.ok(html.includes(t('file.latestBy', { author: 'Alice', when: t('rel.justNow') })) || html.includes('Alice'), 'latest author is shown')
+  assert.ok(html.includes(t('file.authors', { count: 2 })))
+  assert.ok(html.includes('dvt-diff'), 'the newest diff renders in the detail pane')
+  assert.ok(html.includes('dvt-detail'), 'split detail pane')
+})
+
+test('the pull-request list shows who opened it, what state it is in and what I should do', () => {
+  const html = render(ready({
+    source: 'pr',
+    pullRequests: {
+      ...createPullRequestSlice(),
+      data: {
+        repositoryId: repository.id,
+        provider: 'github',
+        host: 'github.com',
+        remotePath: 'acme/demo-repo',
+        viewer: 'alice',
+        authenticated: true,
+        pullRequests: [pullRequest, mergedPullRequest],
+        fetchedAt: new Date().toISOString(),
+      },
+    },
+  }))
+  assert.ok(html.includes('dvt-pr-card'))
+  assert.ok(html.includes('#12'))
+  assert.ok(html.includes('feat: add the timeline widget'))
+  assert.ok(html.includes('alice'))
+  assert.ok(html.includes('feat/widget'))
+  assert.ok(html.includes(t('pr.action.review')), 'suggested action is visible')
+  assert.ok(html.includes(t('pr.section.mine')), 'PRs needing me are grouped first')
+  assert.ok(html.includes(t('pr.authenticated', { viewer: 'alice' })))
+  assert.ok(html.includes(t('pr.badge.review.review-required')))
+})
+
+test('an unauthenticated pull-request list explains the missing credentials', () => {
+  const html = render(ready({
+    source: 'pr',
+    pullRequests: {
+      ...createPullRequestSlice(),
+      error: { code: 'auth-required', message: 'token missing' },
+    },
+  }))
+  assert.ok(html.includes(t('pr.auth.title')))
+  assert.ok(html.includes('GITHUB_TOKEN'), 'credential sources are named')
+  assert.ok(html.includes('pr-auth.json'))
+  assert.ok(html.includes(t('common.retry')))
+})
+
+test('an empty pull-request list has its own empty state', () => {
+  const html = render(ready({
+    source: 'pr',
+    pullRequests: {
+      ...createPullRequestSlice(),
+      data: {
+        repositoryId: repository.id,
+        provider: 'github',
+        host: 'github.com',
+        remotePath: 'acme/demo-repo',
+        viewer: null,
+        authenticated: false,
+        pullRequests: [],
+        fetchedAt: new Date().toISOString(),
+      },
+    },
+  }))
+  assert.ok(html.includes(t('pr.empty')))
+  assert.ok(!html.includes('dvt-pr-card'))
+})
+
+test('the audit view summarizes recorded states and filters by one', () => {
+  const withRows = render(ready({
+    source: 'audit',
+    audit: { ...createInitialState().audit, operations: [attempt, unknownAttempt], loading: false },
+  }))
+  assert.ok(withRows.includes('dvt-audit-chip'))
+  assert.ok(withRows.includes(t('audit.summary', { count: 2 })))
+  assert.ok(withRows.includes(t('op.state.succeeded')))
+  assert.ok(!withRows.includes(t('audit.empty.filtered')))
+
+  const filteredOut = render(ready({
+    source: 'audit',
+    filters: { ...createInitialState().filters, auditState: 'failed' },
+    audit: { ...createInitialState().audit, operations: [attempt], loading: false },
+  }))
+  assert.ok(filteredOut.includes(t('audit.empty.filtered')))
 })

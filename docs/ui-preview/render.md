@@ -11,5 +11,5 @@ node --experimental-strip-types scripts/render-preview.ts
 node scripts/preview-shots.mjs   # 用本机 Edge 无头模式截图
 ```
 
-场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件时间线、提交详情、Diff、
-审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。
+场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件 + Diff 分栏、提交详情、
+PR 列表 / 未认证提示、审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。

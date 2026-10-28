@@ -24,6 +24,7 @@ import { clampInt, safeErrorMessage } from './security.ts'
 import { StoreError } from './storage/interface.ts'
 import { ServiceError, type TimelineService } from './services/timeline-service.ts'
 import type { OperationService } from './services/operation-service.ts'
+import type { PullRequestService } from './pr/service.ts'
 
 /** Largest accepted request body. */
 const BODY_MAX_BYTES = 256 * 1024
@@ -32,6 +33,7 @@ const BODY_MAX_BYTES = 256 * 1024
 export interface VcsRoutesDeps {
   timeline: TimelineService
   operations: OperationService
+  pullRequests: PullRequestService
   diagnostics: () => Promise<Diagnostics>
   log?: (message: string) => void
 }
@@ -132,6 +134,15 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'boolean') {
     throw new ServiceError({ code: 'invalid-request', message: `${key} must be a boolean` })
+  }
+  return value
+}
+
+/** Read a required positive integer (pull-request number). */
+function requiredPositiveInt(payload: Record<string, unknown>, key: string): number {
+  const value = payload[key]
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0 || value > 1_000_000_000) {
+    throw new ServiceError({ code: 'invalid-request', message: `${key} must be a positive integer` })
   }
   return value
 }
@@ -280,6 +291,20 @@ export function registerVcsRoutes(ctx: Context, deps: VcsRoutesDeps): () => void
           return
         case '/vcs/op/get':
           writeJson(res, 200, ok(await deps.operations.getOperation(requiredString(payload, 'operationId', 128))))
+          return
+        case '/vcs/pr/list': {
+          const refresh = optionalBoolean(payload, 'refresh')
+          writeJson(res, 200, ok(await deps.pullRequests.list({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(refresh === undefined ? {} : { refresh }),
+          })))
+          return
+        }
+        case '/vcs/pr/detail':
+          writeJson(res, 200, ok(await deps.pullRequests.detail({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            number: requiredPositiveInt(payload, 'number'),
+          })))
           return
         default:
           res.writeHead(404)
