@@ -12,11 +12,63 @@
 import * as React from 'react'
 import * as F from '../format.ts'
 import type { DialogState, PanelDeps, PanelHandlers, PanelState } from '../types.ts'
-import { IconClose } from './icons.ts'
+import { IconCheck, IconClose, IconError, IconWarning } from './icons.ts'
 import { Banner, IconButton, Progress, SkeletonRows, StateBadge } from './primitives.ts'
 import { selectedRepository, vcsLabel } from './shared.ts'
 
 const h = React.createElement
+
+/** Whether a report carries a finding the user must acknowledge. */
+function hasBlocking(dialog: DialogState): boolean {
+  return (dialog.checks?.findings ?? []).some((finding) => finding.severity === 'blocking')
+}
+
+/** Pre-commit checks of the staged diff, shown before a commit is confirmed. */
+function ChecksSection(props: { dialog: DialogState; deps: PanelDeps; handlers: PanelHandlers }): React.ReactElement | null {
+  const { dialog, deps, handlers } = props
+  if (dialog.operation !== 'commit') return null
+  const { t } = deps
+  const report = dialog.checks ?? null
+  const loading = dialog.checksLoading === true
+  const blocking = hasBlocking(dialog)
+  return h('div', { className: 'dvt-dialog-section' },
+    h('div', { className: 'dvt-dialog-label' }, t('dialog.checks.title')),
+    loading ? h(SkeletonRows, { rows: 2 }) : null,
+    !loading && report !== null && report.findings.length === 0
+      ? h('div', { className: 'dvt-dialog-note' }, t('dialog.checks.none'))
+      : null,
+    !loading && report === null
+      ? h(Banner, { kind: 'warn', text: t('dialog.checks.unavailable') })
+      : null,
+    !loading && report !== null && report.findings.length > 0
+      ? h('ul', { className: 'dvt-checks dvt-checks-compact' },
+        report.findings.map((finding) => h('li', {
+          key: `${finding.rule}:${finding.path ?? ''}:${finding.line ?? ''}`,
+          className: `dvt-check dvt-check-${finding.severity}`,
+        },
+        h('span', { className: 'dvt-check-icon' },
+          h(finding.severity === 'blocking' ? IconError : finding.severity === 'warning' ? IconWarning : IconCheck, { size: 12 })),
+        h('span', { className: 'dvt-check-main' },
+          h('span', { className: 'dvt-check-title' }, t(`check.${finding.rule}`)),
+          finding.path === undefined ? null : h('span', { className: 'dvt-check-path dvt-mono', title: finding.path }, finding.path),
+        ),
+        )),
+      )
+      : null,
+    blocking
+      ? h('label', { className: 'dvt-ack' },
+        h('input', {
+          type: 'checkbox',
+          checked: dialog.acknowledged === true,
+          disabled: dialog.phase === 'executing' || dialog.phase === 'result',
+          onChange: handlers.onToggleDialogAck,
+        }),
+        h('span', null, t('dialog.checks.ack')),
+      )
+      : null,
+    blocking ? h(Banner, { kind: 'warn', text: t('dialog.checks.blocking') }) : null,
+  )
+}
 
 /** One `key / value` row inside a dialog section. */
 function kvRow(key: string, value: React.ReactNode, mono = false): React.ReactElement {
@@ -152,12 +204,14 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
     && Number.isFinite(Date.parse(preview.expiresAt))
     && Date.parse(preview.expiresAt) < now()
   const commitMissing = dialog.operation === 'commit' && dialog.message.trim() === ''
+  const commitBlockedByChecks = dialog.operation === 'commit' && hasBlocking(dialog) && !dialog.acknowledged
   const busy = dialog.phase === 'previewing' || dialog.phase === 'executing'
   const canConfirm = dialog.phase === 'previewed'
     && preview !== null
     && preview.allowed
     && !expired
     && !commitMissing
+    && !commitBlockedByChecks
 
   const sections: React.ReactNode[] = []
   if (dialog.phase === 'previewing') {
@@ -182,7 +236,7 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
         h(Banner, {
           kind: 'error',
           title: t('common.error'),
-          text: t('op.blocked', { reason: preview.blockedReason === undefined || preview.blockedReason === '' ? t('op.blocked.generic') : preview.blockedReason }),
+          text: t('op.blocked', { reason: F.blockedReasonLabel(preview.blockedReason, t) }),
         }),
       ))
     }
@@ -206,6 +260,7 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
   }
   const fields = h(OperationFields, { key: 'fields', state, dialog, handlers, t })
   if (dialog.operation === 'commit' || dialog.operation === 'push') sections.push(fields)
+  sections.push(h(ChecksSection, { key: 'checks', dialog, deps, handlers }))
   if (dialog.phase === 'executing') {
     sections.push(h(Progress, { key: 'executing', label: t('op.executing') }))
   }

@@ -10,10 +10,13 @@
 
 import type {
   ApiError,
+  BranchCompare,
   ChangeSet,
+  ChecksReport,
   Diagnostics,
   DiffResult,
   FileChangeStatus,
+  HotspotReport,
   OperationAttempt,
   OperationPreview,
   OperationState,
@@ -21,16 +24,24 @@ import type {
   PullRequestDetail,
   PullRequestList,
   Repository,
+  SessionChanges,
   VcsEvent,
   VcsEventType,
   WorkingTreeStatus,
+  WorktreeDiffResult,
 } from '../shared/contracts.ts'
 import type * as React from 'react'
 import type { VcsClient } from './api.ts'
 import type { TranslateFn } from './i18n.ts'
 
 /** Which source the panel body currently lists. */
-export type PanelSource = 'timeline' | 'pr' | 'audit'
+export type PanelSource = 'timeline' | 'pending' | 'hotspots' | 'pr' | 'audit'
+
+/** Which side of the working tree a diff/checks request describes. */
+export type ChecksScope = 'staged' | 'worktree'
+
+/** Sort keys of the hotspot table (client-side re-ordering only). */
+export type HotspotSort = 'churn' | 'commits' | 'authors' | 'recent'
 
 /** Server-side history window presets offered by the time filter. */
 export type TimePreset = 'all' | '24h' | '7d' | '30d'
@@ -55,6 +66,12 @@ export interface FilterState {
   auditState: OperationState | 'all'
   /** History window preset, applied by the Host when the page is fetched. */
   timePreset: TimePreset
+  /** Branch decoration the user clicked; empty means every loaded branch. */
+  branch: string
+  /** `current` walks HEAD only; `all` walks every local branch. */
+  branchScope: 'current' | 'all'
+  /** Interleave plugin-audit operation nodes into the commit timeline. */
+  auditInTimeline: boolean
 }
 
 /** Repository-history page state. */
@@ -108,7 +125,49 @@ export interface PullRequestSlice {
   detail: PullRequestDetail | null
   detailLoading: boolean
   detailError: ApiError | null
+  /** Local branch insight (works without any provider network/credentials). */
+  compare: BranchCompare | null
+  compareLoading: boolean
+  compareError: ApiError | null
   /** Bumped by the refresh control. */
+  refreshTick: number
+}
+
+/** State of the manual "add repository" dialog. */
+export interface AddRepositoryState {
+  open: boolean
+  /** Path typed by the user (repository root or a directory inside it). */
+  path: string
+  loading: boolean
+  error: ApiError | null
+}
+
+/** Pending-workbench state: dirty files, their diffs, checks and attribution. */
+export interface PendingSlice {
+  /** Selected working-tree path, or null while no file is open. */
+  path: string | null
+  /** Which side the selected diff shows. */
+  staged: boolean
+  diff: WorktreeDiffResult | null
+  diffLoading: boolean
+  diffError: ApiError | null
+  checks: ChecksReport | null
+  checksLoading: boolean
+  checksError: ApiError | null
+  checksScope: ChecksScope
+  /** Session attribution for the current session (inferred, never exact). */
+  session: SessionChanges | null
+  sessionLoading: boolean
+  sessionError: ApiError | null
+}
+
+/** File-hotspot ranking state. */
+export interface HotspotSlice {
+  data: HotspotReport | null
+  loading: boolean
+  error: ApiError | null
+  /** Client-side sort key over the already-loaded rows. */
+  sort: HotspotSort
   refreshTick: number
 }
 
@@ -129,6 +188,11 @@ export interface DialogState {
   remote: string
   /** Push branch typed by the user. */
   branch: string
+  /** Pre-commit checks of the staged diff (commit dialog only). */
+  checks: ChecksReport | null
+  checksLoading: boolean
+  /** The user explicitly acknowledged blocking findings. */
+  acknowledged: boolean
 }
 
 /** Complete panel state. */
@@ -156,12 +220,18 @@ export interface PanelState {
   status: WorkingTreeStatus | null
   statusLoading: boolean
   statusError: ApiError | null
+  /** Dirty-file workbench (diff/checks/attribution) state. */
+  pending: PendingSlice
+  /** File-hotspot ranking state. */
+  hotspots: HotspotSlice
   dialog: DialogState | null
   copied: boolean
   /** The header overflow menu (write operations) is open. */
   menuOpen: boolean
   /** The collapsible diagnostics block above the status bar is open. */
   diagnosticsOpen: boolean
+  /** Manual repository addition (needed for checkouts outside DSH workspaces). */
+  addRepository: AddRepositoryState
 }
 
 /** Every user intent the views can raise. */
@@ -202,6 +272,14 @@ export interface PanelHandlers {
   onRefreshPullRequests(): void
   /** Open one pull request's detail in the detail pane. */
   onSelectPullRequest(number: number): void
+  /** Show the newest/another commit's diff for the selected file. */
+  onOpenFileRevision(revision: string): void
+  /** Open/close the manual add-repository dialog. */
+  onToggleAddRepository(): void
+  /** Update the typed repository path. */
+  onAddRepositoryPathChange(path: string): void
+  /** Validate and add the typed repository path. */
+  onAddRepositorySubmit(): void
   /** Close the pull-request detail pane. */
   onClosePullRequest(): void
   /** Change the audit lifecycle filter. */
@@ -222,6 +300,30 @@ export interface PanelHandlers {
   onCloseWriteMenu(): void
   /** Toggle the collapsible diagnostics block. */
   onToggleDiagnostics(): void
+  /** Open one dirty file's working-tree diff (`staged` selects the index side). */
+  onSelectPendingFile(path: string, staged: boolean): void
+  onBackFromPendingDiff(): void
+  /** Switch the checks report between the staged and working-tree sides. */
+  onSetChecksScope(scope: ChecksScope): void
+  /** Re-run the pre-commit checks (refresh control). */
+  onRefreshChecks(): void
+  /** Re-read the current session's touched files. */
+  onRefreshSessionChanges(): void
+  /** Reload the hotspot ranking (bypasses the Host cache). */
+  onRefreshHotspots(): void
+  /** Re-sort the already-loaded hotspot rows. */
+  onSetHotspotSort(sort: HotspotSort): void
+  /** Jump from a hotspot row to that file's history in the timeline. */
+  onOpenHotspotFile(path: string): void
+  /** Filter history to one branch decoration. */
+  onSelectBranch(branch: string): void
+  onClearBranchFilter(): void
+  /** Toggle "current branch only" vs "all branches" history walking. */
+  onSetBranchScope(scope: 'current' | 'all'): void
+  /** Interleave plugin-audit operation nodes into the commit timeline. */
+  onToggleAuditInTimeline(): void
+  /** Acknowledge blocking pre-commit findings so the commit may proceed. */
+  onToggleDialogAck(): void
 }
 
 /** Service/style dependencies injected once by `index.ts`. */
@@ -301,8 +403,39 @@ export function createPullRequestSlice(): PullRequestSlice {
     detail: null,
     detailLoading: false,
     detailError: null,
+    compare: null,
+    compareLoading: false,
+    compareError: null,
     refreshTick: 0,
   }
+}
+
+/** Empty add-repository dialog state. */
+export function createAddRepositoryState(): AddRepositoryState {
+  return { open: false, path: '', loading: false, error: null }
+}
+
+/** Empty pending-workbench state. */
+export function createPendingSlice(): PendingSlice {
+  return {
+    path: null,
+    staged: false,
+    diff: null,
+    diffLoading: false,
+    diffError: null,
+    checks: null,
+    checksLoading: false,
+    checksError: null,
+    checksScope: 'worktree',
+    session: null,
+    sessionLoading: false,
+    sessionError: null,
+  }
+}
+
+/** Empty hotspot state. */
+export function createHotspotSlice(): HotspotSlice {
+  return { data: null, loading: false, error: null, sort: 'churn', refreshTick: 0 }
 }
 
 /** Fully empty panel state; tests start from here and override slices. */
@@ -326,6 +459,9 @@ export function createInitialState(): PanelState {
       fileStatus: 'all',
       auditState: 'all',
       timePreset: 'all',
+      branch: '',
+      branchScope: 'current',
+      auditInTimeline: false,
     },
     selectedFilePath: null,
     expandedDirs: {},
@@ -339,10 +475,13 @@ export function createInitialState(): PanelState {
     status: null,
     statusLoading: false,
     statusError: null,
+    pending: createPendingSlice(),
+    hotspots: createHotspotSlice(),
     dialog: null,
     copied: false,
     menuOpen: false,
     diagnosticsOpen: false,
+    addRepository: createAddRepositoryState(),
   }
 }
 
@@ -378,6 +517,10 @@ export function createNoopHandlers(): PanelHandlers {
     onRefreshPullRequests: noop,
     onSelectPullRequest: noop,
     onClosePullRequest: noop,
+    onOpenFileRevision: noop,
+    onToggleAddRepository: noop,
+    onAddRepositoryPathChange: noop,
+    onAddRepositorySubmit: noop,
     onSetAuditState: noop,
     onOpenOperation: noop,
     onBackFromAuditDetail: noop,
@@ -392,5 +535,18 @@ export function createNoopHandlers(): PanelHandlers {
     onToggleWriteMenu: noop,
     onCloseWriteMenu: noop,
     onToggleDiagnostics: noop,
+    onSelectPendingFile: noop,
+    onBackFromPendingDiff: noop,
+    onSetChecksScope: noop,
+    onRefreshChecks: noop,
+    onRefreshSessionChanges: noop,
+    onRefreshHotspots: noop,
+    onSetHotspotSort: noop,
+    onOpenHotspotFile: noop,
+    onSelectBranch: noop,
+    onClearBranchFilter: noop,
+    onSetBranchScope: noop,
+    onToggleAuditInTimeline: noop,
+    onToggleDialogAck: noop,
   }
 }

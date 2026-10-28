@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises'
 import type { Diagnostics } from '../shared/contracts.ts'
 import type { Runner } from './adapters/types.ts'
 import type { WorkspaceInfo } from './discovery.ts'
+import type { ToolPaths } from './toolchain.ts'
 
 /** Dependencies of the diagnostics provider. */
 export interface DiagnosticsDeps {
@@ -15,6 +16,15 @@ export interface DiagnosticsDeps {
   workspaces: () => WorkspaceInfo[]
   pluginVersion: string
   dataDir: string
+  /**
+   * Warnings from the mount-time client resolution.
+   *
+   * When absent, the provider falls back to the older generic messages so the
+   * module stays usable without a toolchain.
+   */
+  toolWarnings?: () => string[] | Promise<string[]>
+  /** Resolved client paths, used to explain a client that cannot answer. */
+  toolPaths?: () => ToolPaths | Promise<ToolPaths>
 }
 
 /** How long one probe result is reused. */
@@ -47,6 +57,10 @@ async function dshVersion(): Promise<string | null> {
 
 /**
  * Build the cached diagnostics provider.
+ *
+ * The warnings name the exact situation: a missing client says what to install
+ * and which config key pins an alternative, and a resolved client that does not
+ * answer `--version` is reported with the path that was tried.
  * @param deps - runner, workspace source, plugin version, data directory.
  * @returns a provider returning {@link Diagnostics}.
  */
@@ -56,14 +70,29 @@ export function createDiagnosticsProvider(deps: DiagnosticsDeps): () => Promise<
   return async () => {
     const current = Date.now()
     if (cache !== undefined && current - cache.at < CACHE_TTL_MS) return cache.value
-    const [gitVersion, svnVersion, version] = await Promise.all([
+    // The client resolution is awaited here: the first diagnostics read then
+    // reports the final picture instead of "no warnings yet".
+    const [gitVersion, svnVersion, version, toolWarnings, toolPaths] = await Promise.all([
       toolVersion(deps.runner, 'git'),
       toolVersion(deps.runner, 'svn'),
       dshVersion(),
+      Promise.resolve(deps.toolWarnings?.()),
+      Promise.resolve(deps.toolPaths?.()),
     ])
-    const warnings: string[] = []
-    if (gitVersion === null) warnings.push('git executable not found')
-    if (svnVersion === null) warnings.push('svn executable not found')
+    const warnings: string[] = toolWarnings === undefined
+      ? [
+          ...(gitVersion === null ? ['git executable not found'] : []),
+          ...(svnVersion === null ? ['svn executable not found'] : []),
+        ]
+      : [...toolWarnings]
+    if (toolPaths !== undefined) {
+      if (gitVersion === null && toolPaths.git !== null) {
+        warnings.push(`git at ${toolPaths.git} did not answer --version; check that the file is a working git client`)
+      }
+      if (svnVersion === null && toolPaths.svn !== null) {
+        warnings.push(`svn at ${toolPaths.svn} did not answer --version; check that the file is a working svn client`)
+      }
+    }
     const value: Diagnostics = {
       pluginVersion: deps.pluginVersion,
       dshVersion: version,

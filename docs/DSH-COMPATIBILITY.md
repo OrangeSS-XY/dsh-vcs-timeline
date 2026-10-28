@@ -159,8 +159,10 @@ DSH 桌面端为 Chromium ≥ 110，容器查询可用（真实页面截图验�
   路径为**文档相对路径**（页面 `<base href="./">`），不能以 `/` 开头。
 - 统一信封：`{"ok":true,"value":...}` / `{"ok":false,"error":{"code","message","detail?","retryable?"}}`。
 - 传输层加固：仅 loopback、仅 POST、仅 `application/json`、`Origin` 同源校验、请求体 256 KiB 上限。
-- 实测：`POST /vcs/diagnostics` 等 13 条路由全部返回预期信封；非 JSON content-type 返回 415；
-  未知路由 404；跨源被拒（同源校验）。
+- 实测：`POST /vcs/diagnostics` 等路由全部返回预期信封；非 JSON content-type 返回 415；
+  未知路由 404；跨源被拒（同源校验）。v1.1 新增 4 条只读路由
+  （`worktree/diff`、`checks`、`stats/hotspots`、`session/changes`）已由 `npm run verify:host`
+  在构建产物上以真实 git 验证（14/14）。
 
 ## 4.2 PR / MR 路由与运行环境（实测）
 
@@ -173,6 +175,20 @@ DSH 桌面端为 Chromium ≥ 110，容器查询可用（真实页面截图验�
   匿名 GitHub REST 对公开仓库可用（用直连 node 进程验证过），但 **Host 进程出网到 api.github.com 超时**
   （10s → `network-unknown`，retryable），这是环境/网络策略问题，不是插件代码问题。
 - 匿名列表在热门仓库可能超过 1 MiB 响应上限 → 映射 `output-too-large`；GitHub 匿名限流 → `rate-limited`。
+
+## 4.3 工具链探测与本地分支洞察（实测）
+
+- `<dataDir>/vcs-config.json`（可选）：`{"gitPath":"...","svnPath":"..."}`，仅接受 Windows 的
+  `.exe`/`.com` 绝对路径（Host 不经 shell）；挂载时读取一次，修改需重新挂载/重启。
+- 解析顺序：config → PATH → 常见安装目录。本机实测：git 解析为
+  `E:\softData\Git\cmd\git.EXE`（PATH，2.45.1），**svn 全空**（PATH 与 7 个常见目录都没有），
+  诊断给出可执行修复：安装 TortoiseSVN 的 command line client tools / SlikSVN，或写
+  `svnPath`。`Runner` 已把 argv[0] 的 `git`/`svn` 改写为绝对路径（实测 spawn 生效）。
+- `POST /vcs/branch/compare {repositoryId, baseBranch?}`：同一 loopback/JSON/256KiB 加固；
+  实测返回 current=`fix-upload`、base=`main`、ahead=3、files=94、conflicts=0、
+  actions=[create-pr]；SVN 返回 `available:false`（unsupportedReason: svn-branches-not-compared）。
+- `/vcs/repos/add` 读取元数据失败时不再折成 internal：缺少客户端返回 `vcs-not-installed`
+  并说明原因（实测添加 `D:\haiyiData\myCode\st-agent` → svn-not-installed）。
 
 ## 5. Host 运行时能力（实测）
 
@@ -215,4 +231,7 @@ asar 内没有 `.d.ts`，因此：
 5. **`conversation.view` 的 owner 语义**：页签按 session 注册；若未来 shell 移除该 slot，
    注册会被 try/catch 降级为“无对话区页签”，右侧栏页签仍可用。
 6. **PR 数据依赖网络与凭据**：本机 Host 进程无外网到 api.github.com，匿名也只覆盖公开仓库基础字段；
-   评审/CI/可合并状态需配置令牌（env / ~/.git-credentials / pr-auth.json），未配置时 UI 明确提示。
+   评审/CI/可合并状态需配置令牌（env / ~/.git-credentials / pr-auth.json），未配置时 UI 明确提示；
+   无 PR 或读不到时，PR 页展示**本地分支洞察**（本地 git 计算，无需网络）。
+7. **SVN 客户端缺失**：本机无 svn.exe，SVN 工作副本可被「添加仓库」识别但读不到历史；
+   安装 CLI 或配置 `svnPath` 后重新挂载插件即可。

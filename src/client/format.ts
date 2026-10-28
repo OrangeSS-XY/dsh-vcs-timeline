@@ -173,6 +173,33 @@ export function operationLabel(operation: OperationType, t: TranslateFn): string
   return t(`op.label.${operation}`)
 }
 
+/**
+ * Localize one Host `blockedReason` sentence.
+ *
+ * The Host sends the precise reason as English prose (it is also the wording a
+ * log reader sees), so the Client maps the known reasons to dictionary copy and
+ * falls back to the raw sentence for a reason it does not recognize. It never
+ * hides the reason.
+ */
+export function blockedReasonLabel(reason: string | undefined, t: TranslateFn): string {
+  if (reason === undefined || reason.trim() === '') return t('op.blocked.generic')
+  const text = reason.toLowerCase()
+  if (text.includes('commit message is required')) return t('blocked.commitMessage')
+  if (text.includes('message is longer than 4000')) return t('blocked.messageTooLong')
+  if (text.includes('nothing is staged; there is nothing to unstage')) return t('blocked.nothingToUnstage')
+  if (text.includes('nothing is staged')) return t('blocked.nothingStaged')
+  if (text.includes('nothing to stage')) return t('blocked.nothingToStage')
+  if (text.includes('working tree has uncommitted changes')) return t('blocked.dirtyWorktree')
+  if (text.includes('no configured remote')) return t('blocked.noRemote')
+  if (text.includes('has no upstream')) return t('blocked.noUpstream')
+  if (text.includes('detached')) return t('blocked.detached')
+  if (text.includes('only the current branch')) return t('blocked.currentBranchOnly')
+  if (text.includes('unknown remote')) return t('blocked.unknownRemote')
+  if (text.includes('must stay inside the repository')) return t('blocked.pathOutside')
+  if (text.includes('not implemented')) return t('blocked.notImplemented')
+  return reason
+}
+
 /** Localized operation lifecycle label. */
 export function operationStateLabel(state: OperationState, t: TranslateFn): string {
   return t(`op.state.${state}`)

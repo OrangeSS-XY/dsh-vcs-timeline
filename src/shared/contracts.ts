@@ -137,6 +137,8 @@ export interface ChangeSet {
 export type OperationType =
   | 'status'
   | 'diff'
+  | 'stage'
+  | 'unstage'
   | 'commit'
   | 'push'
   | 'fetch'
@@ -233,6 +235,14 @@ export interface TimelineQuery {
    * the rest of the page.
    */
   includeFiles?: boolean
+  /**
+   * Restrict history to one branch/ref. The Host validates the name as a
+   * branch and uses it as the `git log <ref>` revision, never as a client-side
+   * guess; SVN reports a warning instead of pretending branch semantics.
+   */
+  branch?: string
+  /** `all` = every branch, `current` (default) = HEAD only. */
+  branchScope?: 'current' | 'all'
 }
 
 /** One page of timeline events. */
@@ -375,6 +385,10 @@ export type PullRequestActionKind =
   | 'merge'
   | 'fix-ci'
   | 'fix-conflicts'
+  | 'push'
+  | 'create-pr'
+  | 'pull'
+  | 'sync'
   | 'wait'
   | 'unknown'
 
@@ -475,6 +489,54 @@ export interface PullRequestDetailQuery {
   number: number
 }
 
+/** One commit of the local branch insight (newest first). */
+export interface BranchCompareCommit {
+  hash: string
+  summary: string
+  author?: string
+  timestamp: string
+}
+
+/** Input of one local branch-insight request. */
+export interface BranchCompareQuery {
+  repositoryId: string
+  /** Base/target branch; defaults to the repository's default/main branch. */
+  baseBranch?: string
+}
+
+/**
+ * Local branch insight: what the current branch still carries relative to its
+ * base/target. It is computed with git only (no provider API), so the PR tab
+ * still says something useful when the remote is unreachable or unconfigured.
+ */
+export interface BranchCompare {
+  repositoryId: string
+  vcsType: VcsType
+  currentBranch: string | null
+  baseBranch: string | null
+  /** False when this VCS/repo cannot be compared locally (e.g. SVN branches). */
+  available: boolean
+  /** Why the local comparison is unavailable, when it is. */
+  unsupportedReason?: string
+  /** Commits on the current branch that the base branch does not contain. */
+  ahead: number
+  /** Commits on the base branch that the current branch does not contain. */
+  behind: number
+  commits: BranchCompareCommit[]
+  filesChanged: number
+  additions?: number
+  deletions?: number
+  /** Paths both sides changed (potential conflicts); null when unknown. */
+  conflictPaths: string[] | null
+  /** Commits ahead of the configured upstream; null when no upstream exists. */
+  unpushed: number | null
+  hasUpstream: boolean
+  /** Suggested local next steps (push / create-pr / pull / sync / wait). */
+  actions: PullRequestAction[]
+  warnings?: string[]
+  computedAt: string
+}
+
 /** State read before a write operation, used for preview and audit. */
 export interface OperationBeforeState {
   branch?: string
@@ -522,6 +584,14 @@ export interface VcsApi {
   timeline(query: TimelineQuery): Promise<TimelinePage>
   changeSet(repositoryId: string, revision: string): Promise<ChangeSet>
   diff(query: DiffQuery): Promise<DiffResult>
+  /** Diff of the working tree (unstaged or staged side). */
+  worktreeDiff(query: WorktreeDiffQuery): Promise<WorktreeDiffResult>
+  /** Pre-commit rule findings over a real diff. */
+  checks(query: ChecksQuery): Promise<ChecksReport>
+  /** Files the current session's tool calls touched, marked inferred. */
+  sessionChanges(query: SessionChangesQuery): Promise<SessionChanges>
+  /** File hotspot ranking over a bounded commit window. */
+  statsHotspots(query: HotspotQuery): Promise<HotspotReport>
   status(repositoryId: string): Promise<WorkingTreeStatus>
   previewOperation(request: OperationRequest): Promise<OperationPreview>
   executeOperation(request: OperationRequest): Promise<OperationAttempt>
@@ -529,6 +599,7 @@ export interface VcsApi {
   getOperation(operationId: string): Promise<OperationAttempt>
   listPullRequests(query: PullRequestQuery): Promise<PullRequestList>
   pullRequestDetail(query: PullRequestDetailQuery): Promise<PullRequestDetail>
+  branchCompare(query: BranchCompareQuery): Promise<BranchCompare>
 }
 
 /** Largest pull-request page the Host will serve. */
@@ -629,6 +700,17 @@ export function isPullRequestList(value: unknown): value is PullRequestList {
     && typeof record.fetchedAt === 'string'
 }
 
+/** Runtime guard for {@link BranchCompare}. */
+export function isBranchCompare(value: unknown): value is BranchCompare {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.repositoryId === 'string'
+    && typeof record.ahead === 'number'
+    && typeof record.behind === 'number'
+    && Array.isArray(record.commits)
+    && typeof record.available === 'boolean'
+}
+
 /** Runtime guard for {@link PullRequestDetail}. */
 export function isPullRequestDetail(value: unknown): value is PullRequestDetail {
   if (typeof value !== 'object' || value === null) return false
@@ -640,9 +722,247 @@ export function isPullRequestDetail(value: unknown): value is PullRequestDetail 
     && Array.isArray(record.files)
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// v1.1 additions: pending workbench, pre-commit checks, branch filtering,
+// session attribution and hotspot statistics. Same rules as everything above:
+// every value crosses the Host/Client boundary, missing facts stay absent, and
+// inferred facts are labelled as inferred.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * One working-tree diff request.
+ *
+ * `filePath` omitted means "the whole side in one diff" (used by the
+ * pre-commit checks); provided means one file for the pending workbench.
+ */
+export interface WorktreeDiffQuery {
+  repositoryId: string
+  filePath?: string
+  /** true = the index (staged) side; false/absent = the unstaged side. */
+  staged?: boolean
+  contextLines?: number
+  maxBytes?: number
+}
+
+/** One working-tree diff result. Never pretends an untracked file is tracked. */
+export interface WorktreeDiffResult {
+  repositoryId: string
+  /** Null for a whole-side diff. */
+  filePath: string | null
+  staged: boolean
+  /** `untracked` only when one untracked file was asked for. */
+  kind: 'tracked' | 'untracked'
+  text: string
+  truncated: boolean
+  truncationReason?: string
+  binary: boolean
+  bytes: number
+}
+
+/** How serious one pre-commit finding is. */
+export type CheckSeverity = 'blocking' | 'warning' | 'info'
+
+/** Stable rule ids; the Client owns every word shown for them. */
+export type CheckRuleId =
+  | 'conflict-marker'
+  | 'secret-pattern'
+  | 'private-key'
+  | 'lockfile'
+  | 'test-deleted'
+  | 'binary-file'
+  | 'large-file'
+  | 'untracked-skipped'
+  | 'no-changes'
+
+/** One rule finding. `detail` is machine data, not UI copy. */
+export interface CheckFinding {
+  rule: CheckRuleId
+  severity: CheckSeverity
+  path?: string
+  line?: number
+  count?: number
+  detail?: string
+}
+
+/** Which side a checks report describes. */
+export type CheckScope = 'staged' | 'worktree'
+
+/** Request of one pre-commit checks report. */
+export interface ChecksQuery {
+  repositoryId: string
+  staged?: boolean
+  maxBytes?: number
+}
+
+/** One rule-based report over a real diff. */
+export interface ChecksReport {
+  repositoryId: string
+  scope: CheckScope
+  findings: CheckFinding[]
+  /** Changed files the Host actually inspected. */
+  filesChecked: number
+  truncated: boolean
+  /** True when there was no diff to check. */
+  empty: boolean
+  warnings?: string[]
+  generatedAt: string
+}
+
+/** Files touched by the current session's tool calls. */
+export interface SessionChangedFile {
+  /** Repository-relative path using `/`. */
+  path: string
+  /** Last tool name that touched it (raw, as the session recorded it). */
+  tool: string
+  /** How many observed tool calls touched this path. */
+  touches: number
+  /** ISO 8601 time of the last observed touch, when the event carries one. */
+  lastToolAt?: string
+  /** Always `inferred`: derived from tool-call arguments, never a commit. */
+  confidence: 'inferred'
+}
+
+/** Input of one session-attribution request. */
+export interface SessionChangesQuery {
+  repositoryId: string
+  /** The session whose tool calls to read; the Host only reads live sessions. */
+  sessionId?: string
+}
+
+/** Session attribution facts for one repository. */
+export interface SessionChanges {
+  repositoryId: string
+  /** The session that was asked about; null when the client sent none. */
+  sessionId: string | null
+  /** False when the Host could not read that session at all. */
+  available: boolean
+  files: SessionChangedFile[]
+  /** True when more paths were observed than {@link MAX_SESSION_FILES}. */
+  truncated?: boolean
+  warnings?: string[]
+  generatedAt: string
+}
+
+/** Input of one hotspot ranking request. */
+export interface HotspotQuery {
+  repositoryId: string
+  /** Maximum rows returned; the Host clamps it. */
+  limit?: number
+  /** How many commits back the Host scans. */
+  maxCommits?: number
+}
+
+/** One day of commit activity inside the scanned window. */
+export interface HotspotDay {
+  /** UTC calendar day, `YYYY-MM-DD`. */
+  date: string
+  commits: number
+  /** Distinct files touched that day (bounded by the same scan). */
+  files: number
+  additions?: number
+  deletions?: number
+}
+
+/** One file's churn/authors/recency over the scanned window. */
+export interface FileHotspot {
+  path: string
+  commits: number
+  additions?: number
+  deletions?: number
+  /** additions + deletions when the VCS reports line stats; null otherwise. */
+  churn: number | null
+  authors: string[]
+  authorCount: number
+  lastChangedAt?: string
+  lastAuthor?: string
+}
+
+/** Honest scope facts attached to every statistics answer. */
+export interface HotspotScope {
+  /** Branch the scan was anchored on; null when the VCS cannot say. */
+  branch: string | null
+  /** True when merge commits are part of the scan. */
+  mergesIncluded: boolean
+  /** Oldest commit time actually covered, when known. */
+  since?: string
+  /** How many commits the scan window allowed. */
+  windowCommits: number
+}
+
+/** One hotspot ranking answer. */
+export interface HotspotReport {
+  repositoryId: string
+  vcsType: VcsType
+  /** False when this VCS/repository cannot produce file statistics. */
+  available: boolean
+  unsupportedReason?: string
+  files: FileHotspot[]
+  /** Commit activity per UTC day inside the scanned window (chart data). */
+  daily: HotspotDay[]
+  /** Commits actually scanned (the honesty badge). */
+  scannedCommits: number
+  /** True when history is longer than the scan window. */
+  truncated: boolean
+  scope: HotspotScope
+  warnings?: string[]
+  computedAt: string
+  /** True when the Host answered from its short-lived cache. */
+  cached: boolean
+}
+
+/** Largest hotspot page the Host will serve. */
+export const MAX_HOTSPOT_FILES = 100
+/** Default number of commits a hotspot scan covers. */
+export const DEFAULT_HOTSPOT_COMMITS = 500
+/** How long one hotspot report stays fresh in the Host cache, in ms. */
+export const HOTSPOT_CACHE_MS = 60_000
+/** Largest number of session-touched paths the Host reports. */
+export const MAX_SESSION_FILES = 500
+
+/** Runtime guard for {@link WorktreeDiffResult}. */
+export function isWorktreeDiffResult(value: unknown): value is WorktreeDiffResult {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.text === 'string'
+    && typeof record.truncated === 'boolean'
+    && typeof record.binary === 'boolean'
+    && (record.kind === 'tracked' || record.kind === 'untracked')
+}
+
+/** Runtime guard for {@link ChecksReport}. */
+export function isChecksReport(value: unknown): value is ChecksReport {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return Array.isArray(record.findings)
+    && (record.scope === 'staged' || record.scope === 'worktree')
+    && typeof record.truncated === 'boolean'
+    && typeof record.empty === 'boolean'
+}
+
+/** Runtime guard for {@link SessionChanges}. */
+export function isSessionChanges(value: unknown): value is SessionChanges {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.repositoryId === 'string'
+    && typeof record.available === 'boolean'
+    && Array.isArray(record.files)
+}
+
+/** Runtime guard for {@link HotspotReport}. */
+export function isHotspotReport(value: unknown): value is HotspotReport {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.repositoryId === 'string'
+    && typeof record.available === 'boolean'
+    && Array.isArray(record.files)
+    && typeof record.scannedCommits === 'number'
+}
+
 /** Whether an operation mutates repository state. */
 export function isWriteOperation(operation: OperationType): boolean {
   switch (operation) {
+    case 'stage':
+    case 'unstage':
     case 'fetch':
     case 'pull':
     case 'update':

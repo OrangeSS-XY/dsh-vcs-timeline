@@ -331,6 +331,28 @@ const pullRequests = {
   fetchedAt: '2026-10-27T09:30:00.000Z',
 }
 
+const branchCompare = {
+  repositoryId: repository.id,
+  vcsType: 'git' as const,
+  currentBranch: 'feature/sidebar-timeline',
+  baseBranch: 'main',
+  available: true,
+  ahead: 3,
+  behind: 1,
+  commits: [
+    { hash: 'b5685a0c1d2e', summary: 'feat(timeline): 紧凑工具栏、提交图与增删统计', author: 'Lin Wei', timestamp: '2026-10-27T09:12:00.000Z' },
+    { hash: '9d2f41ab0000', summary: 'refactor: 把审计页签拆到独立视图模块', author: 'Chen Yu', timestamp: '2026-10-27T08:41:00.000Z' },
+  ],
+  filesChanged: 7,
+  additions: 214,
+  deletions: 158,
+  conflictPaths: [] as string[],
+  unpushed: 2,
+  hasUpstream: true,
+  actions: [{ kind: 'push' as const, reason: 'unpushed-commits' }],
+  computedAt: '2026-10-27T09:30:00.000Z',
+}
+
 const diff: DiffResult = {
   repositoryId: repository.id,
   revisionA: null,
@@ -474,7 +496,7 @@ const scenarios: Scenario[] = [
     theme: 'light',
     width: 1600,
     height: 900,
-    state: stateWith({ source: 'pr', pullRequests: { ...initial.pullRequests, data: pullRequests } }),
+    state: stateWith({ source: 'pr', pullRequests: { ...initial.pullRequests, data: pullRequests, compare: branchCompare } }),
   },
   {
     name: 'pr-auth-light',
@@ -483,7 +505,7 @@ const scenarios: Scenario[] = [
     height: 900,
     state: stateWith({
       source: 'pr',
-      pullRequests: { ...initial.pullRequests, error: { code: 'auth-required', message: 'token missing' } },
+      pullRequests: { ...initial.pullRequests, error: { code: 'auth-required', message: 'token missing' }, compare: branchCompare },
     }),
   },
   {
@@ -542,6 +564,17 @@ const scenarios: Scenario[] = [
         message: 'feat(timeline): 紧凑工具栏、提交图与增删统计',
         remote: 'origin',
         branch: 'feature/sidebar-timeline',
+        checks: {
+          repositoryId: repository.id,
+          scope: 'staged',
+          findings: [{ rule: 'lockfile', severity: 'warning', path: 'package-lock.json' }],
+          filesChecked: 3,
+          truncated: false,
+          empty: false,
+          generatedAt: '2026-10-27T09:20:11.000Z',
+        },
+        checksLoading: false,
+        acknowledged: false,
       },
     }),
   },
@@ -570,6 +603,17 @@ const scenarios: Scenario[] = [
         message: 'feat(timeline): 紧凑工具栏、提交图与增删统计',
         remote: 'origin',
         branch: 'feature/sidebar-timeline',
+        checks: {
+          repositoryId: repository.id,
+          scope: 'staged',
+          findings: [{ rule: 'lockfile', severity: 'warning', path: 'package-lock.json' }],
+          filesChecked: 3,
+          truncated: false,
+          empty: false,
+          generatedAt: '2026-10-27T09:20:11.000Z',
+        },
+        checksLoading: false,
+        acknowledged: false,
       },
     }),
   },
@@ -632,7 +676,7 @@ await writeFile(resolve(outDir, 'render.md'), [
   'node scripts/preview-shots.mjs   # 用本机 Edge 无头模式截图',
   '```',
   '',
-  '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件 + Diff 分栏、提交详情、',
+  '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件三栏（树 | Diff | 操作信息）、提交详情、',
   'PR 列表 / 未认证提示、审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
 ].join('\n'), 'utf8')
 

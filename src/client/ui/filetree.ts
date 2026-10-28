@@ -202,6 +202,11 @@ export function renderFileTree(
           icon: IconFile,
           title: t('tree.unavailable.title'),
           hint: t('tree.unavailable.hint'),
+          actions: h('button', {
+            type: 'button',
+            className: 'dvt-btn dvt-btn-sm',
+            onClick: handlers.onRefreshRepositories,
+          }, t('common.refresh')),
         })
         : !hasWindow
           ? h(EmptyState, { icon: IconFile, title: t('tree.empty') })

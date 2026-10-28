@@ -1,4 +1,4 @@
-# 测试报告（dsh-vcs-timeline 0.1.0）
+# 测试报告（dsh-vcs-timeline 0.1.2；历史轮次见 §12 / §13）
 
 本报告只记录**实际执行**过的命令、退出码与结果，以及明确标注的未验证项。
 
@@ -30,7 +30,7 @@
   `changedFilesTruncated`）；SVN 由 `svn log --xml -v` 的逐路径 action/copyfrom 映射
   （仅请求时补一次本地 `svn info` 做路径映射）。未请求时事件**完全不带** `changedFiles`
   （“未请求”≠“没有变更”）；探针失败只降级为 partial 警告，不让整页失败。
-- **Client**（`lib/client.js`，262,214 B，运行时仅 `require("react")`）：本轮改为
+- **Client**（`lib/client.js`，298,607 B，运行时仅 `require("react")`）：本轮改为
   **文件中心双栏**——左文件树（目录计数 / 状态字母 / 文件名搜索 / 状态筛选 / 展开收起）
   + 右变更时间线（单文件历史、逐提交状态与 ± 行）、34px 工具栏 + `⋯` 版本控制菜单、
   统一搜索/时间范围/作者过滤、右栏内提交详情与行号 Diff、审计列表/详情、
@@ -46,8 +46,8 @@
 | # | 命令 | 退出码 | 结果 |
 | --- | --- | --- | --- |
 | 1 | `npx tsc -p tsconfig.json --noEmit` | 0 | **0 errors**（全包，含测试与预览脚本） |
-| 2 | `npm test` | 0 | **265 tests / 265 pass / 0 fail** |
-| 3 | `npm run build` | 0 | `lib/index.js` 230,730 B；`lib/client.js` 262,214 B；client bundle 唯一裸 `require` 为 `react` |
+| 2 | `npm test` | 0 | **313 tests / 313 pass / 0 fail** |
+| 3 | `npm run build` | 0 | `lib/index.js` 253,767 B；`lib/client.js` 298,607 B；client bundle 唯一裸 `require` 为 `react` |
 | 4 | `plugin_manager set_plugin include:dsh-vcs-timeline`（false → true） | 应用成功 | 两次均 `application: "applied"`；Host 行重新挂载，`/vcs/timeline` 立即返回 `changedFiles` |
 | 5 | `node scripts\verify-live.mjs http://127.0.0.1:7283` | 0 | **17/17 live checks passed**（含真实提交统计、token 单次使用、审计落盘） |
 | 6 | `node --experimental-strip-types scripts/render-preview.ts` | 0 | 19 个预览页面（侧栏 400×900、对话区 1600×900，含 PR/文件 Diff 分栏） |
@@ -69,11 +69,12 @@
 | `git.integration.test.ts` | 14 | **真实临时 Git 仓库**：探针/分页/过滤、每提交统计值、**includeFiles 的逐文件状态与 ±（增/改/删/重命名/二进制）**、**无 includeFiles 时事件不带 changedFiles**、真实 merge 提交 `changedFiles: []`、name-status 探针失败降级为 partial、写计划与降级 |
 | `svn.unit.test.ts` | 65 | `svn --xml` 解析（log/info/status）、summarize、revision 注入拒绝、argv 构造、分页游标、重命名/复制、Diff 截断/二进制、update/commit 计划、缺客户端降级、路径归一回归、**log -v 逐路径映射（copy/rename/info 失败回退/205→200 截断）** |
 | `client.format.test.ts` | 17 | 时间/紧凑时间/哈希/字节、Diff 行分类与行号计算、事件统计读取（含 merge 全 0 抑制）、状态/事件/来源/操作标签、错误映射、字典键一致、插值回退 |
-| `client.fileindex.test.ts` | 12 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
+| `client.fileindex.test.ts` | 12 | **文件聚合（状态取最新、变更次数、± 累计）、状态计数、文件名/路径/旧路径搜索、目录树与目录计数、单文件历史、按状态/搜索过滤后两栏一致性、未提供文件清单的降级** |
 | `client.graph.test.ts` | 7 | **提交图泳道：线性/合并/父已在其它泳道时汇入/页边界/泳道上限/几何辅助函数** |
 | `pr.test.ts` | 29 | **PR 远端解析（https/scp/ssh/凭据剥离）、凭据链优先级与令牌不外泄、GitHub GraphQL/匿名 REST 映射、详情文件、动作推导全分支、错误映射（401/403/限流/网络/超限）、60s 缓存与 refresh、路由入参校验** |
+| `insight.test.ts` | 45 | **工具链探测/配置（config>PATH>probe、argv[0] 改写、无效配置忽略）、本地分支对比（领先/落后、log -z、shortstat、merge-tree 冲突与降级、分离 HEAD、SVN unsupported）、动作表全分支、真实 git 集成（ahead/behind、冲突）** |
 | `client.panel.test.ts` | 7 | 写操作 draft 保留/重置、`operationParams`、preview/execute 参数一致性（token 绑定契约） |
-| `client.render.test.ts` | 35 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、单文件收窄、状态筛选、目录展开、“未提供文件清单”、时间线日期分组/HEAD/相对时间**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
+| `client.render.test.ts` | 38 | SSR 渲染：加载/错误/空仓库/未初始化/时间线/合并提交/真实统计与“无统计不伪造”/部分结果/工具条与菜单/**双栏文件树与共享过滤、三栏文件视图（树/Diff/操作信息）、作者分布、单文件收窄、状态筛选、目录展开、“未提供文件清单”、时间线日期分组/HEAD/相对时间、添加仓库对话框、本地分支洞察**/详情/Diff/审计/状态栏/诊断/对话框/token-only 样式/字典完整性 |
 
 ## 4. 桌面端验收
 
@@ -86,7 +87,11 @@
 | 真实数据一致性 | 通过（真实页面） | 与 `git log` 一致；HEAD 唯一；行数 = 提交数 |
 | 多泳道提交图 | 通过（真实页面 + 临时 merge 仓库） | SVG 节点/泳道/合并曲线/空心合并节点与“合并”标签；临时仓库实测 lanes{0,1} |
 | 列表/详情分栏 | 通过（真实页面） | 列表保留 + 下方详情；详情内 Diff；返回关闭详情且列表保留 |
-| 文件视图 who + Diff | 通过（真实页面） | “最近：XiaoSS · 13 小时前 / 2 位作者”+ 自动最新 Diff，列表/树可见 |
+| 文件树可见 | 修复后通过（真实页面） | 旧 Host（无 changedFiles）导致树空；重建 + 重新挂载后恢复（根条目 12 行，目录可展开） |
+| 三栏文件视图 | 通过（Lead 真实页面探针） | 树 300px / Diff 993px / 操作信息 340px；Diff 14 行、作者分布/提交记录/打开审计齐全；文件模式下列表隐藏 |
+| 聊天输入框隐藏 | 通过（Lead 真实页面探针） | composerSeat display:none、rect 0×0；面板填满内容区（883px）；切回对话需恢复 |
+| 添加仓库 | 通过（真实页面 + Host 路由） | 对话框可用；添加 st-agent 返回 vcs-not-installed 并显示 TortoiseSVN / vcs-config.json 指引 |
+| 本地分支洞察 | 通过（真实页面 + /vcs/branch/compare） | 领先 3 / 落后 0 / 0 未推送 / 94 文件 / 可以发起 PR；提交列表 3 条 |
 | PR 页签 | 通过（真实页面，受限环境） | 网络超时 → 诚实错误态 + 重试；匿名成功 → 未认证 + 空列表；未认证不伪造评审/CI |
 | 审计区（真实记录） | 通过（真实页面 + 插件路由） | 成功/失败记录、chips 计数、状态筛选、空筛选、详情（退出码/前后 revision/correlationId）；临时仓库已清理 |
 | 高度有界（列表/详情/Diff） | 通过（真实页面，修复后复验） | 三种状态面板均 876px；宿主滚动容器 scrollHeight == clientHeight（1004）；内部 `.dvt-scroll` 为滚动容器（723/2062、723/2421）；滚到 800px 时 toolbar y=76、面包屑 y=110、树 y=173、状态栏 y=928 全部固定 |
@@ -157,7 +162,29 @@
 HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致、单文件收窄、详情与真实 Diff 留在视图内、
 1440/1024 无横向溢出、深色可读、0 控制台错误。
 
-截图与原始 JSON：`E:softDataDP_Harnessdsh-plugin_scratch6`（33 张）、`_scratch7`（高度修复复验）。
+第二轮最终验收（本轮改动：文件三栏 / 隐藏输入框 / 添加仓库 / 本地分支洞察）同样 7/7 PASS：
+
+1. 输入框隐藏与恢复：`composerSeat` display:none、rect 0×0，面板撑满 1004px；点「对话」恢复输入框，再切回再次隐藏。
+2. 文件树：133 个文件，docs 51 / src 67 等目录计数与展开后行数完全一致，折叠回 7 个根条目。
+3. 三栏文件视图：树 300px / Diff 993px / 操作信息 340px（信息在 Diff 右侧），文件模式下列表隐藏；
+   Diff 93 行；在操作信息里点另一提交，Diff 切到 122 行、当前项高亮移动；作者分布/提交记录/打开审计齐全。
+4. 添加仓库：工具栏按钮与 `⋯` → 仓库入口都能打开；输入 `D:/haiyiData/myCode/st-agent` 后给出
+   TortoiseSVN / vcs-config.json 的安装指引。1024×768 下为模态（overlay 737×692、dialog 400×162，输入与按钮完整）。
+5. PR 0 个开放时的本地分支洞察：fix-upload → main、领先 3、落后 0、0 未推送、94 文件、可以发起 PR，
+   3 条领先提交；与 `/vcs/branch/compare` 返回值一致。
+6. 回归：时间线（5 行/2 个日期组/HEAD/±）、提交详情 + Diff 分栏、审计 chips（全部2/成功1/失败1）、
+   面板有界（1440→824px、1024→692px）、页面无横向溢出、深色主题可读。
+7. 控制台：0 pageerror、0 console error、无失败的 `/vcs` 请求。
+
+本轮缺陷：添加仓库对话框缺少 `.dvt-overlay` 模态包装（1920 压住状态栏、1024 裁成 54.6px 表头条）
+→ 包进 `dvt-overlay`；切换来源残留文件选择（返回时间线显示“暂无 Diff”）→ `onSetSource` 清空
+`selectedFilePath`；预览中泳道重复/断线 → 父已在其它泳道时汇入 + `opened` 页边界 + 行高对齐；
+分离 HEAD 出现重复 HEAD 标签、审计行 aria 占位符未替换 → 分别过滤 `HEAD` 伪分支与改传 `label`。
+
+截图与原始 JSON：`_scratch/v10`（上一轮）、`_scratch/v13`（本轮 27 张 + 5 份 JSON）、`_scratch/v12`、`_scratch/v14`。
+
+6`（33 张）、`_scratch
+7`（高度修复复验）。
 
 ## 7. 集成期间发现并修复的缺陷（累计）
 
@@ -211,6 +238,10 @@ HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致
 - 详情分栏高度固定为面板高度的 42%（可读性优先），暂不支持拖拽调整。
 - PR 评审/CI/可合并状态需令牌且需 Host 出网；本机显示网络错误态（已在文档/UI 说明）。
 - 提交图为单页推导：页边界首行泳道从当前页开始，跨页泳道可能不从顶部延续。
+- **重建后必须重新挂载插件**：本次实测 DSH 进程曾继续运行旧 bundle（/vcs/timeline 无 changedFiles、
+  /vcs/pr/list 404），重新 set_plugin false→true 后恢复；UI 已对旧 Host 的 PR 路由给出专门提示。
+- 本机 svn.exe 缺失：SVN 工作副本可添加但读不到历史；需安装 CLI 或配置 svnPath 后重新挂载。
+- 聊天输入框在插件视图打开期间被隐藏（DOM 级 display:none，卸载恢复）；若宿主改变聊天区 DOM 需同步调整。
 
 ## 10. 验证等级声明
 
@@ -218,7 +249,7 @@ HEAD 唯一、头像/作者/相对时间/± 正确、树展开计数 0 不一致
 | --- | --- |
 | 代码实现 | implemented |
 | 类型检查（0.2.1-rc.3 同版本类型包） | typechecked（`tsc --noEmit` 0 错误） |
-| 单元测试 | unit-tested（265 个测试全通过） |
+| 单元测试 | unit-tested（313 个测试全通过） |
 | 真实仓库集成测试 | integration-tested（Git 临时仓库 14 项；SVN 仅解析器级） |
 | 桌面端 Host 端到端 | desktop-verified（17/17 live checks，含真实 Git 提交、统计、逐文件清单与审计落盘） |
 | 面板视觉（组件渲染） | rendered-verified（400px/1600px、亮/暗无头截图 + 目视检查） |
@@ -234,6 +265,8 @@ npm install
 npm run typecheck
 npm test
 npm run build
+# v1.1：构建产物 + 真实 git 的路由级验收（不需要运行中的桌面端）
+node scripts\verify-host.mjs
 # 需要运行中的桌面端（本轮为 http://127.0.0.1:7283）
 node scripts\verify-live.mjs http://127.0.0.1:7283
 # 组件渲染截图（本机 Edge/Chrome）
@@ -241,3 +274,85 @@ npm run preview:ui
 ```
 
 测试全部使用 `%TEMP%` 下的临时目录/临时 Git 仓库，结束后删除；不触碰用户的真实仓库。
+
+## 12. v1.1（0.1.1）追加验收 — 2026-10-28
+
+### 12.1 范围
+
+P0 六项：待处理工作台（含逐文件工作区 Diff）、提交前变更体检、审计节点融入时间线、
+分支标签筛选 + 仅当前分支/全部分支、会话改动集 + AI 归因徽标、统计聚合缓存 + 文件热点排行。
+
+### 12.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck`（`tsc --noEmit`） | **exit 0**，0 error |
+| `npm test`（`node --experimental-strip-types src/tests/index.test.ts`） | **exit 0**，`# tests 366 / pass 366 / fail 0`（0.1.0 的 313 项 + v1.1 新增 53 项） |
+| `npm run build`（esbuild） | **exit 0**，`lib/index.js` 287.1 kb、`lib/client.js` 365.6 kb |
+| `node scripts/verify-host.mjs`（构建产物 + 真实 git，14 项） | **14/14 PASS**（详见 12.3） |
+| `node --experimental-strip-types src/tests/checks.test.ts` | 18/18 |
+| `node --experimental-strip-types src/tests/stats.test.ts` | 13/13 |
+| `node --experimental-strip-types src/tests/worktree.test.ts` | 5/5 |
+| `node --experimental-strip-types src/tests/checks-service.test.ts` | 3/3 |
+| `node --experimental-strip-types src/tests/session.test.ts` | 3/3 |
+| `node --experimental-strip-types src/tests/client.v11.test.ts` | 11/11 |
+
+### 12.3 `verify:host`（不需要重启桌面端）
+
+把 `lib/index.js` 挂到一个仅提供 `webServer / subprocess / workspaceRegistry / sessions` 的假 Host 上，
+在 `%TEMP%` 建一次性 Git 仓库（1 个提交 + 已暂存/未暂存/未跟踪/锁文件改动），用真实 `git` 进程
+驱动全部新路由，14/14 通过：
+
+1. `repos/list` 发现工作区仓库；2. `timeline` 带逐提交文件清单；3. `branchScope=all`；
+4. `status` 分组字段；5. 未暂存 Diff；6. 已暂存 Diff；7. 未跟踪文件整文件 Diff；
+8. `checks`（已暂存侧）；9. `checks`（工作区侧，lockfile + untracked-skipped）；
+10. `stats/hotspots`（真实窗口/分支/文件）；11. `session/changes`（成功 write → inferred）；
+12. 非活动会话返回 `available:false`；13. `op/preview` 提交预览；14. diagnostics。
+
+### 12.4 未验证 / 明确声明
+
+- **运行中的桌面端页面未做 v1.1 验收**：Host 代码在进程启动时载入，本轮未重启 DSH 桌面端
+  （重启会中断当前会话）。因此新路由在真实实例上的验收以 `verify:host` 的构建产物级结果为准；
+  重启后应运行 `npm run verify:live http://127.0.0.1:<port>`（脚本已加入 v1.1 新路由检查）。
+- **SVN 仍未联调**：本机 `E:\softData\TortoiseSVN` 只装 GUI 组件，`bin/` 无 `svn.exe`；
+  SVN 的工作区 Diff（无暂存区拒绝）、热点不可用、分支过滤警告只有单元测试覆盖。
+- **会话归因未在真实活动会话上人工核对 UI**：服务层用假 SessionStore 覆盖成功/失败/非白名单/
+  越界路径/去重；真实 UI 上的「推断」徽标只有渲染测试。
+- 热点统计的真实验证只覆盖 1 次提交的仓库（窗口/缓存/截断有单元测试）。
+- 长历史/大仓库性能（500–2000 提交窗口）未做基准测试。
+
+## 13. v1.2（0.1.2）反馈修正验收 — 2026-10-28
+
+### 13.1 修了什么
+
+1. **热点页改为图表**：`HotspotReport.daily`（Host 按 UTC 日聚合的真实提交桶）驱动日历热力格；
+   文件排行改为条形图（指标可切）。不再渲染文件表格。
+2. **Commit 可用性**：`stage` / `unstage` 成为显式写操作（同预览 → 单次 token → 审计），
+   待处理页提供「提交已暂存 / 暂存全部 / 取消暂存全部」；Host `blockedReason` 客户端本地化。
+3. **整侧 Diff 二进制误判**：工作区整个一侧的 diff 含二进制文件时不再把 text 置空并标 `binary:true`，
+   只有单文件请求才做二进制短路（Git/SVN 均修）。
+4. **会话归因**：Host 通过 Cordis `ctx.get('sessions')` 取活动会话，读不到才降级；
+   `verify:host` 的假 Host 同时提供 `get()` 与 `sessions` 属性覆盖该路径。
+5. **翻译兜底**：客户端 bound translator 之后再做一次 `interpolate`，`{count}` 不会漏到界面。
+
+### 13.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | **exit 0** |
+| `npm test` | **exit 0**，`# tests 371 / pass 371 / fail 0` |
+| `npm run build` | **exit 0**，0.1.2 bundle |
+| `node scripts/verify-host.mjs` | **21/21 PASS**（新增 stage/unstage 预览与真实执行、daily 桶、会话 get 路径） |
+| `node --experimental-strip-types src/tests/worktree.test.ts` | 8/8（新增整侧二进制、单文件二进制、stage/unstage 计划） |
+| `node --experimental-strip-types src/tests/stats.test.ts` | 13/13（新增 daily 桶断言） |
+| `node --experimental-strip-types src/tests/client.v11.test.ts` | 13/13（新增图表/操作按钮/阻断原因本地化） |
+
+### 13.3 未验证 / 明确声明
+
+- 运行中的桌面端仍是上一版 Host（本轮未重启，重启会中断会话）。因此新 Host 的
+  `daily` 热力数据、`stage/unstage` 路由、会话归因修复需重启后复查；
+  重启后运行 `npm run verify:live http://127.0.0.1:<port>`。
+- 新 UI 已用真实客户端 bundle + 探针页（把 `/vcs` 代理到运行中的 Host）渲染核对：
+  热点页显示日历热力 + 条形图，待处理页显示三个操作按钮；旧 Host 没有 `daily` 时图表显示
+  诚实的空状态而不是崩溃。
+- 26 周热力图的宽度/窄栏换行只有渲染级验证，未做真实窗口的多分辨率人工签收。

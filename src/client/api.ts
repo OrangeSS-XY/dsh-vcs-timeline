@@ -12,37 +12,51 @@
 import {
   isApiError,
   isChangeSet,
+  isChecksReport,
   isDiffResult,
   isDiagnostics,
+  isHotspotReport,
   isOperationAttempt,
   isOperationPage,
+  isBranchCompare,
   isPullRequestDetail,
   isPullRequestList,
   isRepository,
+  isSessionChanges,
   isTimelinePage,
   isWorkingTreeStatus,
+  isWorktreeDiffResult,
 } from '../shared/contracts.ts'
 import type {
   ApiError,
   ApiErrorCode,
   ChangeSet,
+  ChecksQuery,
+  ChecksReport,
   Diagnostics,
   DiffQuery,
   DiffResult,
+  HotspotQuery,
+  HotspotReport,
   OperationAttempt,
   OperationPage,
   OperationPreview,
   OperationQuery,
   OperationRequest,
+  BranchCompare,
+  BranchCompareQuery,
   PullRequestDetail,
   PullRequestDetailQuery,
   PullRequestList,
   PullRequestQuery,
   Repository,
   RepositoryList,
+  SessionChanges,
   TimelinePage,
   TimelineQuery,
   WorkingTreeStatus,
+  WorktreeDiffQuery,
+  WorktreeDiffResult,
 } from '../shared/contracts.ts'
 
 /** Minimal response face the client needs from `fetch`. */
@@ -65,10 +79,15 @@ export type ApiResult<T> =
 export interface VcsClient {
   diagnostics(): Promise<ApiResult<Diagnostics>>
   listRepositories(workspacePath: string | null): Promise<ApiResult<RepositoryList>>
+  addRepository(path: string): Promise<ApiResult<Repository>>
   repository(repositoryId: string): Promise<ApiResult<Repository>>
   timeline(query: TimelineQuery): Promise<ApiResult<TimelinePage>>
   changeSet(repositoryId: string, revision: string): Promise<ApiResult<ChangeSet>>
   diff(query: DiffQuery): Promise<ApiResult<DiffResult>>
+  worktreeDiff(query: WorktreeDiffQuery): Promise<ApiResult<WorktreeDiffResult>>
+  checks(query: ChecksQuery): Promise<ApiResult<ChecksReport>>
+  statsHotspots(query: HotspotQuery): Promise<ApiResult<HotspotReport>>
+  sessionChanges(query: { repositoryId: string; sessionId?: string }): Promise<ApiResult<SessionChanges>>
   status(repositoryId: string): Promise<ApiResult<WorkingTreeStatus>>
   previewOperation(request: OperationRequest): Promise<ApiResult<OperationPreview>>
   executeOperation(request: OperationRequest): Promise<ApiResult<OperationAttempt>>
@@ -76,6 +95,7 @@ export interface VcsClient {
   getOperation(operationId: string): Promise<ApiResult<OperationAttempt>>
   listPullRequests(query: PullRequestQuery): Promise<ApiResult<PullRequestList>>
   pullRequestDetail(query: PullRequestDetailQuery): Promise<ApiResult<PullRequestDetail>>
+  branchCompare(query: BranchCompareQuery): Promise<ApiResult<BranchCompare>>
 }
 
 /** Stable codes the Host may return; anything else is folded into `internal`. */
@@ -202,6 +222,11 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
       isRepositoryList,
     ),
 
+    addRepository: (path) => guarded(
+      post(fetchImpl, 'vcs/repos/add', { path }),
+      isRepository,
+    ),
+
     repository: (repositoryId) => guarded(
       post(fetchImpl, 'vcs/repository', { repositoryId }),
       isRepository,
@@ -220,6 +245,26 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
     diff: (query) => guarded(
       post(fetchImpl, 'vcs/diff', { ...query }),
       isDiffResult,
+    ),
+
+    worktreeDiff: (query) => guarded(
+      post(fetchImpl, 'vcs/worktree/diff', { ...query }),
+      isWorktreeDiffResult,
+    ),
+
+    checks: (query) => guarded(
+      post(fetchImpl, 'vcs/checks', { ...query }),
+      isChecksReport,
+    ),
+
+    statsHotspots: (query) => guarded(
+      post(fetchImpl, 'vcs/stats/hotspots', { ...query }),
+      isHotspotReport,
+    ),
+
+    sessionChanges: (query) => guarded(
+      post(fetchImpl, 'vcs/session/changes', { ...query }),
+      isSessionChanges,
     ),
 
     status: (repositoryId) => guarded(
@@ -255,6 +300,11 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
     pullRequestDetail: (query) => guarded(
       post(fetchImpl, 'vcs/pr/detail', { ...query }),
       isPullRequestDetail,
+    ),
+
+    branchCompare: (query) => guarded(
+      post(fetchImpl, 'vcs/branch/compare', { ...query }),
+      isBranchCompare,
     ),
   }
 }

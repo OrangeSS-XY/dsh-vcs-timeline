@@ -25,6 +25,10 @@ import { StoreError } from './storage/interface.ts'
 import { ServiceError, type TimelineService } from './services/timeline-service.ts'
 import type { OperationService } from './services/operation-service.ts'
 import type { PullRequestService } from './pr/service.ts'
+import type { BranchService } from './branch/service.ts'
+import type { ChecksService } from './checks/service.ts'
+import type { StatsService } from './stats/service.ts'
+import type { SessionChangesService } from './session/changes.ts'
 
 /** Largest accepted request body. */
 const BODY_MAX_BYTES = 256 * 1024
@@ -34,6 +38,10 @@ export interface VcsRoutesDeps {
   timeline: TimelineService
   operations: OperationService
   pullRequests: PullRequestService
+  branch: BranchService
+  checks: ChecksService
+  stats: StatsService
+  sessionChanges: SessionChangesService
   diagnostics: () => Promise<Diagnostics>
   log?: (message: string) => void
 }
@@ -157,6 +165,8 @@ function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
   const until = optionalString(payload, 'until', 64)
   const limit = optionalLimit(payload)
   const includeFiles = optionalBoolean(payload, 'includeFiles')
+  const branch = optionalString(payload, 'branch', 200)
+  const branchScope = payload.branchScope === 'all' ? 'all' as const : undefined
   return {
     repositoryId: requiredString(payload, 'repositoryId', 1024),
     ...(Array.isArray(eventTypes)
@@ -169,6 +179,8 @@ function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
     ...(typeof cursor === 'string' && cursor !== '' ? { cursor } : {}),
     ...(limit === undefined ? {} : { limit }),
     ...(includeFiles === undefined ? {} : { includeFiles }),
+    ...(branch === undefined || branch.trim() === '' ? {} : { branch: branch.trim() }),
+    ...(branchScope === undefined ? {} : { branchScope }),
   }
 }
 
@@ -280,6 +292,49 @@ export function registerVcsRoutes(ctx: Context, deps: VcsRoutesDeps): () => void
         case '/vcs/status':
           writeJson(res, 200, ok(await deps.timeline.status(requiredString(payload, 'repositoryId', 1024))))
           return
+        case '/vcs/worktree/diff': {
+          const repositoryId = requiredString(payload, 'repositoryId', 1024)
+          const filePath = optionalString(payload, 'filePath', 4096)
+          const staged = optionalBoolean(payload, 'staged')
+          const contextLines = payload.contextLines
+          const maxBytes = payload.maxBytes
+          writeJson(res, 200, ok(await deps.timeline.worktreeDiff({
+            repositoryId,
+            ...(filePath === undefined || filePath === '' ? {} : { filePath }),
+            ...(staged === undefined ? {} : { staged }),
+            ...(typeof contextLines === 'number' ? { contextLines } : {}),
+            ...(typeof maxBytes === 'number' ? { maxBytes } : {}),
+          })))
+          return
+        }
+        case '/vcs/checks': {
+          const staged = optionalBoolean(payload, 'staged')
+          const maxBytes = payload.maxBytes
+          writeJson(res, 200, ok(await deps.checks.checks({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(staged === undefined ? {} : { staged }),
+            ...(typeof maxBytes === 'number' ? { maxBytes } : {}),
+          })))
+          return
+        }
+        case '/vcs/stats/hotspots': {
+          const limit = payload.limit
+          const maxCommits = payload.maxCommits
+          writeJson(res, 200, ok(await deps.stats.hotspots({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(typeof limit === 'number' ? { limit } : {}),
+            ...(typeof maxCommits === 'number' ? { maxCommits } : {}),
+          })))
+          return
+        }
+        case '/vcs/session/changes': {
+          const sessionId = optionalString(payload, 'sessionId', 256)
+          writeJson(res, 200, ok(await deps.sessionChanges.changes({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(sessionId === undefined || sessionId === '' ? {} : { sessionId }),
+          })))
+          return
+        }
         case '/vcs/op/preview':
           writeJson(res, 200, ok(await deps.operations.preview(operationRequest(payload))))
           return
@@ -306,6 +361,14 @@ export function registerVcsRoutes(ctx: Context, deps: VcsRoutesDeps): () => void
             number: requiredPositiveInt(payload, 'number'),
           })))
           return
+        case '/vcs/branch/compare': {
+          const baseBranch = optionalString(payload, 'baseBranch', 200)
+          writeJson(res, 200, ok(await deps.branch.compare({
+            repositoryId: requiredString(payload, 'repositoryId', 1024),
+            ...(baseBranch === undefined || baseBranch.trim() === '' ? {} : { baseBranch: baseBranch.trim() }),
+          })))
+          return
+        }
         default:
           res.writeHead(404)
           res.end()

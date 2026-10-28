@@ -22,6 +22,7 @@ import type {
 } from '../shared/contracts.ts'
 import { createInitialState, createNoopHandlers, createPullRequestSlice, type PanelState } from '../client/types.ts'
 import { renderPanelView } from '../client/components.ts'
+import { authorShares } from '../client/ui/fileinfo.ts'
 import { createTranslator, dictionaries } from '../client/i18n.ts'
 import { STYLES } from '../client/styles.ts'
 import type { VcsClient } from '../client/api.ts'
@@ -501,6 +502,9 @@ test('the write dialog mounts only with dialog state and shows argv plus commit 
       message: 'fix: keep me',
       remote: 'origin',
       branch: 'main',
+      checks: null,
+      checksLoading: false,
+      acknowledged: false,
     },
   }))
   assert.ok(html.includes('role="dialog"'))
@@ -530,9 +534,12 @@ test('the write dialog mounts only with dialog state and shows argv plus commit 
       message: '',
       remote: 'origin',
       branch: 'main',
+      checks: null,
+      checksLoading: false,
+      acknowledged: false,
     },
   }))
-  assert.ok(blocked.includes('nothing is staged'))
+  assert.ok(blocked.includes(t('blocked.nothingStaged')))
   assert.ok(blocked.includes(t('op.repreview')))
   assert.ok(!blocked.includes(t('op.confirm')))
 })
@@ -579,10 +586,11 @@ test('selecting a file narrows the timeline and both panes stay consistent', () 
     selectedFilePath: 'src/panel.ts',
     expandedDirs: { src: true },
   }))
-  assert.ok(html.includes('dvt-selection'))
+  assert.ok(html.includes('dvt-fileinfo'), 'file activity column')
+  assert.ok(html.includes('dvt-file-diffpane'), 'diff column beside it')
   assert.ok(html.includes('panel.ts'))
-  // Only the two commits that touch panel.ts remain, and the tree count agrees.
-  assert.ok(html.includes(t('timeline.count.label', { count: 2 })))
+  // Only the two commits that touch panel.ts appear in the activity panel.
+  assert.ok(html.includes(t('file.info.counts', { commits: 2, authors: 2 })))
   assert.ok(html.includes('dvt-tree-file-selected'))
 })
 
@@ -681,11 +689,13 @@ test('selecting a file shows who changed it and its newest diff', () => {
     expandedDirs: { src: true },
     diff: { filePath: 'src/panel.ts', data: textDiff, loading: false, error: null },
   }))
-  assert.ok(html.includes('dvt-selection-who'), 'author summary in the selection header')
-  assert.ok(html.includes(t('file.latestBy', { author: 'Alice', when: t('rel.justNow') })) || html.includes('Alice'), 'latest author is shown')
-  assert.ok(html.includes(t('file.authors', { count: 2 })))
-  assert.ok(html.includes('dvt-diff'), 'the newest diff renders in the detail pane')
-  assert.ok(html.includes('dvt-detail'), 'split detail pane')
+  assert.ok(html.includes('dvt-fileinfo'), 'right-hand activity column')
+  assert.ok(html.includes('Alice'), 'latest author is shown')
+  assert.ok(html.includes(t('file.info.authors')))
+  assert.ok(html.includes(t('file.info.commits')))
+  assert.ok(html.includes('dvt-diff'), 'the newest diff renders in the left column')
+  assert.ok(html.includes('dvt-file-diffpane'), 'diff column beside the activity panel')
+  assert.ok(html.includes('dvt-fileinfo-commit'), 'per-commit rows in the activity panel')
 })
 
 test('the pull-request list shows who opened it, what state it is in and what I should do', () => {
@@ -767,4 +777,62 @@ test('the audit view summarizes recorded states and filters by one', () => {
     audit: { ...createInitialState().audit, operations: [attempt], loading: false },
   }))
   assert.ok(filteredOut.includes(t('audit.empty.filtered')))
+})
+
+test('author shares aggregate commits and line counts per person', () => {
+  const shares = authorShares([event, olderEvent], 'src/panel.ts')
+  assert.deepEqual(shares.map((share) => share.actor), ['Alice', 'Bob'])
+  assert.equal(shares[0]?.commits, 1)
+  assert.equal(shares[0]?.additions, 2)
+  assert.equal(shares[1]?.additions, 3)
+  assert.equal(authorShares([], 'src/panel.ts').length, 0)
+})
+
+test('the add-repository dialog validates through the Host and explains a missing SVN client', () => {
+  const open = render(ready({
+    addRepository: { open: true, path: 'D:/haiyiData/myCode/st-agent', loading: false, error: null },
+  }))
+  assert.ok(open.includes('dvt-addrepo'))
+  assert.ok(open.includes('st-agent'))
+  assert.ok(open.includes(t('addRepo.hint')))
+  assert.ok(open.includes(t('addRepo.submit')))
+
+  const failed = render(ready({
+    addRepository: { open: true, path: 'D:/haiyiData/myCode/st-agent', loading: false, error: { code: 'vcs-not-installed', message: 'svn missing' } },
+  }))
+  assert.ok(failed.includes('TortoiseSVN'), 'SVN install guidance is shown')
+  assert.ok(failed.includes('vcs-config.json'))
+})
+
+test('the pull-request source always offers the offline local branch insight', () => {
+  const html = render(ready({
+    source: 'pr',
+    pullRequests: {
+      ...createPullRequestSlice(),
+      compare: {
+        repositoryId: repository.id,
+        vcsType: 'git',
+        currentBranch: 'feature/x',
+        baseBranch: 'main',
+        available: true,
+        ahead: 3,
+        behind: 1,
+        commits: [{ hash: 'abcdef1', summary: 'feat: local work', author: 'Alice', timestamp: '2026-01-02T03:04:05.000Z' }],
+        filesChanged: 4,
+        additions: 12,
+        deletions: 3,
+        conflictPaths: [],
+        unpushed: 2,
+        hasUpstream: true,
+        actions: [{ kind: 'push', reason: 'unpushed-commits' }],
+        computedAt: new Date().toISOString(),
+      },
+    },
+  }))
+  assert.ok(html.includes(t('pr.local.title')))
+  assert.ok(html.includes(t('pr.local.ahead', { count: 3 })))
+  assert.ok(html.includes(t('pr.local.behind', { count: 1 })))
+  assert.ok(html.includes(t('pr.local.unpushed', { count: 2 })))
+  assert.ok(html.includes(t('pr.action.push')))
+  assert.ok(html.includes('feat: local work'))
 })

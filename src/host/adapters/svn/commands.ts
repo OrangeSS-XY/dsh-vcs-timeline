@@ -223,6 +223,16 @@ export function buildDiffArgs(executable: string, target: string, options: DiffA
 }
 
 /**
+ * Build `svn diff` for the working copy (no revision).
+ * @param executable - svn executable.
+ * @param target - working copy path or one file inside it.
+ * @returns argv array.
+ */
+export function buildWorktreeDiffArgs(executable: string, target: string): string[] {
+  return [requireExecutable(executable), 'diff', NON_INTERACTIVE, '--', requireTarget(target)]
+}
+
+/**
  * Build `svn diff --summarize` for one revision.
  * @param executable - svn executable.
  * @param target - working copy path.

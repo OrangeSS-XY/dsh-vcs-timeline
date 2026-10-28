@@ -266,6 +266,20 @@ export function createRepositoryRegistry(deps: RepositoryRegistryDeps): Reposito
       granted.add(root.rootPath)
       const repository = await enrich(root.rootPath, root.vcsType)
       if (repository === null) {
+        // Surface the adapter's real reason (most often a missing VCS client)
+        // instead of a generic internal error, so the add dialog can tell the
+        // user what to install or configure.
+        const adapter = root.vcsType === 'git' ? deps.adapters.git : deps.adapters.svn
+        const probe = await adapter.info(root.rootPath)
+        if (!probe.ok) {
+          const error = probe.error.code === 'vcs-not-installed'
+            ? {
+              ...probe.error,
+              message: `the ${root.vcsType} client is not available; install it or configure its path, then retry`,
+            }
+            : probe.error
+          return { ok: false, error }
+        }
         return { ok: false, error: { code: 'internal', message: 'repository metadata could not be read' } }
       }
       const snapshot: Repository = { ...repository, lastSeenAt: now().toISOString(), detectedAt: now().toISOString() }
