@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>dsh-vcs-timeline preview</title>
+<style>
+  :root { --dsw-alias-bg-base: #ffffff;
+    --dsw-alias-bg-layer-1: #f7f8fa;
+    --dsw-alias-bg-layer-2: #eceff3;
+    --dsw-alias-bg-overlay: #ffffff;
+    --dsw-alias-bg-mask-drop: rgba(15, 23, 42, 0.32);
+    --dsw-alias-border-l1: #e3e6ea;
+    --dsw-alias-border-l2: #cfd4da;
+    --dsw-alias-label-primary: #1c2229;
+    --dsw-alias-label-secondary: #4d5865;
+    --dsw-alias-label-tertiary: #7d8894;
+    --dsw-alias-brand-primary: #2f6feb;
+    --dsw-alias-state-success-primary: #1a7f37;
+    --dsw-alias-state-error-primary: #cf222e;
+    --dsw-alias-state-warn-primary: #9a6700;
+    --dsw-alias-interactive-hover: rgba(15, 23, 42, 0.05);
+    --dsw-alias-interactive-pressed: rgba(15, 23, 42, 0.09);
+    --dsw-alias-interactive-selected: rgba(47, 111, 235, 0.10);
+    --dsw-specific-sidebar-fill: #f6f8fa;
+    --dsw-specific-button-secondary-fill: #ffffff;
+    --dsw-alias-bg-mask-drop-x: rgba(15, 23, 42, 0.32); }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { background: var(--dsw-alias-bg-base); font-family: "Segoe UI", system-ui, sans-serif; }
+  .stage { width: 1440px; height: 900px; display: flex; overflow: hidden; }
+  .stage > * { flex: 1 1 auto; }
+</style></head>
+<body><div class="stage" data-stage="1440x900"><div class="swl-demo"><div class="swl-page dvt-split" data-swimlane="v1" data-sidebar="closed"><style>
+.swl-page {
+  --swl-bg: var(--dsw-alias-bg-layer-1, hsl(210 24% 98%));
+  --swl-card: var(--dsw-alias-bg-base, hsl(0 0% 100%));
+  --swl-ink: var(--dsw-alias-label-primary, hsl(222 47% 11%));
+  --swl-ink-2: var(--dsw-alias-label-secondary, hsl(215 16% 38%));
+  --swl-ink-3: var(--dsw-alias-label-tertiary, hsl(215 14% 55%));
+  --swl-line: var(--dsw-alias-border-l1, hsl(214 22% 91%));
+  --swl-line-2: var(--dsw-alias-border-l2, hsl(214 18% 84%));
+  --swl-accent: var(--dsw-alias-brand-primary, hsl(217 82% 56%));
+  --swl-ok: var(--dsw-alias-state-success-primary, hsl(152 58% 36%));
+  --swl-bad: var(--dsw-alias-state-error-primary, hsl(347 74% 50%));
+  --swl-warn: var(--dsw-alias-state-warn-primary, hsl(38 92% 38%));
+  --swl-hover: var(--dsw-alias-interactive-hover, hsl(215 22% 96%));
+  --swl-sel: var(--dsw-alias-interactive-selected, hsl(217 82% 56% / .09));
+  --swl-main: hsl(217 82% 56%);
+  --swl-feat: hsl(262 83% 62%);
+  --swl-hotfix: hsl(347 77% 58%);
+  --swl-shadow: 0 1px 2px hsl(220 43% 16% / .05), 0 10px 30px -18px hsl(220 43% 16% / .28);
+  --swl-shadow-lift: 0 2px 4px hsl(220 43% 16% / .06), 0 16px 32px -20px hsl(220 43% 16% / .38);
+  --swl-row-h: 64px;
+  --swl-canvas-w: 140px;
+  --swl-radius: 14px;
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+  box-sizing: border-box;
+  background: var(--swl-bg);
+  color: var(--swl-ink);
+  font-family: Inter, "Inter var", "SF Pro Text", -apple-system, "Segoe UI Variable",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  container-type: inline-size;
+  container-name: swl;
+}
+.swl-page *, .swl-page *::before, .swl-page *::after { box-sizing: border-box; }
+.swl-page button, .swl-page input, .swl-page select { font: inherit; color: inherit; }
+.swl-page :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--swl-accent) 60%, transparent);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
+.swl-icon { flex: 0 0 auto; display: block; }
+.swl-mono {
+  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+/* ---------- frame ---------- */
+.swl-frame { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; gap: 12px; position: relative; }
+.swl-sidebar {
+  flex: 0 0 260px;
+  width: 260px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--swl-card);
+  border-radius: var(--swl-radius);
+  box-shadow: var(--swl-shadow);
+  overflow: hidden;
+}
+.swl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--swl-card);
+  border-radius: var(--swl-radius);
+  box-shadow: var(--swl-shadow);
+  overflow: hidden;
+}
+.swl-chrome { flex: 0 0 auto; display: flex; flex-direction: column; }
+.swl-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.swl-mobilebar { display: none; }
+.swl-scrim { display: none; }
+.swl-timeline-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+
+/* ---------- header ---------- */
+.swl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 58px;
+  padding: 0 14px;
+  flex: 0 0 auto;
+}
+.swl-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.swl-title:hover { background: var(--swl-hover); }
+.swl-title-icon { display: inline-flex; color: var(--swl-ink-3); }
+.swl-repo-name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.012em;
+  color: var(--swl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swl-vcs {
+  flex: 0 0 auto;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-accent) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 78%, var(--swl-ink));
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 17px;
+  text-transform: uppercase;
+}
+.swl-title-caret { display: inline-flex; color: var(--swl-ink-3); }
+.swl-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
+.swl-branch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 210px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-2);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-branch:hover { background: color-mix(in srgb, var(--swl-accent) 8%, var(--swl-bg)); color: var(--swl-ink); }
+.swl-branch-select {
+  appearance: none;
+  max-width: 160px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+.swl-branch-caret { display: inline-flex; color: var(--swl-ink-3); }
+.swl-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.swl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 120ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.swl-btn:hover { transform: translateY(-1px); }
+.swl-btn:active { transform: translateY(0); }
+.swl-btn:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+.swl-btn-outline {
+  background: var(--swl-card);
+  border-color: var(--swl-line-2);
+  color: var(--swl-ink);
+  box-shadow: 0 1px 1px hsl(220 43% 16% / .03);
+}
+.swl-btn-outline:hover { background: var(--swl-hover); }
+.swl-btn-primary {
+  background: var(--swl-accent);
+  color: hsl(0 0% 100%);
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--swl-accent) 85%, transparent);
+}
+.swl-btn-primary:hover { background: color-mix(in srgb, var(--swl-accent) 88%, hsl(0 0% 0%)); }
+.swl-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--swl-ink-3);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-iconbtn:hover { background: var(--swl-hover); color: var(--swl-ink); }
+
+/* ---------- toolbar ---------- */
+.swl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  border-top: 1px solid color-mix(in srgb, var(--swl-line) 55%, transparent);
+}
+.swl-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.swl-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--swl-ink-2);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-tab:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-tab[aria-selected="true"] {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+  font-weight: 650;
+}
+.swl-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 8%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-tab[aria-selected="true"] .swl-tab-count {
+  background: color-mix(in srgb, var(--swl-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+}
+.swl-toolbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.swl-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  min-width: 150px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+.swl-search:focus-within {
+  background: var(--swl-card);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent);
+}
+.swl-search-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--swl-ink);
+  font-size: 12px;
+  outline: none;
+}
+.swl-search-input::placeholder { color: var(--swl-ink-3); }
+.swl-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  flex: 0 0 auto;
+}
+.swl-seg-btn {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.swl-seg-btn:hover { color: var(--swl-ink); }
+.swl-seg-btn[aria-pressed="true"] {
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-weight: 650;
+  box-shadow: 0 1px 2px hsl(220 43% 16% / .08), 0 4px 10px -6px hsl(220 43% 16% / .2);
+}
+
+/* ---------- pills / badges ---------- */
+.swl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--swl-pill-color, var(--swl-ink)) 9%, transparent);
+  color: color-mix(in srgb, var(--swl-pill-color, var(--swl-ink)) 68%, var(--swl-ink));
+}
+.swl-pill-branch {
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.swl-pill-branch:hover { background: color-mix(in srgb, var(--swl-pill-color, var(--swl-accent)) 16%, transparent); }
+.swl-pill-merge { --swl-pill-color: var(--swl-feat); background: color-mix(in srgb, var(--swl-feat) 12%, transparent); color: color-mix(in srgb, var(--swl-feat) 72%, var(--swl-ink)); }
+.swl-pill-head {
+  --swl-pill-color: var(--swl-ok);
+  background: color-mix(in srgb, var(--swl-ok) 13%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 78%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  letter-spacing: .02em;
+  /* Legacy .dvt-tl-head draws a 15px bordered box; the pill owns its shape. */
+  height: 18px;
+  border: 0;
+}
+.swl-pill-add {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-pill-del {
+  background: color-mix(in srgb, var(--swl-bad) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-bad) 80%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-pill-files { background: color-mix(in srgb, var(--swl-ink) 6%, transparent); color: var(--swl-ink-3); font-weight: 550; }
+
+/* ---------- legend ---------- */
+.swl-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 14px 6px calc(var(--swl-canvas-w) + 12px);
+}
+.swl-legend-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--swl-ink-3);
+}
+.swl-lane-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-pill-color) 10%, transparent);
+  color: color-mix(in srgb, var(--swl-pill-color) 70%, var(--swl-ink));
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-lane-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--swl-pill-color); }
+.swl-lane-name { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace; }
+.swl-lane-count { opacity: .68; font-size: 9.5px; }
+
+/* ---------- groups ---------- */
+.swl-timeline { display: flex; flex-direction: column; min-height: 0; }
+.swl-group { display: flex; flex-direction: column; }
+.swl-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px 0 calc(var(--swl-canvas-w) + 12px);
+  background: color-mix(in srgb, var(--swl-card) 76%, transparent);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+}
+.swl-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -.005em;
+  color: var(--swl-ink);
+}
+.swl-group-count { font-size: 10.5px; color: var(--swl-ink-3); }
+.swl-group-track {
+  margin-left: auto;
+  width: 34px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--swl-ink) 14%, transparent));
+}
+.swl-list { list-style: none; margin: 0; padding: 0 6px 8px; }
+
+/* ---------- rows ---------- */
+.swl-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-height: var(--swl-row-h);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+.swl-row:hover {
+  background: color-mix(in srgb, var(--swl-accent) 5%, transparent);
+  box-shadow: 0 10px 22px -20px hsl(220 43% 16% / .55);
+}
+.swl-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--swl-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--swl-accent) 24%, transparent);
+}
+.swl-canvas {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--swl-canvas-w);
+  /* Beat the legacy .dvt-tl-graph height:52px compat rule: the graph canvas
+     must be exactly one new row tall, or nodes and edges drift. */
+  height: var(--swl-row-h);
+}
+.swl-svg { position: absolute; inset: 0; display: block; overflow: visible; pointer-events: none; }
+.swl-node {
+  position: absolute;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--swl-lane-color, var(--swl-accent));
+  /* The thick card-coloured ring is what breaks the line at the node. */
+  box-shadow: 0 0 0 4px var(--swl-card);
+  transform: translate(-50%, -50%);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.swl-row:hover .swl-node {
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow: 0 0 0 4px var(--swl-card), 0 0 0 6px color-mix(in srgb, var(--swl-lane-color) 20%, transparent);
+}
+.swl-node[data-merge="true"] {
+  background: var(--swl-card);
+  border: 2.5px solid var(--swl-lane-color);
+}
+.swl-node[data-merge="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: var(--swl-lane-color);
+}
+.swl-rowbody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 11px 12px 11px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.swl-rowbody:focus-visible { outline-offset: -2px; }
+.swl-rowtop { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+.swl-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 560;
+  letter-spacing: -.006em;
+  color: var(--swl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swl-pills { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.swl-rowmeta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: 11.5px; color: var(--swl-ink-3); }
+.swl-avatar {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  background: hsl(var(--swl-avatar-hue, 220) 72% 92%);
+  color: hsl(var(--swl-avatar-hue, 220) 62% 34%);
+}
+.swl-author {
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--swl-ink-2);
+  font-weight: 500;
+}
+.swl-dot { color: var(--swl-line-2); }
+.swl-when { flex: 0 0 auto; white-space: nowrap; }
+.swl-hash {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--swl-ink) 5%, transparent);
+  color: var(--swl-ink-2);
+  font-size: 10.5px;
+}
+.swl-stats { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+
+/* ---------- empty ---------- */
+.swl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 64px 24px;
+  color: var(--swl-ink-3);
+  text-align: center;
+}
+.swl-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 2px;
+  border-radius: 14px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+}
+.swl-empty-title { font-size: 13px; font-weight: 600; color: var(--swl-ink); }
+.swl-empty-hint { font-size: 11.5px; }
+
+/* ---------- demo sidebar tree ---------- */
+.swl-tree { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.swl-tree-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; }
+.swl-tree-title { font-size: 12.5px; font-weight: 650; letter-spacing: -.006em; }
+.swl-tree-total {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin: 0 12px 8px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+.swl-tree-search:focus-within {
+  background: var(--swl-card);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent);
+}
+.swl-tree-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--swl-ink);
+  font-size: 11.5px;
+  outline: none;
+}
+.swl-tree-input::placeholder { color: var(--swl-ink-3); }
+.swl-tree-stats { display: flex; align-items: center; gap: 5px; padding: 0 14px 8px; flex-wrap: wrap; }
+.swl-tree-filter { display: flex; align-items: center; gap: 4px; padding: 0 12px 8px; overflow: hidden; }
+.swl-tree-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--swl-ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-tree-chip:first-child {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 80%, var(--swl-ink));
+}
+.swl-tree-list { list-style: none; margin: 0; padding: 0 6px 10px; }
+.swl-tree-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.swl-tree-item { margin: 0; padding: 0; }
+.swl-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+.swl-tree-row:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-tree-caret { display: inline-flex; color: var(--swl-ink-3); transform: rotate(90deg); }
+.swl-tree-icon { display: inline-flex; color: var(--swl-ink-3); }
+.swl-tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.swl-tree-dir > .swl-tree-name { font-weight: 550; }
+.swl-tree-badge { flex: 0 0 auto; font-size: 9.5px; color: var(--swl-ink-3); }
+.swl-tree-add { flex: 0 0 auto; font-size: 9.5px; color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink)); }
+.swl-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.swl-status-A { background: color-mix(in srgb, var(--swl-ok) 12%, transparent); color: color-mix(in srgb, var(--swl-ok) 82%, var(--swl-ink)); }
+.swl-status-M { background: color-mix(in srgb, var(--swl-warn) 14%, transparent); color: color-mix(in srgb, var(--swl-warn) 85%, var(--swl-ink)); }
+.swl-status-D { background: color-mix(in srgb, var(--swl-bad) 12%, transparent); color: color-mix(in srgb, var(--swl-bad) 82%, var(--swl-ink)); }
+.swl-status-R { background: color-mix(in srgb, var(--swl-feat) 12%, transparent); color: color-mix(in srgb, var(--swl-feat) 78%, var(--swl-ink)); }
+
+/* ---------- demo frame ---------- */
+.swl-demo { display: flex; width: 100%; height: 100vh; min-height: 0; background: var(--dsw-alias-bg-layer-1, hsl(210 24% 98%)); }
+.swl-demo > .swl-page { flex: 1 1 auto; height: auto; }
+
+/* ---------- plugin chrome overrides (relocated into the shell) ---------- */
+.swl-main .dvt-chrome { background: transparent; }
+.swl-main .dvt-toolbar { height: 58px; padding: 0 14px; gap: 8px; }
+.swl-main .dvt-repo { height: 34px; padding: 0 8px; border-radius: 10px; flex: 0 1 auto; }
+.swl-main .dvt-repo-name { font-size: 15px; font-weight: 650; letter-spacing: -.012em; }
+.swl-main .dvt-repo-vcs {
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-accent) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 78%, var(--swl-ink));
+  font-size: 9.5px;
+  letter-spacing: .06em;
+  line-height: 17px;
+}
+.swl-main .dvt-branch {
+  max-width: 220px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  font-size: 11px;
+}
+.swl-main .dvt-toolbar-actions { gap: 6px; }
+.swl-main .dvt-toolbar-actions .dvt-iconbtn { width: 30px; height: 30px; border-radius: 9px; }
+.swl-main .dvt-tabstrip {
+  height: 44px;
+  padding: 0 12px;
+  gap: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--swl-line) 55%, transparent);
+  border-bottom: 0;
+}
+.swl-main .dvt-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--swl-ink-2);
+  font-size: 12px;
+  font-weight: 550;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-main .dvt-tab:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-main .dvt-tab[aria-selected="true"] {
+  background: var(--swl-sel);
+  border-bottom-color: transparent;
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+  font-weight: 650;
+}
+.swl-main .dvt-tab-count { background: color-mix(in srgb, var(--swl-ink) 8%, transparent); }
+.swl-main .dvt-filterbar {
+  height: 46px;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+}
+.swl-main .dvt-search { min-width: 150px; }
+.swl-main .dvt-search-input {
+  height: 30px;
+  padding: 0 22px 0 26px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  font-size: 12px;
+}
+.swl-main .dvt-search > svg { left: 9px; }
+.swl-main .dvt-search-input:focus-visible { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent); }
+.swl-main .dvt-chip {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+}
+.swl-main .dvt-chip[aria-pressed="true"] {
+  background: var(--swl-sel);
+  box-shadow: none;
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+}
+.swl-main .dvt-time {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-2);
+}
+.swl-main .dvt-time-select { border: 0; background: transparent; font-size: 11.5px; outline: none; }
+.swl-main .dvt-seg {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+}
+.swl-main .dvt-seg-btn {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.swl-main .dvt-seg-btn[aria-pressed="true"] {
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-weight: 650;
+  box-shadow: 0 1px 2px hsl(220 43% 16% / .08), 0 4px 10px -6px hsl(220 43% 16% / .2);
+}
+.swl-main .dvt-iconbtn { border-radius: 9px; }
+.swl-main .dvt-pane { background: transparent; }
+.swl-main .dvt-scroll { scrollbar-gutter: stable; }
+
+/* ---------- plugin file tree card ---------- */
+.swl-sidebar .dvt-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border: 0;
+}
+.swl-sidebar .dvt-tree-head { padding: 14px 14px 8px; height: auto; }
+.swl-sidebar .dvt-tree-title { font-size: 12.5px; font-weight: 650; letter-spacing: -.006em; }
+.swl-sidebar .dvt-tree-total {
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-sidebar .dvt-tree-search { margin: 0 12px 8px; }
+.swl-sidebar .dvt-tree-input {
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  padding: 0 10px 0 26px;
+  font-size: 11.5px;
+}
+.swl-sidebar .dvt-tree-search > svg { left: 10px; }
+.swl-sidebar .dvt-tree-chips { padding: 0 12px 8px; gap: 4px; }
+.swl-sidebar .dvt-tree-chip {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.swl-sidebar .dvt-tree-chip[aria-pressed="true"] {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 80%, var(--swl-ink));
+}
+.swl-sidebar .dvt-tree-scroll { padding: 0 6px 10px; }
+.swl-sidebar .dvt-tree-all { border-radius: 8px; height: 28px; }
+.swl-sidebar .dvt-tree-row { height: 25px; border-radius: 7px; }
+.swl-sidebar .dvt-tree-badge, .swl-sidebar .dvt-tree-changes { font-size: 9.5px; }
+.swl-sidebar .dvt-tree .dvt-file-status { width: 15px; height: 15px; border-radius: 5px; font-size: 9px; }
+.swl-sidebar .dvt-stat-row,
+.swl-sidebar .dvt-tree-stats { display: flex; align-items: center; gap: 5px; padding: 0 14px 8px; flex-wrap: wrap; }
+.swl-pill-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+/* ---------- responsive: sidebar becomes a drawer ---------- */
+@container swl (max-width: 860px) {
+  .swl-page { padding: 0; gap: 0; }
+  .swl-frame { gap: 0; }
+  .swl-main { border-radius: 0; box-shadow: none; }
+  .swl-sidebar {
+    position: absolute;
+    z-index: 30;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: min(300px, 86%);
+    display: none;
+    box-shadow: 0 24px 60px -24px hsl(220 43% 16% / .45);
+  }
+  .swl-page[data-sidebar="open"] .swl-sidebar { display: flex; }
+  .swl-page[data-sidebar="open"] .swl-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--swl-ink) 18%, transparent);
+  }
+  .swl-mobilebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+  }
+  .swl-mobilebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--swl-bg);
+    color: var(--swl-ink-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .swl-mobilecount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--swl-ink) 8%, transparent);
+    color: var(--swl-ink-3);
+    font-size: 9.5px;
+    font-weight: 700;
+  }
+  .swl-header { height: 52px; padding: 0 10px; gap: 6px; }
+  .swl-repo-name { font-size: 13.5px; }
+  .swl-search { min-width: 0; }
+  .swl-legend { padding-left: 12px; }
+  .swl-group-head { padding-left: 12px; height: 34px; }
+  .swl-msg { font-size: 12.5px; }
+  .swl-author { max-width: 88px; }
+  .swl-main .dvt-toolbar { height: 52px; padding: 0 10px; }
+  .swl-main .dvt-repo-name { font-size: 13.5px; }
+  .swl-main .dvt-tabstrip { height: 42px; padding: 0 8px; overflow-x: auto; }
+  .swl-main .dvt-filterbar { height: 44px; padding: 0 8px; gap: 6px; }
+  .swl-main .dvt-search { min-width: 0; flex: 1 1 auto; }
+}
+@container swl (max-width: 640px) {
+  .swl-branch, .swl-title-caret { display: none; }
+  .swl-btn-outline span, .swl-btn-primary span { display: none; }
+  .swl-btn { padding: 0 9px; }
+  .swl-toolbar { flex-wrap: wrap; height: auto; padding: 8px 10px; row-gap: 6px; }
+  .swl-tabs { flex: 1 1 100%; }
+  .swl-tab { padding: 0 9px; font-size: 11.5px; }
+  .swl-toolbar-right { width: 100%; }
+  .swl-search { display: flex; flex: 1 1 auto; }
+  .swl-pill-branch, .swl-pill-merge, .swl-pill-head, .swl-attrib { display: none; }
+  .swl-author, .swl-dot, .swl-when { display: none; }
+  .swl-legend-label { display: none; }
+
+  /* Plugin chrome (real renderChrome) at sidebar width: let the header wrap
+     instead of truncating the repository name, and make the sync buttons
+     icon-only. The branch dropdown keeps its own row. */
+  .swl-main .dvt-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-toolbar-op { padding: 0 8px; }
+  .swl-main .dvt-toolbar-op span { display: none; }
+  .swl-main .dvt-toolbar-actions { margin-left: auto; gap: 4px; }
+  .swl-main .dvt-branch { max-width: 160px; }
+  .swl-main .dvt-filterbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-filterbar .dvt-search { flex: 1 1 100%; }
+}
+@container swl (max-width: 520px) {
+  .swl-pill-files { display: none; }
+  .swl-repo-name { font-size: 12.5px; }
+  .swl-tab { padding: 0 7px; font-size: 11px; }
+  .swl-tab-count { display: none; }
+  .swl-seg-btn { padding: 0 9px; font-size: 11px; }
+  .swl-main .dvt-tabstrip .dvt-tab { padding: 0 6px; }
+  .swl-main .dvt-tabstrip { mask-image: linear-gradient(90deg, hsl(0 0% 0%) calc(100% - 16px), transparent); }
+  .swl-main .dvt-filterbar .dvt-time { display: none; }
+  .swl-main .dvt-filterbar .dvt-chip { padding: 0 8px; }
+
+  /* At right-sidebar width the header must stay a single row: the branch
+     dropdown is a wide-view affordance (the scope capsule still filters).
+     The remaining icon buttons (add repo / refresh / ⋯) all fit, so none are
+     dropped: hiding one by :first-of-type would also hit the demo header's
+     refresh button, which is the first icon button there. */
+  .swl-main .dvt-toolbar { flex-wrap: nowrap; min-height: 52px; }
+  .swl-main .dvt-branch { display: none; }
+}
+
+/* ---------- session attribution pill ---------- */
+.swl-attrib {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-attrib.dvt-tag-attrib {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 75%, var(--swl-ink));
+}
+.swl-attrib.dvt-tag-inferred {
+  background: color-mix(in srgb, var(--swl-warn) 13%, transparent);
+  color: color-mix(in srgb, var(--swl-warn) 80%, var(--swl-ink));
+}
+
+/* ---------- plugin compatibility hooks (toolbar + tree pills) ---------- */
+.swl-main .dvt-branch select,
+.swl-main .dvt-branch-select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  max-width: 120px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-main .dvt-branch-select option { color: var(--swl-ink); background: var(--swl-card); }
+.swl-main .dvt-toolbar-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--swl-line-2);
+  border-radius: 9px;
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, transform 120ms ease;
+}
+.swl-main .dvt-toolbar-op:hover { background: var(--swl-hover); transform: translateY(-1px); }
+.swl-main .dvt-toolbar-op:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+.swl-sidebar .dvt-tree-stats {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px 8px;
+  flex-wrap: wrap;
+}
+.swl-sidebar .dvt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-sidebar .dvt-pill-add {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink));
+}
+.swl-sidebar .dvt-pill-del {
+  background: color-mix(in srgb, var(--swl-bad) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-bad) 80%, var(--swl-ink));
+}
+.swl-main .dvt-branch-btn { cursor: pointer; }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .swl-page *, .swl-page *::before, .swl-page *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+</style><div class="swl-frame"><aside class="swl-sidebar" aria-label="文件"><div class="swl-tree"><div class="swl-tree-head"><span class="swl-tree-title">文件</span><span class="swl-tree-total">21</span></div><label class="swl-tree-search"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg><input class="swl-tree-input" type="search" placeholder="搜索提交说明或作者" aria-label="搜索提交说明或作者" value=""/></label><div class="swl-tree-stats"><span class="swl-pill swl-pill-add" style="--swl-pill-color:var(--swl-ok)">+9434</span><span class="swl-pill swl-pill-del" style="--swl-pill-color:var(--swl-bad)">−1150</span><span class="swl-pill swl-pill-files">21 个变更</span></div><div class="swl-tree-filter"><span class="swl-tree-chip">全部</span><span class="swl-tree-chip">M 15</span><span class="swl-tree-chip">A 3</span><span class="swl-tree-chip">D 2</span><span class="swl-tree-chip">R 1</span></div><ul class="swl-tree-list swl-tree-scroll"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:8px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">src</span><span class="swl-tree-badge">16</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:21px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">client</span><span class="swl-tree-badge">10</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:34px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">ui</span><span class="swl-tree-badge">7</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">swimlane.tsx</span><span class="swl-tree-add swl-mono">+7348</span><span class="swl-status swl-status-A" title="A" aria-hidden="true">A</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">toolbar.ts</span><span class="swl-tree-add swl-mono">+126</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">filetree.ts</span><span class="swl-tree-add swl-mono">+64</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">history.ts</span><span class="swl-tree-add swl-mono">+210</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">detail.ts</span><span class="swl-tree-add swl-mono">+18</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">pending-table.ts</span><span class="swl-status swl-status-D" title="D" aria-hidden="true">D</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:47px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">old-graph.ts</span><span class="swl-tree-add swl-mono">+12</span><span class="swl-status swl-status-R" title="R" aria-hidden="true">R</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">styles.ts</span><span class="swl-tree-add swl-mono">+412</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">components.ts</span><span class="swl-tree-add swl-mono">+88</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">graph.ts</span><span class="swl-tree-add swl-mono">+96</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:21px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">shared</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">contracts.ts</span><span class="swl-tree-add swl-mono">+22</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:21px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">host</span><span class="swl-tree-badge">3</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">routes.ts</span><span class="swl-tree-add swl-mono">+46</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:34px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">adapters</span><span class="swl-tree-badge">2</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:47px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">git</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:60px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">adapter.ts</span><span class="swl-tree-add swl-mono">+74</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:47px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">svn</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:60px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">adapter.ts</span><span class="swl-tree-add swl-mono">+12</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></li></ul></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:21px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">tests</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">swimlane.test.ts</span><span class="swl-tree-add swl-mono">+232</span><span class="swl-status swl-status-A" title="A" aria-hidden="true">A</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:21px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">legacy</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:34px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">timeline-rail.ts</span><span class="swl-status swl-status-D" title="D" aria-hidden="true">D</span></div></li></ul></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:8px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">docs</span><span class="swl-tree-badge">2</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:21px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">ARCHITECTURE.md</span><span class="swl-tree-add swl-mono">+120</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:21px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">UI-GUIDELINES.md</span><span class="swl-tree-add swl-mono">+486</span><span class="swl-status swl-status-A" title="A" aria-hidden="true">A</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-dir" style="padding-left:8px"><span class="swl-tree-caret"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span><span class="swl-tree-icon"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"></path><path d="m3 11 1.7 7a2 2 0 0 0 2 1.6H19a2 2 0 0 0 2-1.8L22 11H3z"></path></svg></span><span class="swl-tree-name">scripts</span><span class="swl-tree-badge">1</span></div><ul class="swl-tree-list"><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:21px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">build.mjs</span><span class="swl-tree-add swl-mono">+8</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:8px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">package.json</span><span class="swl-tree-add swl-mono">+4</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li><li class="swl-tree-item"><div class="swl-tree-row swl-tree-file" style="padding-left:8px"><span class="swl-tree-icon"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></span><span class="swl-tree-name">README.md</span><span class="swl-tree-add swl-mono">+56</span><span class="swl-status swl-status-M" title="M" aria-hidden="true">M</span></div></li></ul></div></aside><section class="swl-main"><div class="swl-mobilebar"><button type="button" class="swl-mobilebtn" aria-expanded="false"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path><line x1="9" y1="4" x2="9" y2="20"></line></svg><span>文件</span><span class="swl-mobilecount">21</span></button></div><div class="swl-chrome"><header class="swl-header dvt-toolbar"><div class="swl-title dvt-repo" title="D:/workspace/web-console"><span class="swl-title-icon dvt-repo-icon"><svg class="swl-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></span><span class="swl-repo-name dvt-repo-name">web-console</span><span class="swl-vcs dvt-repo-vcs">GIT</span><span class="swl-title-caret dvt-repo-caret"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span></div><label class="swl-branch dvt-branch" title="分支 feature/demo1"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><select class="swl-branch-select" aria-label="分支 feature/demo1"><option value="main">main</option><option value="feature/demo1" selected="">feature/demo1</option><option value="hotfix/payment">hotfix/payment</option></select><span class="swl-branch-caret" aria-hidden="true"><svg class="swl-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg></span></label><span class="swl-actions dvt-toolbar-actions"><button type="button" class="swl-iconbtn dvt-iconbtn" title="刷新" aria-label="刷新"><svg class="swl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg></button><button type="button" class="swl-btn swl-btn-outline" title="拉取" aria-label="拉取"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="3" x2="12" y2="15"></line><polyline points="7 10 12 15 17 10"></polyline><line x1="5" y1="21" x2="19" y2="21"></line></svg><span>拉取</span></button><button type="button" class="swl-btn swl-btn-primary" title="推送" aria-label="推送"><svg class="swl-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="21" x2="12" y2="9"></line><polyline points="7 14 12 9 17 14"></polyline><line x1="5" y1="3" x2="19" y2="3"></line></svg><span>推送</span></button><button type="button" class="swl-iconbtn dvt-iconbtn" title="更多操作" aria-label="更多操作"><svg class="swl-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle></svg></button></span></header><div class="swl-toolbar"><div class="swl-tabs" role="tablist" aria-label="时间线"><button type="button" role="tab" class="swl-tab dvt-tab" aria-selected="true"><span>时间线</span><span class="swl-tab-count">14</span></button><button type="button" role="tab" class="swl-tab dvt-tab" aria-selected="false"><span>待处理</span><span class="swl-tab-count">3</span></button><button type="button" role="tab" class="swl-tab dvt-tab" aria-selected="false"><span>拉取请求</span><span class="swl-tab-count">2</span></button></div><span class="swl-toolbar-right"><label class="swl-search"><svg class="swl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg><input class="swl-search-input dvt-search-input" type="search" placeholder="搜索提交说明或作者" aria-label="搜索提交说明或作者" value=""/></label><div class="swl-seg dvt-seg" role="group"><button type="button" class="swl-seg-btn dvt-seg-btn" aria-pressed="true">全部</button><button type="button" class="swl-seg-btn dvt-seg-btn" aria-pressed="false">当前分支</button></div></span></div></div><div class="swl-content"><div class="swl-timeline-scroll"><div class="swl-timeline" role="list" aria-label="时间线" style="--swl-canvas-w:140px"><div class="swl-legend" role="group" aria-label="分支轨道"><span class="swl-legend-label">分支轨道</span><span class="swl-lane-chip" title="分支 main" style="--swl-pill-color:var(--swl-main)"><span class="swl-lane-dot" aria-hidden="true"></span><span class="swl-lane-name">main</span><span class="swl-lane-count">7</span></span><span class="swl-lane-chip" title="分支 feature/demo1" style="--swl-pill-color:var(--swl-feat)"><span class="swl-lane-dot" aria-hidden="true"></span><span class="swl-lane-name">feature/demo1</span><span class="swl-lane-count">4</span></span><span class="swl-lane-chip" title="分支 hotfix/payment" style="--swl-pill-color:var(--swl-hotfix)"><span class="swl-lane-dot" aria-hidden="true"></span><span class="swl-lane-name">hotfix/payment</span><span class="swl-lane-count">3</span></span></div><section class="swl-group dvt-tl-group"><div class="swl-group-head dvt-tl-day"><span class="swl-group-label dvt-tl-day-label">今天</span><span class="swl-group-count">7 次提交</span><span class="swl-group-track"></span></div><ul class="swl-list dvt-tl-list" role="list"><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="60" y1="32" x2="60" y2="64" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:60px;top:32px;--swl-lane-color:var(--swl-feat)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 7272dfe feat: 多轨道泳道时间线与贝塞尔连线" title="feat: 多轨道泳道时间线与贝塞尔连线
+分支 feature/demo1 · 7272dfe"><span class="swl-rowtop"><span class="swl-msg">feat: 多轨道泳道时间线与贝塞尔连线</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 feature/demo1" style="--swl-pill-color:var(--swl-feat)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>feature/demo1</span></span><span class="swl-pill swl-pill-head dvt-tl-head" title="HEAD">HEAD</span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:196">LW</span><span class="swl-author">Lin Wei</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">21 分钟前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">7272dfe</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 7348 行" style="--swl-pill-color:var(--swl-ok)">+7348</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 126 行" style="--swl-pill-color:var(--swl-bad)">−126</span><span class="swl-pill swl-pill-files dvt-stat-files" title="7 个文件">7 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="60" y1="0" x2="60" y2="32" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line><line x1="60" y1="32" x2="60" y2="64" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:60px;top:32px;--swl-lane-color:var(--swl-feat)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 b56850a feat: 文件树变更统计胶囊与 A/M/D 状态徽标" title="feat: 文件树变更统计胶囊与 A/M/D 状态徽标
+分支 feature/demo1 · b56850a"><span class="swl-rowtop"><span class="swl-msg">feat: 文件树变更统计胶囊与 A/M/D 状态徽标</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 feature/demo1" style="--swl-pill-color:var(--swl-feat)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>feature/demo1</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:350">CY</span><span class="swl-author">Chen Yu</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">42 分钟前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">b56850a</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 214 行" style="--swl-pill-color:var(--swl-ok)">+214</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 36 行" style="--swl-pill-color:var(--swl-bad)">−36</span><span class="swl-pill swl-pill-files dvt-stat-files" title="4 个文件">4 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="true"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 60 0 C 60 16, 20 16, 20 32" fill="none" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="true" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 de72be4 Merge branch &#x27;feature/demo1&#x27; into main" title="Merge branch &#x27;feature/demo1&#x27; into main
+分支 main · de72be4"><span class="swl-rowtop"><span class="swl-msg">Merge branch &#x27;feature/demo1&#x27; into main</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span><span class="swl-pill swl-pill-merge" title="合并"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="2.6"></circle><circle cx="18" cy="6" r="2.6"></circle><circle cx="12" cy="18" r="2.6"></circle><path d="M6 8.6V12a4 4 0 0 0 4 4h2"></path><path d="M18 8.6V12"></path></svg><span>合并</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:350">CY</span><span class="swl-author">Chen Yu</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">1 小时前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">de72be4</span><span class="swl-stats"><span class="swl-pill swl-pill-files dvt-stat-files" title="7 个文件">7 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="20" y1="0" x2="20" y2="32" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 66826a8 chore: 版本号提升到 0.1.2 并更新兼容性矩阵" title="chore: 版本号提升到 0.1.2 并更新兼容性矩阵
+分支 main · 66826a8"><span class="swl-rowtop"><span class="swl-msg">chore: 版本号提升到 0.1.2 并更新兼容性矩阵</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:6">ZM</span><span class="swl-author">Zhao Min</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">2 小时前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">66826a8</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 18 行" style="--swl-pill-color:var(--swl-ok)">+18</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 6 行" style="--swl-pill-color:var(--swl-bad)">−6</span><span class="swl-pill swl-pill-files dvt-stat-files" title="2 个文件">2 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 20 0 C 20 16, 100 16, 100 32" fill="none" stroke="var(--swl-hotfix)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path><line x1="100" y1="32" x2="100" y2="64" stroke="var(--swl-hotfix)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:100px;top:32px;--swl-lane-color:var(--swl-hotfix)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 4e1c7f2 fix: 修复窄屏下工具栏与胶囊徽标溢出" title="fix: 修复窄屏下工具栏与胶囊徽标溢出
+分支 hotfix/payment · 4e1c7f2"><span class="swl-rowtop"><span class="swl-msg">fix: 修复窄屏下工具栏与胶囊徽标溢出</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 hotfix/payment" style="--swl-pill-color:var(--swl-hotfix)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>hotfix/payment</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:6">ZM</span><span class="swl-author">Zhao Min</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">3 小时前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">4e1c7f2</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 22 行" style="--swl-pill-color:var(--swl-ok)">+22</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 9 行" style="--swl-pill-color:var(--swl-bad)">−9</span><span class="swl-pill swl-pill-files dvt-stat-files" title="2 个文件">2 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="100" y1="0" x2="100" y2="32" stroke="var(--swl-hotfix)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line><line x1="100" y1="32" x2="100" y2="64" stroke="var(--swl-hotfix)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:100px;top:32px;--swl-lane-color:var(--swl-hotfix)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 41ee7fc fix: 提交详情中的重命名路径显示旧文件名" title="fix: 提交详情中的重命名路径显示旧文件名
+分支 hotfix/payment · 41ee7fc"><span class="swl-rowtop"><span class="swl-msg">fix: 提交详情中的重命名路径显示旧文件名</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 hotfix/payment" style="--swl-pill-color:var(--swl-hotfix)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>hotfix/payment</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:6">ZM</span><span class="swl-author">Zhao Min</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">4 小时前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">41ee7fc</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 12 行" style="--swl-pill-color:var(--swl-ok)">+12</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 4 行" style="--swl-pill-color:var(--swl-bad)">−4</span><span class="swl-pill swl-pill-files dvt-stat-files" title="1 个文件">1 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="true"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 100 0 C 100 16, 20 16, 20 32" fill="none" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path></svg><span class="swl-node dvt-tl-graph-node" data-merge="true" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 73ac90f Merge branch &#x27;hotfix/payment&#x27; into main" title="Merge branch &#x27;hotfix/payment&#x27; into main
+分支 main · 73ac90f"><span class="swl-rowtop"><span class="swl-msg">Merge branch &#x27;hotfix/payment&#x27; into main</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span><span class="swl-pill swl-pill-merge" title="合并"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="2.6"></circle><circle cx="18" cy="6" r="2.6"></circle><circle cx="12" cy="18" r="2.6"></circle><path d="M6 8.6V12a4 4 0 0 0 4 4h2"></path><path d="M18 8.6V12"></path></svg><span>合并</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:196">LW</span><span class="swl-author">Lin Wei</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">5 小时前</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">73ac90f</span><span class="swl-stats"><span class="swl-pill swl-pill-files dvt-stat-files" title="3 个文件">3 个文件</span></span></span></button></li></ul></section><section class="swl-group dvt-tl-group"><div class="swl-group-head dvt-tl-day"><span class="swl-group-label dvt-tl-day-label">昨天</span><span class="swl-group-count">4 次提交</span><span class="swl-group-track"></span></div><ul class="swl-list dvt-tl-list" role="list"><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 a1f30d4 docs: 补充泳道时间线的交互与快捷键说明" title="docs: 补充泳道时间线的交互与快捷键说明
+分支 main · a1f30d4"><span class="swl-rowtop"><span class="swl-msg">docs: 补充泳道时间线的交互与快捷键说明</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:196">LW</span><span class="swl-author">Lin Wei</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">昨天 18:20</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">a1f30d4</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 64 行" style="--swl-pill-color:var(--swl-ok)">+64</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 8 行" style="--swl-pill-color:var(--swl-bad)">−8</span><span class="swl-pill swl-pill-files dvt-stat-files" title="1 个文件">1 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 20 0 C 20 16, 60 16, 60 32" fill="none" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path><line x1="60" y1="32" x2="60" y2="64" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:60px;top:32px;--swl-lane-color:var(--swl-feat)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 2cf81b9 feat: 分支下拉、拉取/推送按钮与提交搜索" title="feat: 分支下拉、拉取/推送按钮与提交搜索
+分支 feature/demo1 · 2cf81b9"><span class="swl-rowtop"><span class="swl-msg">feat: 分支下拉、拉取/推送按钮与提交搜索</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 feature/demo1" style="--swl-pill-color:var(--swl-feat)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>feature/demo1</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:350">CY</span><span class="swl-author">Chen Yu</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">昨天 16:04</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">2cf81b9</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 186 行" style="--swl-pill-color:var(--swl-ok)">+186</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 42 行" style="--swl-pill-color:var(--swl-bad)">−42</span><span class="swl-pill swl-pill-files dvt-stat-files" title="3 个文件">3 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 60 0 C 60 16, 20 16, 20 32" fill="none" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 0c58b3d refactor: 收敛主题变量到 --swl-* 并移除硬编码色值" title="refactor: 收敛主题变量到 --swl-* 并移除硬编码色值
+分支 main · 0c58b3d"><span class="swl-rowtop"><span class="swl-msg">refactor: 收敛主题变量到 --swl-* 并移除硬编码色值</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:196">LW</span><span class="swl-author">Lin Wei</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">昨天 11:36</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">0c58b3d</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 96 行" style="--swl-pill-color:var(--swl-ok)">+96</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 158 行" style="--swl-pill-color:var(--swl-bad)">−158</span><span class="swl-pill swl-pill-files dvt-stat-files" title="5 个文件">5 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 20 0 C 20 16, 100 16, 100 32" fill="none" stroke="var(--swl-hotfix)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:100px;top:32px;--swl-lane-color:var(--swl-hotfix)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 5d27e10 fix: 深色主题下节点白边与轨道对比度" title="fix: 深色主题下节点白边与轨道对比度
+分支 hotfix/payment · 5d27e10"><span class="swl-rowtop"><span class="swl-msg">fix: 深色主题下节点白边与轨道对比度</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 hotfix/payment" style="--swl-pill-color:var(--swl-hotfix)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>hotfix/payment</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:6">ZM</span><span class="swl-author">Zhao Min</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">昨天 09:12</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">5d27e10</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 28 行" style="--swl-pill-color:var(--swl-ok)">+28</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 12 行" style="--swl-pill-color:var(--swl-bad)">−12</span><span class="swl-pill swl-pill-files dvt-stat-files" title="2 个文件">2 个文件</span></span></span></button></li></ul></section><section class="swl-group dvt-tl-group"><div class="swl-group-head dvt-tl-day"><span class="swl-group-label dvt-tl-day-label">10月26日</span><span class="swl-group-count">3 次提交</span><span class="swl-group-track"></span></div><ul class="swl-list dvt-tl-list" role="list"><li class="swl-row dvt-tl-row" data-selected="false" data-merge="true"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="true" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 f1c0a9e Merge branch &#x27;feature/demo1&#x27; into main" title="Merge branch &#x27;feature/demo1&#x27; into main
+分支 main · f1c0a9e"><span class="swl-rowtop"><span class="swl-msg">Merge branch &#x27;feature/demo1&#x27; into main</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span><span class="swl-pill swl-pill-merge" title="合并"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="2.6"></circle><circle cx="18" cy="6" r="2.6"></circle><circle cx="12" cy="18" r="2.6"></circle><path d="M6 8.6V12a4 4 0 0 0 4 4h2"></path><path d="M18 8.6V12"></path></svg><span>合并</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:350">CY</span><span class="swl-author">Chen Yu</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">10月26日 17:40</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">f1c0a9e</span><span class="swl-stats"><span class="swl-pill swl-pill-files dvt-stat-files" title="6 个文件">6 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><line x1="20" y1="0" x2="20" y2="32" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line><line x1="20" y1="32" x2="20" y2="64" stroke="var(--swl-main)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></line></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:20px;top:32px;--swl-lane-color:var(--swl-main)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 7b26e14 init: 初始化 VCS 时间线插件骨架" title="init: 初始化 VCS 时间线插件骨架
+分支 main · 7b26e14"><span class="swl-rowtop"><span class="swl-msg">init: 初始化 VCS 时间线插件骨架</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 main" style="--swl-pill-color:var(--swl-main)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>main</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:196">LW</span><span class="swl-author">Lin Wei</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">10月26日 15:22</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">7b26e14</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 486 行" style="--swl-pill-color:var(--swl-ok)">+486</span><span class="swl-pill swl-pill-files dvt-stat-files" title="9 个文件">9 个文件</span></span></span></button></li><li class="swl-row dvt-tl-row" data-selected="false" data-merge="false"><div class="swl-canvas dvt-tl-graph" style="width:140px" aria-hidden="true"><svg class="swl-svg" width="140" height="64" viewBox="0 0 140 64"><path d="M 20 0 C 20 16, 60 16, 60 32" fill="none" stroke="var(--swl-feat)" stroke-width="2.4" stroke-opacity="0.5" stroke-linecap="round"></path></svg><span class="swl-node dvt-tl-graph-node" data-merge="false" style="left:60px;top:32px;--swl-lane-color:var(--swl-feat)"></span></div><button type="button" class="swl-rowbody dvt-tl-card" aria-label="查看提交 e9a4417 feat: 提交图轨道路由与合并父节点" title="feat: 提交图轨道路由与合并父节点
+分支 feature/demo1 · e9a4417"><span class="swl-rowtop"><span class="swl-msg">feat: 提交图轨道路由与合并父节点</span><span class="swl-pills"><span class="swl-pill swl-pill-branch dvt-branch-btn" title="分支 feature/demo1" style="--swl-pill-color:var(--swl-feat)" role="button" tabindex="0"><svg class="swl-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span>feature/demo1</span></span></span></span><span class="swl-rowmeta"><span class="swl-avatar dvt-tl-avatar" aria-hidden="true" style="--swl-avatar-hue:350">CY</span><span class="swl-author">Chen Yu</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-when">10月26日 11:08</span><span class="swl-dot" aria-hidden="true">·</span><span class="swl-hash dvt-tl-hash swl-mono">e9a4417</span><span class="swl-stats"><span class="swl-pill swl-pill-add dvt-stat-add" title="新增 132 行" style="--swl-pill-color:var(--swl-ok)">+132</span><span class="swl-pill swl-pill-del dvt-stat-del" title="删除 18 行" style="--swl-pill-color:var(--swl-bad)">−18</span><span class="swl-pill swl-pill-files dvt-stat-files" title="3 个文件">3 个文件</span></span></span></button></li></ul></section></div></div></div></section></div></div></div></div></body></html>

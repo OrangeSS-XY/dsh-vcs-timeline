@@ -52,7 +52,7 @@
 .dvt-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dvt-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .dvt-grow { flex: 1 1 auto; min-width: 0; }
-.dvt-mono { font-family: ui-monospace, SFMono-Regular, &quot;Cascadia Code&quot;, Consolas, monospace; font-variant-ligatures: none; }
+.dvt-mono { font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace; font-variant-ligatures: none; }
 .dvt-muted { color: var(--dsw-alias-label-secondary); }
 .dvt-faint { color: var(--dsw-alias-label-tertiary); }
 .dvt-clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -91,7 +91,7 @@
   background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .dvt-iconbtn:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
-.dvt-iconbtn[aria-expanded=&quot;true&quot;], .dvt-iconbtn[aria-pressed=&quot;true&quot;] {
+.dvt-iconbtn[aria-expanded="true"], .dvt-iconbtn[aria-pressed="true"] {
   background: var(--dsw-alias-interactive-selected); color: var(--dsw-alias-label-primary);
 }
 .dvt-iconbtn:disabled { cursor: not-allowed; opacity: .45; }
@@ -131,7 +131,7 @@
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.dvt-branch &gt; span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dvt-branch > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dvt-toolbar-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; margin-left: auto; }
 
 .dvt-tabstrip { display: flex; align-items: stretch; gap: 0; height: 30px; padding: 0 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
@@ -142,7 +142,7 @@
   font-size: 11.5px; font-weight: 500; cursor: pointer; white-space: nowrap;
 }
 .dvt-tab:hover { color: var(--dsw-alias-label-primary); }
-.dvt-tab[aria-selected=&quot;true&quot;] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-brand-primary); }
+.dvt-tab[aria-selected="true"] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-brand-primary); }
 .dvt-tab-count {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
@@ -153,7 +153,7 @@
 
 .dvt-filterbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .dvt-search { position: relative; display: flex; align-items: center; flex: 1 1 auto; min-width: 84px; }
-.dvt-search &gt; svg { position: absolute; left: 6px; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
+.dvt-search > svg { position: absolute; left: 6px; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
 .dvt-search-input {
   width: 100%; height: 24px; padding: 0 22px 0 24px;
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 5px;
@@ -175,7 +175,7 @@
   font-size: 11px; white-space: nowrap; cursor: pointer;
 }
 .dvt-chip:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
-.dvt-chip[aria-pressed=&quot;true&quot;] {
+.dvt-chip[aria-pressed="true"] {
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-primary); font-weight: 600;
@@ -262,7 +262,7 @@
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.dvt-tag &gt; span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dvt-tag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dvt-tag-merge { color: var(--dsw-alias-brand-primary); background: transparent; padding: 0 2px; }
 .dvt-list-more { display: flex; justify-content: center; padding: 6px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .dvt-list-count { padding: 4px 8px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
@@ -339,7 +339,7 @@
 .dvt-file-old { color: var(--dsw-alias-label-tertiary); }
 
 /* ---------- diff ---------- */
-.dvt-diff { display: flex; flex-direction: column; overflow-x: auto; overflow-y: hidden; font-family: ui-monospace, SFMono-Regular, &quot;Cascadia Code&quot;, Consolas, monospace; font-size: 10.5px; line-height: 1.55; }
+.dvt-diff { display: flex; flex-direction: column; overflow-x: auto; overflow-y: hidden; font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace; font-size: 10.5px; line-height: 1.55; }
 .dvt-diff-row { display: flex; align-items: stretch; width: max-content; min-width: 100%; }
 .dvt-diff-row:hover { background: var(--dsw-alias-interactive-hover); }
 .dvt-diff-gutter {
@@ -355,7 +355,7 @@
 .dvt-diff-added .dvt-diff-code { color: var(--dsw-alias-state-success-primary); }
 .dvt-diff-removed { background: var(--dsw-alias-bg-layer-2); }
 .dvt-diff-removed .dvt-diff-code { color: var(--dsw-alias-state-error-primary); }
-.dvt-diff-added &gt; .dvt-diff-gutter, .dvt-diff-removed &gt; .dvt-diff-gutter, .dvt-diff-hunk &gt; .dvt-diff-gutter { background: var(--dsw-alias-bg-layer-2); }
+.dvt-diff-added > .dvt-diff-gutter, .dvt-diff-removed > .dvt-diff-gutter, .dvt-diff-hunk > .dvt-diff-gutter { background: var(--dsw-alias-bg-layer-2); }
 .dvt-diff-hunk .dvt-diff-code { color: var(--dsw-alias-brand-primary); }
 .dvt-diff-hunk { background: var(--dsw-alias-bg-layer-2); }
 .dvt-diff-meta .dvt-diff-code { color: var(--dsw-alias-label-tertiary); }
@@ -412,7 +412,7 @@
   color: var(--dsw-alias-label-tertiary); font-size: 10.5px; cursor: pointer; white-space: nowrap;
 }
 .dvt-statusbtn:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
-.dvt-statusbtn[aria-expanded=&quot;true&quot;] { background: var(--dsw-alias-interactive-selected); color: var(--dsw-alias-label-primary); }
+.dvt-statusbtn[aria-expanded="true"] { background: var(--dsw-alias-interactive-selected); color: var(--dsw-alias-label-primary); }
 .dvt-diag { flex: 0 0 auto; max-height: 40%; overflow-y: auto; border-top: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); padding: 5px 8px 6px; }
 .dvt-diag-title { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary); margin-bottom: 3px; }
 .dvt-diag-grid { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 2px 10px; }
@@ -514,7 +514,7 @@
 .dvt-tree-tools { flex: 0 0 auto; display: flex; gap: 1px; }
 .dvt-tree-tools .dvt-iconbtn { width: 20px; height: 20px; }
 .dvt-tree-search { position: relative; display: flex; align-items: center; flex: 0 0 auto; margin: 0 6px 4px; }
-.dvt-tree-search &gt; svg { position: absolute; left: 6px; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
+.dvt-tree-search > svg { position: absolute; left: 6px; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
 .dvt-tree-input {
   width: 100%; height: 22px; padding: 0 6px 0 22px;
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 4px;
@@ -529,7 +529,7 @@
   background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font-size: 10px;
 }
 .dvt-tree-chip:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
-.dvt-tree-chip[aria-pressed=&quot;true&quot;] {
+.dvt-tree-chip[aria-pressed="true"] {
   background: var(--dsw-alias-bg-layer-2); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-primary); font-weight: 600;
 }
@@ -666,7 +666,7 @@
   color: var(--dsw-alias-label-secondary); font-size: 10.5px; cursor: pointer;
 }
 .dvt-audit-chip:hover { background: var(--dsw-alias-interactive-hover); color: var(--dsw-alias-label-primary); }
-.dvt-audit-chip[aria-pressed=&quot;true&quot;] { background: var(--dsw-alias-bg-layer-2); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); font-weight: 600; }
+.dvt-audit-chip[aria-pressed="true"] { background: var(--dsw-alias-bg-layer-2); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); font-weight: 600; }
 .dvt-audit-chip-count { font-size: 9.5px; color: var(--dsw-alias-label-tertiary); }
 .dvt-audit-summary { padding: 2px 10px 4px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
 
@@ -676,7 +676,7 @@
   padding: 0 3px; border-radius: 4px; color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .dvt-time:hover { background: var(--dsw-alias-interactive-hover); }
-.dvt-time &gt; svg { flex: 0 0 auto; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
+.dvt-time > svg { flex: 0 0 auto; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
 .dvt-time-select {
   appearance: none; max-width: 76px; border: 0; outline: none; background: transparent;
   color: inherit; font-size: 11px; cursor: pointer;
@@ -777,7 +777,7 @@
 @media (max-width: 380px) {
   .dvt-branch { display: none; }
   .dvt-repo-vcs { display: none; }
-  .dvt-statusbar &gt; .dvt-status-item.dvt-faint { display: none; }
+  .dvt-statusbar > .dvt-status-item.dvt-faint { display: none; }
 }
 @media (max-width: 360px) {
   .dvt-tl-branch { display: none; }
@@ -841,7 +841,7 @@
   height: 20px; padding: 0 6px; font-size: 10px; cursor: pointer;
 }
 .dvt-seg-btn + .dvt-seg-btn { border-left: 1px solid var(--dsw-alias-border-l1); }
-.dvt-seg-btn[aria-pressed=&quot;true&quot;] { background: var(--dsw-alias-interactive-pressed); color: var(--dsw-alias-label-primary); }
+.dvt-seg-btn[aria-pressed="true"] { background: var(--dsw-alias-interactive-pressed); color: var(--dsw-alias-label-primary); }
 .dvt-checks { margin: 0; padding: 0 8px; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 .dvt-checks-compact { padding: 0; }
 .dvt-check { display: flex; align-items: flex-start; gap: 5px; min-width: 0; padding: 2px 0; font-size: 10.5px; }
@@ -933,7 +933,1118 @@
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
 }
-</style><div><div class="dvt-chrome"><div class="dvt-toolbar"><label class="dvt-repo" title="D:/workspace/web-console"><span class="dvt-repo-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></span><span class="dvt-repo-name">web-console</span><span class="dvt-repo-vcs">Git</span><span class="dvt-repo-caret"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-down"><path d="M4.2 6.2 8 10l3.8-3.8"></path></svg></span><select class="dvt-repo-native" aria-label="选择仓库"><option value="git:d:/workspace/web-console" selected="">Git · web-console — feature/sidebar-timeline</option></select></label><span class="dvt-branch" title="分支 feature/sidebar-timeline"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="branch"><circle cx="5" cy="3.4" r="1.7"></circle><circle cx="5" cy="12.6" r="1.7"></circle><circle cx="11.4" cy="5.4" r="1.7"></circle><path d="M5 5.1v5.8"></path><path d="M11.4 7.1c0 2.6-2.6 2.4-6.4 3.6"></path></svg><span>feature/sidebar…</span></span><span class="dvt-toolbar-actions"><button type="button" class="dvt-iconbtn" aria-label="添加仓库" title="添加仓库"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="刷新仓库列表与数据" title="刷新仓库列表与数据"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="版本控制操作" title="版本控制操作" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="more"><circle cx="3.4" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="12.6" cy="8" r="0.9" fill="currentColor" stroke="none"></circle></svg></button></span></div><div role="tablist" class="dvt-tabstrip" aria-label="代码时间线"><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="timeline"><path d="M3.2 3.6v8.8"></path><circle cx="3.2" cy="4.4" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="8" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="11.6" r="1.2" fill="currentColor" stroke="none"></circle><path d="M6.4 4.4h6.4"></path><path d="M6.4 8h6.4"></path><path d="M6.4 11.6h6.4"></path></svg><span>时间线</span><span class="dvt-tab-count">6</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="checklist"><path d="M5.4 4.2h8.2M5.4 8h8.2M5.4 11.8h8.2"></path><path d="M2.2 4.1l.7.8 1.4-1.6"></path></svg><span>待处理</span><span class="dvt-tab-count">3</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="flame"><path d="M8 2.2c2.2 2.4 3.9 3.8 3.9 6.4A3.9 3.9 0 0 1 8 12.5a3.9 3.9 0 0 1-3.9-3.9c0-1.4.6-2.4 1.6-3.5.4.9 1 1.4 1.6 1.5-.3-1.5 0-3 .7-4.4Z"></path></svg><span>热点</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="pull-request"><circle cx="4.2" cy="3.6" r="1.6"></circle><circle cx="4.2" cy="12.4" r="1.6"></circle><path d="M4.2 5.2v5.6"></path><circle cx="11.4" cy="4.2" r="1.6"></circle><path d="M11.4 5.8v1.6c0 2.2-1.6 2.6-4.2 3.4"></path><path d="M9.6 9.4l2.2 1.2-2.2 1.2"></path></svg><span>拉取请求</span><span class="dvt-tab-count">3</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="audit"><path d="M8 2.2 13 4v4.2c0 2.8-2.1 4.7-5 5.6-2.9-.9-5-2.8-5-5.6V4z"></path><path d="M5.8 7.8 7.4 9.4l3-3.2"></path></svg><span>审计</span></button></div></div></div><div class="dvt-body"><div class="dvt-pane"><div class="dvt-list-pane"><div class="dvt-scroll"><div class="dvt-col dvt-pr-view"><div class="dvt-pr-summary"><span class="dvt-pr-summary-counts">3 个开放 · 3 个需要我处理</span><span class="dvt-pr-summary-remote"><span class="dvt-pr-provider">GitHub</span><span class="dvt-pr-path dvt-mono">example/web-console</span><span class="dvt-pr-authstate dvt-pr-authstate-ok">已认证 @linwei</span></span><span class="dvt-pr-summary-actions"><button type="button" class="dvt-iconbtn" aria-label="刷新拉取请求" title="刷新拉取请求"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button></span></div><div class="dvt-col"><div class="dvt-local-strip" title="无需网络：本地 git 就能算出当前分支相对基准的差异。"><span class="dvt-local-strip-label">本地分支洞察</span><span class="dvt-local-branches dvt-mono">feature/sidebar-timeline → main</span><span class="dvt-local-chips"><span class="dvt-local-chip">领先 3</span><span class="dvt-local-chip">落后 1</span><span class="dvt-local-chip">2 个提交未推送</span><span class="dvt-local-chip">7 个文件变更</span></span><span class="dvt-local-actions"><span class="dvt-pr-action dvt-pr-action-push" title="有未推送的提交">需要推送</span></span><button type="button" class="dvt-iconbtn dvt-local-refresh" aria-label="刷新拉取请求" title="刷新拉取请求">⟳</button></div><div class="dvt-pr-sections"><section class="dvt-pr-section"><div class="dvt-tl-day"><span class="dvt-tl-day-label">需要我处理</span><span class="dvt-tl-day-count">3</span></div><ul class="dvt-pr-list"><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#42 feat: 文件中心的双栏变更浏览器" title="feat: 文件中心的双栏变更浏览器
-feat/file-browser → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#42</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(238 58% 52%);color:var(--dsw-alias-bg-base)">L</span><span class="dvt-pr-author">linwei</span><span class="dvt-pr-title">feat: 文件中心的双栏变更浏览器</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>21 小时前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">feat/file-browser</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-muted" title="待评审">待评审</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="CI 通过">CI 通过</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="可合并">可合并</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-review" title="评审请求指向你">需要我评审</span></span></span></button></li><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#41 fix: 重命名路径在详情中的显示" title="fix: 重命名路径在详情中的显示
-fix/rename-path → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#41</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(18 58% 52%);color:var(--dsw-alias-bg-base)">Z</span><span class="dvt-pr-author">zhaomin</span><span class="dvt-pr-title">fix: 重命名路径在详情中的显示</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>22 小时前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">fix/rename-path</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-error" title="需修改">需修改</span><span class="dvt-pr-badge dvt-pr-badge-error" title="CI 失败">CI 失败</span><span class="dvt-pr-badge dvt-pr-badge-warn" title="有冲突">有冲突</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-fix-ci" title="CI 检查失败">需要修复 CI</span></span></span></button></li><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#39 docs: 补全 PR 与审计说明" title="docs: 补全 PR 与审计说明
-docs/pr-and-audit → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#39</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(294 58% 52%);color:var(--dsw-alias-bg-base)">C</span><span class="dvt-pr-author">chenyu</span><span class="dvt-pr-title">docs: 补全 PR 与审计说明</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>1 天前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">docs/pr-and-audit</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-ok" title="已批准">已批准</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="CI 通过">CI 通过</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="可合并">可合并</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-merge" title="已批准、CI 通过、可合并">可以合并</span></span></span></button></li></ul></section></div></div></div></div></div></div></div><div class="dvt-statusbar"><span class="dvt-status-item" title="有未提交修改"><span class="dvt-dot dvt-dot-dirty" aria-hidden="true"></span><span>有未提交修改</span></span><span class="dvt-dot-sep" aria-hidden="true">·</span><span class="dvt-status-item"><span class="dvt-mono dvt-clip" title="feature/sidebar-timeline">feature/sidebar-timeline</span></span><span class="dvt-dot-sep" aria-hidden="true">·</span><span class="dvt-status-item"><span>3 项变更</span></span><span class="dvt-status-spacer"></span><span class="dvt-status-item dvt-faint">Git</span><button type="button" class="dvt-statusbtn" aria-expanded="false" aria-label="环境诊断" title="环境诊断"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="sliders"><path d="M3 4.4h10"></path><path d="M3 8h10"></path><path d="M3 11.6h10"></path><circle cx="5.6" cy="4.4" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="10.4" cy="8" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="7" cy="11.6" r="1.3" fill="currentColor" stroke="none"></circle></svg><span>诊断</span><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-right"><path d="M6.2 4.2 10 8l-3.8 3.8"></path></svg></button></div></div></div></body></html>
+
+/* ---------- v1.2: pending actions, chart cards, heatmap and bars ---------- */
+.dvt-wb-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 4px 8px 5px; border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.dvt-wb-actions-note {
+  flex: 1 1 100%; min-width: 0; font-size: 9.5px; color: var(--dsw-alias-label-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dvt-card-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px 0; }
+.dvt-card-title { flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dvt-hotspot-charts { display: flex; flex-direction: column; gap: 0; min-height: 0; }
+.dvt-hotspot-chart-meta { flex: 0 0 auto; font-size: 9.5px; }
+.dvt-heatmap { display: flex; gap: 4px; padding: 4px 10px 2px; overflow-x: auto; }
+.dvt-heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 11px); gap: 2px; flex: 0 0 auto; }
+.dvt-heatmap-weekday { font-size: 8px; line-height: 11px; height: 11px; color: var(--dsw-alias-label-tertiary); }
+.dvt-heatmap-grid {
+  display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); gap: 2px;
+  grid-auto-columns: 11px; flex: 0 0 auto;
+}
+.dvt-heatmap-cell {
+  width: 11px; height: 11px; border-radius: 2px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid transparent;
+}
+.dvt-heat-0 { background: var(--dsw-alias-bg-layer-1); border-color: var(--dsw-alias-border-l1); }
+.dvt-heat-1 { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, var(--dsw-alias-bg-base)); }
+.dvt-heat-2 { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 42%, var(--dsw-alias-bg-base)); }
+.dvt-heat-3 { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 62%, var(--dsw-alias-bg-base)); }
+.dvt-heat-4 { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 82%, var(--dsw-alias-bg-base)); }
+.dvt-heatmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding: 0 10px 6px; font-size: 9px; }
+.dvt-bars { margin: 0; padding: 2px 10px 6px; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.dvt-bar-item { min-width: 0; }
+.dvt-bar-row {
+  display: grid; grid-template-columns: minmax(80px, 42%) minmax(80px, 1fr) auto;
+  align-items: center; gap: 7px; width: 100%; height: 24px; padding: 0;
+  border: 0; background: transparent; text-align: left; cursor: pointer;
+  color: var(--dsw-alias-label-primary); font-size: 10.5px;
+}
+.dvt-bar-row:hover .dvt-bar-fill { opacity: .85; }
+.dvt-bar-track {
+  position: relative; height: 10px; border-radius: 3px;
+  background: var(--dsw-alias-bg-layer-2); overflow: hidden;
+}
+.dvt-bar-fill {
+  display: block; height: 100%; min-width: 2px; border-radius: 3px;
+  background: var(--dsw-alias-brand-primary); opacity: .62;
+}
+.dvt-bar-churn { background: var(--dsw-alias-state-warn-primary); }
+.dvt-bar-authors { background: var(--dsw-alias-state-success-primary); }
+.dvt-bar-recent { background: var(--dsw-alias-brand-primary); }
+.dvt-bar-label { min-width: 0; }
+.dvt-bar-name { color: var(--dsw-alias-label-primary); }
+.dvt-bar-value { flex: 0 0 auto; font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
+</style><div class="swl-page dvt-split" data-swimlane="v1" data-sidebar="closed"><style>
+.swl-page {
+  --swl-bg: var(--dsw-alias-bg-layer-1, hsl(210 24% 98%));
+  --swl-card: var(--dsw-alias-bg-base, hsl(0 0% 100%));
+  --swl-ink: var(--dsw-alias-label-primary, hsl(222 47% 11%));
+  --swl-ink-2: var(--dsw-alias-label-secondary, hsl(215 16% 38%));
+  --swl-ink-3: var(--dsw-alias-label-tertiary, hsl(215 14% 55%));
+  --swl-line: var(--dsw-alias-border-l1, hsl(214 22% 91%));
+  --swl-line-2: var(--dsw-alias-border-l2, hsl(214 18% 84%));
+  --swl-accent: var(--dsw-alias-brand-primary, hsl(217 82% 56%));
+  --swl-ok: var(--dsw-alias-state-success-primary, hsl(152 58% 36%));
+  --swl-bad: var(--dsw-alias-state-error-primary, hsl(347 74% 50%));
+  --swl-warn: var(--dsw-alias-state-warn-primary, hsl(38 92% 38%));
+  --swl-hover: var(--dsw-alias-interactive-hover, hsl(215 22% 96%));
+  --swl-sel: var(--dsw-alias-interactive-selected, hsl(217 82% 56% / .09));
+  --swl-main: hsl(217 82% 56%);
+  --swl-feat: hsl(262 83% 62%);
+  --swl-hotfix: hsl(347 77% 58%);
+  --swl-shadow: 0 1px 2px hsl(220 43% 16% / .05), 0 10px 30px -18px hsl(220 43% 16% / .28);
+  --swl-shadow-lift: 0 2px 4px hsl(220 43% 16% / .06), 0 16px 32px -20px hsl(220 43% 16% / .38);
+  --swl-row-h: 64px;
+  --swl-canvas-w: 140px;
+  --swl-radius: 14px;
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+  box-sizing: border-box;
+  background: var(--swl-bg);
+  color: var(--swl-ink);
+  font-family: Inter, "Inter var", "SF Pro Text", -apple-system, "Segoe UI Variable",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  container-type: inline-size;
+  container-name: swl;
+}
+.swl-page *, .swl-page *::before, .swl-page *::after { box-sizing: border-box; }
+.swl-page button, .swl-page input, .swl-page select { font: inherit; color: inherit; }
+.swl-page :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--swl-accent) 60%, transparent);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
+.swl-icon { flex: 0 0 auto; display: block; }
+.swl-mono {
+  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+/* ---------- frame ---------- */
+.swl-frame { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; gap: 12px; position: relative; }
+.swl-sidebar {
+  flex: 0 0 260px;
+  width: 260px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--swl-card);
+  border-radius: var(--swl-radius);
+  box-shadow: var(--swl-shadow);
+  overflow: hidden;
+}
+.swl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--swl-card);
+  border-radius: var(--swl-radius);
+  box-shadow: var(--swl-shadow);
+  overflow: hidden;
+}
+.swl-chrome { flex: 0 0 auto; display: flex; flex-direction: column; }
+.swl-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.swl-mobilebar { display: none; }
+.swl-scrim { display: none; }
+.swl-timeline-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+
+/* ---------- header ---------- */
+.swl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 58px;
+  padding: 0 14px;
+  flex: 0 0 auto;
+}
+.swl-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.swl-title:hover { background: var(--swl-hover); }
+.swl-title-icon { display: inline-flex; color: var(--swl-ink-3); }
+.swl-repo-name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.012em;
+  color: var(--swl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swl-vcs {
+  flex: 0 0 auto;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-accent) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 78%, var(--swl-ink));
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 17px;
+  text-transform: uppercase;
+}
+.swl-title-caret { display: inline-flex; color: var(--swl-ink-3); }
+.swl-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
+.swl-branch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 210px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-2);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-branch:hover { background: color-mix(in srgb, var(--swl-accent) 8%, var(--swl-bg)); color: var(--swl-ink); }
+.swl-branch-select {
+  appearance: none;
+  max-width: 160px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+.swl-branch-caret { display: inline-flex; color: var(--swl-ink-3); }
+.swl-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.swl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 120ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.swl-btn:hover { transform: translateY(-1px); }
+.swl-btn:active { transform: translateY(0); }
+.swl-btn:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+.swl-btn-outline {
+  background: var(--swl-card);
+  border-color: var(--swl-line-2);
+  color: var(--swl-ink);
+  box-shadow: 0 1px 1px hsl(220 43% 16% / .03);
+}
+.swl-btn-outline:hover { background: var(--swl-hover); }
+.swl-btn-primary {
+  background: var(--swl-accent);
+  color: hsl(0 0% 100%);
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--swl-accent) 85%, transparent);
+}
+.swl-btn-primary:hover { background: color-mix(in srgb, var(--swl-accent) 88%, hsl(0 0% 0%)); }
+.swl-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--swl-ink-3);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-iconbtn:hover { background: var(--swl-hover); color: var(--swl-ink); }
+
+/* ---------- toolbar ---------- */
+.swl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  border-top: 1px solid color-mix(in srgb, var(--swl-line) 55%, transparent);
+}
+.swl-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.swl-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--swl-ink-2);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-tab:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-tab[aria-selected="true"] {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+  font-weight: 650;
+}
+.swl-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 8%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-tab[aria-selected="true"] .swl-tab-count {
+  background: color-mix(in srgb, var(--swl-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+}
+.swl-toolbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.swl-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  min-width: 150px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+.swl-search:focus-within {
+  background: var(--swl-card);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent);
+}
+.swl-search-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--swl-ink);
+  font-size: 12px;
+  outline: none;
+}
+.swl-search-input::placeholder { color: var(--swl-ink-3); }
+.swl-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  flex: 0 0 auto;
+}
+.swl-seg-btn {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.swl-seg-btn:hover { color: var(--swl-ink); }
+.swl-seg-btn[aria-pressed="true"] {
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-weight: 650;
+  box-shadow: 0 1px 2px hsl(220 43% 16% / .08), 0 4px 10px -6px hsl(220 43% 16% / .2);
+}
+
+/* ---------- pills / badges ---------- */
+.swl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--swl-pill-color, var(--swl-ink)) 9%, transparent);
+  color: color-mix(in srgb, var(--swl-pill-color, var(--swl-ink)) 68%, var(--swl-ink));
+}
+.swl-pill-branch {
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.swl-pill-branch:hover { background: color-mix(in srgb, var(--swl-pill-color, var(--swl-accent)) 16%, transparent); }
+.swl-pill-merge { --swl-pill-color: var(--swl-feat); background: color-mix(in srgb, var(--swl-feat) 12%, transparent); color: color-mix(in srgb, var(--swl-feat) 72%, var(--swl-ink)); }
+.swl-pill-head {
+  --swl-pill-color: var(--swl-ok);
+  background: color-mix(in srgb, var(--swl-ok) 13%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 78%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  letter-spacing: .02em;
+  /* Legacy .dvt-tl-head draws a 15px bordered box; the pill owns its shape. */
+  height: 18px;
+  border: 0;
+}
+.swl-pill-add {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-pill-del {
+  background: color-mix(in srgb, var(--swl-bad) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-bad) 80%, var(--swl-ink));
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-pill-files { background: color-mix(in srgb, var(--swl-ink) 6%, transparent); color: var(--swl-ink-3); font-weight: 550; }
+
+/* ---------- legend ---------- */
+.swl-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 14px 6px calc(var(--swl-canvas-w) + 12px);
+}
+.swl-legend-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--swl-ink-3);
+}
+.swl-lane-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-pill-color) 10%, transparent);
+  color: color-mix(in srgb, var(--swl-pill-color) 70%, var(--swl-ink));
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-lane-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--swl-pill-color); }
+.swl-lane-name { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace; }
+.swl-lane-count { opacity: .68; font-size: 9.5px; }
+
+/* ---------- groups ---------- */
+.swl-timeline { display: flex; flex-direction: column; min-height: 0; }
+.swl-group { display: flex; flex-direction: column; }
+.swl-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px 0 calc(var(--swl-canvas-w) + 12px);
+  background: color-mix(in srgb, var(--swl-card) 76%, transparent);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+}
+.swl-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -.005em;
+  color: var(--swl-ink);
+}
+.swl-group-count { font-size: 10.5px; color: var(--swl-ink-3); }
+.swl-group-track {
+  margin-left: auto;
+  width: 34px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--swl-ink) 14%, transparent));
+}
+.swl-list { list-style: none; margin: 0; padding: 0 6px 8px; }
+
+/* ---------- rows ---------- */
+.swl-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-height: var(--swl-row-h);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+.swl-row:hover {
+  background: color-mix(in srgb, var(--swl-accent) 5%, transparent);
+  box-shadow: 0 10px 22px -20px hsl(220 43% 16% / .55);
+}
+.swl-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--swl-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--swl-accent) 24%, transparent);
+}
+.swl-canvas {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--swl-canvas-w);
+  /* Beat the legacy .dvt-tl-graph height:52px compat rule: the graph canvas
+     must be exactly one new row tall, or nodes and edges drift. */
+  height: var(--swl-row-h);
+}
+.swl-svg { position: absolute; inset: 0; display: block; overflow: visible; pointer-events: none; }
+.swl-node {
+  position: absolute;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--swl-lane-color, var(--swl-accent));
+  /* The thick card-coloured ring is what breaks the line at the node. */
+  box-shadow: 0 0 0 4px var(--swl-card);
+  transform: translate(-50%, -50%);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.swl-row:hover .swl-node {
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow: 0 0 0 4px var(--swl-card), 0 0 0 6px color-mix(in srgb, var(--swl-lane-color) 20%, transparent);
+}
+.swl-node[data-merge="true"] {
+  background: var(--swl-card);
+  border: 2.5px solid var(--swl-lane-color);
+}
+.swl-node[data-merge="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: var(--swl-lane-color);
+}
+.swl-rowbody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 11px 12px 11px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.swl-rowbody:focus-visible { outline-offset: -2px; }
+.swl-rowtop { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+.swl-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 560;
+  letter-spacing: -.006em;
+  color: var(--swl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swl-pills { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.swl-rowmeta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: 11.5px; color: var(--swl-ink-3); }
+.swl-avatar {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  background: hsl(var(--swl-avatar-hue, 220) 72% 92%);
+  color: hsl(var(--swl-avatar-hue, 220) 62% 34%);
+}
+.swl-author {
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--swl-ink-2);
+  font-weight: 500;
+}
+.swl-dot { color: var(--swl-line-2); }
+.swl-when { flex: 0 0 auto; white-space: nowrap; }
+.swl-hash {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--swl-ink) 5%, transparent);
+  color: var(--swl-ink-2);
+  font-size: 10.5px;
+}
+.swl-stats { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+
+/* ---------- empty ---------- */
+.swl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 64px 24px;
+  color: var(--swl-ink-3);
+  text-align: center;
+}
+.swl-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 2px;
+  border-radius: 14px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+}
+.swl-empty-title { font-size: 13px; font-weight: 600; color: var(--swl-ink); }
+.swl-empty-hint { font-size: 11.5px; }
+
+/* ---------- demo sidebar tree ---------- */
+.swl-tree { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.swl-tree-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; }
+.swl-tree-title { font-size: 12.5px; font-weight: 650; letter-spacing: -.006em; }
+.swl-tree-total {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin: 0 12px 8px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-3);
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+.swl-tree-search:focus-within {
+  background: var(--swl-card);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent);
+}
+.swl-tree-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--swl-ink);
+  font-size: 11.5px;
+  outline: none;
+}
+.swl-tree-input::placeholder { color: var(--swl-ink-3); }
+.swl-tree-stats { display: flex; align-items: center; gap: 5px; padding: 0 14px 8px; flex-wrap: wrap; }
+.swl-tree-filter { display: flex; align-items: center; gap: 4px; padding: 0 12px 8px; overflow: hidden; }
+.swl-tree-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--swl-ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-tree-chip:first-child {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 80%, var(--swl-ink));
+}
+.swl-tree-list { list-style: none; margin: 0; padding: 0 6px 10px; }
+.swl-tree-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.swl-tree-item { margin: 0; padding: 0; }
+.swl-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+.swl-tree-row:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-tree-caret { display: inline-flex; color: var(--swl-ink-3); transform: rotate(90deg); }
+.swl-tree-icon { display: inline-flex; color: var(--swl-ink-3); }
+.swl-tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.swl-tree-dir > .swl-tree-name { font-weight: 550; }
+.swl-tree-badge { flex: 0 0 auto; font-size: 9.5px; color: var(--swl-ink-3); }
+.swl-tree-add { flex: 0 0 auto; font-size: 9.5px; color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink)); }
+.swl-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.swl-status-A { background: color-mix(in srgb, var(--swl-ok) 12%, transparent); color: color-mix(in srgb, var(--swl-ok) 82%, var(--swl-ink)); }
+.swl-status-M { background: color-mix(in srgb, var(--swl-warn) 14%, transparent); color: color-mix(in srgb, var(--swl-warn) 85%, var(--swl-ink)); }
+.swl-status-D { background: color-mix(in srgb, var(--swl-bad) 12%, transparent); color: color-mix(in srgb, var(--swl-bad) 82%, var(--swl-ink)); }
+.swl-status-R { background: color-mix(in srgb, var(--swl-feat) 12%, transparent); color: color-mix(in srgb, var(--swl-feat) 78%, var(--swl-ink)); }
+
+/* ---------- demo frame ---------- */
+.swl-demo { display: flex; width: 100%; height: 100vh; min-height: 0; background: var(--dsw-alias-bg-layer-1, hsl(210 24% 98%)); }
+.swl-demo > .swl-page { flex: 1 1 auto; height: auto; }
+
+/* ---------- plugin chrome overrides (relocated into the shell) ---------- */
+.swl-main .dvt-chrome { background: transparent; }
+.swl-main .dvt-toolbar { height: 58px; padding: 0 14px; gap: 8px; }
+.swl-main .dvt-repo { height: 34px; padding: 0 8px; border-radius: 10px; flex: 0 1 auto; }
+.swl-main .dvt-repo-name { font-size: 15px; font-weight: 650; letter-spacing: -.012em; }
+.swl-main .dvt-repo-vcs {
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-accent) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-accent) 78%, var(--swl-ink));
+  font-size: 9.5px;
+  letter-spacing: .06em;
+  line-height: 17px;
+}
+.swl-main .dvt-branch {
+  max-width: 220px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+  font-size: 11px;
+}
+.swl-main .dvt-toolbar-actions { gap: 6px; }
+.swl-main .dvt-toolbar-actions .dvt-iconbtn { width: 30px; height: 30px; border-radius: 9px; }
+.swl-main .dvt-tabstrip {
+  height: 44px;
+  padding: 0 12px;
+  gap: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--swl-line) 55%, transparent);
+  border-bottom: 0;
+}
+.swl-main .dvt-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--swl-ink-2);
+  font-size: 12px;
+  font-weight: 550;
+  transition: background 140ms ease, color 140ms ease;
+}
+.swl-main .dvt-tab:hover { background: var(--swl-hover); color: var(--swl-ink); }
+.swl-main .dvt-tab[aria-selected="true"] {
+  background: var(--swl-sel);
+  border-bottom-color: transparent;
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+  font-weight: 650;
+}
+.swl-main .dvt-tab-count { background: color-mix(in srgb, var(--swl-ink) 8%, transparent); }
+.swl-main .dvt-filterbar {
+  height: 46px;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+}
+.swl-main .dvt-search { min-width: 150px; }
+.swl-main .dvt-search-input {
+  height: 30px;
+  padding: 0 22px 0 26px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  font-size: 12px;
+}
+.swl-main .dvt-search > svg { left: 9px; }
+.swl-main .dvt-search-input:focus-visible { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--swl-accent) 45%, transparent); }
+.swl-main .dvt-chip {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+}
+.swl-main .dvt-chip[aria-pressed="true"] {
+  background: var(--swl-sel);
+  box-shadow: none;
+  color: color-mix(in srgb, var(--swl-accent) 82%, var(--swl-ink));
+}
+.swl-main .dvt-time {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  color: var(--swl-ink-2);
+}
+.swl-main .dvt-time-select { border: 0; background: transparent; font-size: 11.5px; outline: none; }
+.swl-main .dvt-seg {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--swl-bg);
+}
+.swl-main .dvt-seg-btn {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--swl-ink-2);
+  font-size: 11.5px;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.swl-main .dvt-seg-btn[aria-pressed="true"] {
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-weight: 650;
+  box-shadow: 0 1px 2px hsl(220 43% 16% / .08), 0 4px 10px -6px hsl(220 43% 16% / .2);
+}
+.swl-main .dvt-iconbtn { border-radius: 9px; }
+.swl-main .dvt-pane { background: transparent; }
+.swl-main .dvt-scroll { scrollbar-gutter: stable; }
+
+/* ---------- plugin file tree card ---------- */
+.swl-sidebar .dvt-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border: 0;
+}
+.swl-sidebar .dvt-tree-head { padding: 14px 14px 8px; height: auto; }
+.swl-sidebar .dvt-tree-title { font-size: 12.5px; font-weight: 650; letter-spacing: -.006em; }
+.swl-sidebar .dvt-tree-total {
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.swl-sidebar .dvt-tree-search { margin: 0 12px 8px; }
+.swl-sidebar .dvt-tree-input {
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--swl-bg);
+  padding: 0 10px 0 26px;
+  font-size: 11.5px;
+}
+.swl-sidebar .dvt-tree-search > svg { left: 10px; }
+.swl-sidebar .dvt-tree-chips { padding: 0 12px 8px; gap: 4px; }
+.swl-sidebar .dvt-tree-chip {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.swl-sidebar .dvt-tree-chip[aria-pressed="true"] {
+  background: var(--swl-sel);
+  color: color-mix(in srgb, var(--swl-accent) 80%, var(--swl-ink));
+}
+.swl-sidebar .dvt-tree-scroll { padding: 0 6px 10px; }
+.swl-sidebar .dvt-tree-all { border-radius: 8px; height: 28px; }
+.swl-sidebar .dvt-tree-row { height: 25px; border-radius: 7px; }
+.swl-sidebar .dvt-tree-badge, .swl-sidebar .dvt-tree-changes { font-size: 9.5px; }
+.swl-sidebar .dvt-tree .dvt-file-status { width: 15px; height: 15px; border-radius: 5px; font-size: 9px; }
+.swl-sidebar .dvt-stat-row,
+.swl-sidebar .dvt-tree-stats { display: flex; align-items: center; gap: 5px; padding: 0 14px 8px; flex-wrap: wrap; }
+.swl-pill-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+/* ---------- responsive: sidebar becomes a drawer ---------- */
+@container swl (max-width: 860px) {
+  .swl-page { padding: 0; gap: 0; }
+  .swl-frame { gap: 0; }
+  .swl-main { border-radius: 0; box-shadow: none; }
+  .swl-sidebar {
+    position: absolute;
+    z-index: 30;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: min(300px, 86%);
+    display: none;
+    box-shadow: 0 24px 60px -24px hsl(220 43% 16% / .45);
+  }
+  .swl-page[data-sidebar="open"] .swl-sidebar { display: flex; }
+  .swl-page[data-sidebar="open"] .swl-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--swl-ink) 18%, transparent);
+  }
+  .swl-mobilebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid color-mix(in srgb, var(--swl-line) 45%, transparent);
+  }
+  .swl-mobilebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--swl-bg);
+    color: var(--swl-ink-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .swl-mobilecount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--swl-ink) 8%, transparent);
+    color: var(--swl-ink-3);
+    font-size: 9.5px;
+    font-weight: 700;
+  }
+  .swl-header { height: 52px; padding: 0 10px; gap: 6px; }
+  .swl-repo-name { font-size: 13.5px; }
+  .swl-search { min-width: 0; }
+  .swl-legend { padding-left: 12px; }
+  .swl-group-head { padding-left: 12px; height: 34px; }
+  .swl-msg { font-size: 12.5px; }
+  .swl-author { max-width: 88px; }
+  .swl-main .dvt-toolbar { height: 52px; padding: 0 10px; }
+  .swl-main .dvt-repo-name { font-size: 13.5px; }
+  .swl-main .dvt-tabstrip { height: 42px; padding: 0 8px; overflow-x: auto; }
+  .swl-main .dvt-filterbar { height: 44px; padding: 0 8px; gap: 6px; }
+  .swl-main .dvt-search { min-width: 0; flex: 1 1 auto; }
+}
+@container swl (max-width: 640px) {
+  .swl-branch, .swl-title-caret { display: none; }
+  .swl-btn-outline span, .swl-btn-primary span { display: none; }
+  .swl-btn { padding: 0 9px; }
+  .swl-toolbar { flex-wrap: wrap; height: auto; padding: 8px 10px; row-gap: 6px; }
+  .swl-tabs { flex: 1 1 100%; }
+  .swl-tab { padding: 0 9px; font-size: 11.5px; }
+  .swl-toolbar-right { width: 100%; }
+  .swl-search { display: flex; flex: 1 1 auto; }
+  .swl-pill-branch, .swl-pill-merge, .swl-pill-head, .swl-attrib { display: none; }
+  .swl-author, .swl-dot, .swl-when { display: none; }
+  .swl-legend-label { display: none; }
+
+  /* Plugin chrome (real renderChrome) at sidebar width: let the header wrap
+     instead of truncating the repository name, and make the sync buttons
+     icon-only. The branch dropdown keeps its own row. */
+  .swl-main .dvt-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-toolbar-op { padding: 0 8px; }
+  .swl-main .dvt-toolbar-op span { display: none; }
+  .swl-main .dvt-toolbar-actions { margin-left: auto; gap: 4px; }
+  .swl-main .dvt-branch { max-width: 160px; }
+  .swl-main .dvt-filterbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  .swl-main .dvt-filterbar .dvt-search { flex: 1 1 100%; }
+}
+@container swl (max-width: 520px) {
+  .swl-pill-files { display: none; }
+  .swl-repo-name { font-size: 12.5px; }
+  .swl-tab { padding: 0 7px; font-size: 11px; }
+  .swl-tab-count { display: none; }
+  .swl-seg-btn { padding: 0 9px; font-size: 11px; }
+  .swl-main .dvt-tabstrip .dvt-tab { padding: 0 6px; }
+  .swl-main .dvt-tabstrip { mask-image: linear-gradient(90deg, hsl(0 0% 0%) calc(100% - 16px), transparent); }
+  .swl-main .dvt-filterbar .dvt-time { display: none; }
+  .swl-main .dvt-filterbar .dvt-chip { padding: 0 8px; }
+
+  /* At right-sidebar width the header must stay a single row: the branch
+     dropdown is a wide-view affordance (the scope capsule still filters).
+     The remaining icon buttons (add repo / refresh / ⋯) all fit, so none are
+     dropped: hiding one by :first-of-type would also hit the demo header's
+     refresh button, which is the first icon button there. */
+  .swl-main .dvt-toolbar { flex-wrap: nowrap; min-height: 52px; }
+  .swl-main .dvt-branch { display: none; }
+}
+
+/* ---------- session attribution pill ---------- */
+.swl-attrib {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-attrib.dvt-tag-attrib {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 75%, var(--swl-ink));
+}
+.swl-attrib.dvt-tag-inferred {
+  background: color-mix(in srgb, var(--swl-warn) 13%, transparent);
+  color: color-mix(in srgb, var(--swl-warn) 80%, var(--swl-ink));
+}
+
+/* ---------- plugin compatibility hooks (toolbar + tree pills) ---------- */
+.swl-main .dvt-branch select,
+.swl-main .dvt-branch-select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  max-width: 120px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+}
+.swl-main .dvt-branch-select option { color: var(--swl-ink); background: var(--swl-card); }
+.swl-main .dvt-toolbar-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--swl-line-2);
+  border-radius: 9px;
+  background: var(--swl-card);
+  color: var(--swl-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, transform 120ms ease;
+}
+.swl-main .dvt-toolbar-op:hover { background: var(--swl-hover); transform: translateY(-1px); }
+.swl-main .dvt-toolbar-op:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+.swl-sidebar .dvt-tree-stats {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px 8px;
+  flex-wrap: wrap;
+}
+.swl-sidebar .dvt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swl-ink) 6%, transparent);
+  color: var(--swl-ink-3);
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.swl-sidebar .dvt-pill-add {
+  background: color-mix(in srgb, var(--swl-ok) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-ok) 80%, var(--swl-ink));
+}
+.swl-sidebar .dvt-pill-del {
+  background: color-mix(in srgb, var(--swl-bad) 11%, transparent);
+  color: color-mix(in srgb, var(--swl-bad) 80%, var(--swl-ink));
+}
+.swl-main .dvt-branch-btn { cursor: pointer; }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .swl-page *, .swl-page *::before, .swl-page *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+</style><div class="swl-frame"><section class="swl-main"><div class="swl-chrome"><div class="dvt-chrome"><div class="dvt-toolbar"><label class="dvt-repo" title="D:/workspace/web-console"><span class="dvt-repo-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></span><span class="dvt-repo-name">web-console</span><span class="dvt-repo-vcs">Git</span><span class="dvt-repo-caret"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-down"><path d="M4.2 6.2 8 10l3.8-3.8"></path></svg></span><select class="dvt-repo-native" aria-label="选择仓库"><option value="git:d:/workspace/web-console" selected="">Git · web-console — feature/sidebar-timeline</option></select></label><span class="dvt-branch" title="分支 feature/sidebar-timeline"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="branch"><circle cx="5" cy="3.4" r="1.7"></circle><circle cx="5" cy="12.6" r="1.7"></circle><circle cx="11.4" cy="5.4" r="1.7"></circle><path d="M5 5.1v5.8"></path><path d="M11.4 7.1c0 2.6-2.6 2.4-6.4 3.6"></path></svg><select class="dvt-branch-select" aria-label="按分支筛选"><option value="" selected="">全部分支</option><option value="feature/sidebar-timeline">feature/sidebar-timeline</option></select></span><span class="dvt-toolbar-actions"><button type="button" class="dvt-toolbar-op" title="仅允许快进合并，不产生合并提交" aria-label="拉取"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="download"><path d="M8 2.6v7.2"></path><path d="M5 7.4 8 10.4 11 7.4"></path><path d="M3.4 13.2h9.2"></path></svg><span>拉取</span></button><button type="button" class="dvt-toolbar-op" title="推送当前分支到远端" aria-label="推送"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="upload"><path d="M8 10.4V3.2"></path><path d="M5 6.2 8 3.2 11 6.2"></path><path d="M3.4 13.2h9.2"></path></svg><span>推送</span></button><button type="button" class="dvt-iconbtn" aria-label="添加仓库" title="添加仓库"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="repo"><path d="M2.4 4.2A1.2 1.2 0 0 1 3.6 3h3l1.4 1.6h4.4a1.2 1.2 0 0 1 1.2 1.2v6A1.2 1.2 0 0 1 12.4 13H3.6a1.2 1.2 0 0 1-1.2-1.2z"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="刷新仓库列表与数据" title="刷新仓库列表与数据"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button><button type="button" class="dvt-iconbtn" aria-label="版本控制操作" title="版本控制操作" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="more"><circle cx="3.4" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none"></circle><circle cx="12.6" cy="8" r="0.9" fill="currentColor" stroke="none"></circle></svg></button></span></div><div role="tablist" class="dvt-tabstrip" aria-label="代码时间线"><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="timeline"><path d="M3.2 3.6v8.8"></path><circle cx="3.2" cy="4.4" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="8" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="3.2" cy="11.6" r="1.2" fill="currentColor" stroke="none"></circle><path d="M6.4 4.4h6.4"></path><path d="M6.4 8h6.4"></path><path d="M6.4 11.6h6.4"></path></svg><span>时间线</span><span class="dvt-tab-count">6</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="checklist"><path d="M5.4 4.2h8.2M5.4 8h8.2M5.4 11.8h8.2"></path><path d="M2.2 4.1l.7.8 1.4-1.6"></path></svg><span>待处理</span><span class="dvt-tab-count">3</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="flame"><path d="M8 2.2c2.2 2.4 3.9 3.8 3.9 6.4A3.9 3.9 0 0 1 8 12.5a3.9 3.9 0 0 1-3.9-3.9c0-1.4.6-2.4 1.6-3.5.4.9 1 1.4 1.6 1.5-.3-1.5 0-3 .7-4.4Z"></path></svg><span>热点</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="pull-request"><circle cx="4.2" cy="3.6" r="1.6"></circle><circle cx="4.2" cy="12.4" r="1.6"></circle><path d="M4.2 5.2v5.6"></path><circle cx="11.4" cy="4.2" r="1.6"></circle><path d="M11.4 5.8v1.6c0 2.2-1.6 2.6-4.2 3.4"></path><path d="M9.6 9.4l2.2 1.2-2.2 1.2"></path></svg><span>拉取请求</span><span class="dvt-tab-count">3</span></button><button type="button" role="tab" class="dvt-tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="audit"><path d="M8 2.2 13 4v4.2c0 2.8-2.1 4.7-5 5.6-2.9-.9-5-2.8-5-5.6V4z"></path><path d="M5.8 7.8 7.4 9.4l3-3.2"></path></svg><span>审计</span></button></div></div></div><div class="swl-content"><div class="dvt-pane"><div class="dvt-list-pane"><div class="dvt-scroll"><div class="dvt-col dvt-pr-view"><div class="dvt-pr-summary"><span class="dvt-pr-summary-counts">3 个开放 · 3 个需要我处理</span><span class="dvt-pr-summary-remote"><span class="dvt-pr-provider">GitHub</span><span class="dvt-pr-path dvt-mono">example/web-console</span><span class="dvt-pr-authstate dvt-pr-authstate-ok">已认证 @linwei</span></span><span class="dvt-pr-summary-actions"><button type="button" class="dvt-iconbtn" aria-label="刷新拉取请求" title="刷新拉取请求"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="refresh"><path d="M13.2 7.2A5.4 5.4 0 1 0 13 10"></path><path d="M13.4 3.6v3.8H9.6"></path></svg></button></span></div><div class="dvt-col"><div class="dvt-local-strip" title="无需网络：本地 git 就能算出当前分支相对基准的差异。"><span class="dvt-local-strip-label">本地分支洞察</span><span class="dvt-local-branches dvt-mono">feature/sidebar-timeline → main</span><span class="dvt-local-chips"><span class="dvt-local-chip">领先 3</span><span class="dvt-local-chip">落后 1</span><span class="dvt-local-chip">2 个提交未推送</span><span class="dvt-local-chip">7 个文件变更</span></span><span class="dvt-local-actions"><span class="dvt-pr-action dvt-pr-action-push" title="有未推送的提交">需要推送</span></span><button type="button" class="dvt-iconbtn dvt-local-refresh" aria-label="刷新拉取请求" title="刷新拉取请求">⟳</button></div><div class="dvt-pr-sections"><section class="dvt-pr-section"><div class="dvt-tl-day"><span class="dvt-tl-day-label">需要我处理</span><span class="dvt-tl-day-count">3</span></div><ul class="dvt-pr-list"><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#42 feat: 文件中心的双栏变更浏览器" title="feat: 文件中心的双栏变更浏览器
+feat/file-browser → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#42</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(238 58% 52%);color:var(--dsw-alias-bg-base)">L</span><span class="dvt-pr-author">linwei</span><span class="dvt-pr-title">feat: 文件中心的双栏变更浏览器</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>23 小时前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">feat/file-browser</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-muted" title="待评审">待评审</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="CI 通过">CI 通过</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="可合并">可合并</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-review" title="评审请求指向你">需要我评审</span></span></span></button></li><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#41 fix: 重命名路径在详情中的显示" title="fix: 重命名路径在详情中的显示
+fix/rename-path → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#41</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(18 58% 52%);color:var(--dsw-alias-bg-base)">Z</span><span class="dvt-pr-author">zhaomin</span><span class="dvt-pr-title">fix: 重命名路径在详情中的显示</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>1 天前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">fix/rename-path</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-error" title="需修改">需修改</span><span class="dvt-pr-badge dvt-pr-badge-error" title="CI 失败">CI 失败</span><span class="dvt-pr-badge dvt-pr-badge-warn" title="有冲突">有冲突</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-fix-ci" title="CI 检查失败">需要修复 CI</span></span></span></button></li><li class="dvt-pr-row"><button type="button" class="dvt-pr-card" aria-label="#39 docs: 补全 PR 与审计说明" title="docs: 补全 PR 与审计说明
+docs/pr-and-audit → main"><span class="dvt-pr-top"><span class="dvt-pr-number">#39</span><span class="dvt-tl-avatar" aria-hidden="true" style="background:hsl(294 58% 52%);color:var(--dsw-alias-bg-base)">C</span><span class="dvt-pr-author">chenyu</span><span class="dvt-pr-title">docs: 补全 PR 与审计说明</span><span class="dvt-pr-updated"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="clock"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.8V8l2.4 1.6"></path></svg><span>1 天前</span></span></span><span class="dvt-pr-meta"><span class="dvt-pr-branch dvt-mono">docs/pr-and-audit</span><span class="dvt-pr-arrow" aria-hidden="true">→</span><span class="dvt-pr-base dvt-mono">main</span><span class="dvt-pr-badges"><span class="dvt-pr-badge dvt-pr-badge-ok" title="已批准">已批准</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="CI 通过">CI 通过</span><span class="dvt-pr-badge dvt-pr-badge-ok" title="可合并">可合并</span></span><span class="dvt-pr-actions"><span class="dvt-pr-action dvt-pr-action-merge" title="已批准、CI 通过、可合并">可以合并</span></span></span></button></li></ul></section></div></div></div></div></div></div></div></section></div></div><div class="dvt-statusbar"><span class="dvt-status-item" title="有未提交修改"><span class="dvt-dot dvt-dot-dirty" aria-hidden="true"></span><span>有未提交修改</span></span><span class="dvt-dot-sep" aria-hidden="true">·</span><span class="dvt-status-item"><span class="dvt-mono dvt-clip" title="feature/sidebar-timeline">feature/sidebar-timeline</span></span><span class="dvt-dot-sep" aria-hidden="true">·</span><span class="dvt-status-item"><span>3 项变更</span></span><span class="dvt-status-spacer"></span><span class="dvt-status-item dvt-faint">Git</span><button type="button" class="dvt-statusbtn" aria-expanded="false" aria-label="环境诊断" title="环境诊断"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="sliders"><path d="M3 4.4h10"></path><path d="M3 8h10"></path><path d="M3 11.6h10"></path><circle cx="5.6" cy="4.4" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="10.4" cy="8" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="7" cy="11.6" r="1.3" fill="currentColor" stroke="none"></circle></svg><span>诊断</span><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-dvt-icon="chevron-right"><path d="M6.2 4.2 10 8l-3.8 3.8"></path></svg></button></div></div></div></body></html>

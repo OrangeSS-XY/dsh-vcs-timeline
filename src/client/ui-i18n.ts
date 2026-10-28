@@ -407,6 +407,21 @@ export const uiZh: Record<string, string> = {
   'hotspot.bars.value': '{value}',
   'hotspot.bars.more': '仅显示前 {count} 个文件',
   'hotspot.bars.unknown': '未提供',
+
+  // Swimlane shell integration: file-tree stat pills, header operations and
+  // the branch filter dropdown. Kept together so the new chrome's copy is
+  // reviewable in one place; both locales must define these keys.
+  'tree.stats.files': '{count} 文件',
+  'tree.stats.add': '新增 {count} 行',
+  'tree.stats.del': '删除 {count} 行',
+  'toolbar.pull': '拉取',
+  'toolbar.push': '推送',
+  'toolbar.branch.all': '全部分支',
+  'toolbar.branch.placeholder': '分支',
+  'aria.branchSelect': '按分支筛选',
+  'timeline.legend': '分支轨道',
+  'group.earlier': '更早',
+  'timeline.empty.hint': '切换仓库或清除筛选后重试。',
 }
 
 /** English strings for the redesigned chrome. */
@@ -809,4 +824,18 @@ export const uiEn: Record<string, string> = {
   'hotspot.bars.value': '{value}',
   'hotspot.bars.more': 'Showing the first {count} file(s)',
   'hotspot.bars.unknown': 'not provided',
+
+  // Swimlane shell integration: file-tree stat pills, header operations and
+  // the branch filter dropdown. Mirrors the zh keys exactly.
+  'tree.stats.files': '{count} files',
+  'tree.stats.add': '{count} lines added',
+  'tree.stats.del': '{count} lines deleted',
+  'toolbar.pull': 'Pull',
+  'toolbar.push': 'Push',
+  'toolbar.branch.all': 'All branches',
+  'toolbar.branch.placeholder': 'Branch',
+  'aria.branchSelect': 'Filter by branch',
+  'timeline.legend': 'Branch lanes',
+  'group.earlier': 'Earlier',
+  'timeline.empty.hint': 'Switch repository or clear the filters and try again.',
 }

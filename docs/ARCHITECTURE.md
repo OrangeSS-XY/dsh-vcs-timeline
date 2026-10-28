@@ -242,11 +242,12 @@ beforeState / planOperation`。各自保留语义：
 - 审计永不篡改 `started` 记录：终态是**追加**记录，读取时按 id 折叠。
 - 敏感信息（凭据、token、私钥、Authorization）在写入前脱敏；不保存完整命令输出，只保存摘要。
 
-## 6. UI 结构（文件中心的双栏 IDE 面板）
+## 6. UI 结构（页面化的多轨道泳道时间线）
 
-设计目标：像一个成熟的开发者工具窗口（JetBrains Git 工具窗口 / IDEA 的 Log），
-而不是管理后台。垂直空间优先给文件树和时间线，装饰性卡片全部去掉，分区只用 1px 分隔线；
-颜色只来自 `--dsw-alias-*` / `--dsw-specific-*` token，因此明暗主题自动成立。
+设计目标：像 Linear / GitKraken / GitHub Desktop 这类现代开发者工具，而不是管理后台。
+页面上是「极浅灰页面底 + 纯白圆角卡片 + 柔和阴影」，没有生硬边框；左侧 260px 文件树卡片与
+右侧主卡片用间距和圆角分隔。颜色只来自 `--dsw-alias-*` / `--dsw-specific-*` token
+（`SWIMLANE_STYLES` 用 `hsl()` 回退值），因此明暗主题自动成立。
 
 ```
 入口：顶部视图行页签（conversation.view，id vcs-timeline，order 40，label 代码时间线）
@@ -254,35 +255,33 @@ beforeState / planOperation`。各自保留语义：
 （右侧栏 sidebar.right.pane.tab 的 key vcs-timeline 仍注册，当前桌面端侧栏未暴露入口）
 
 dvt-root (flex column, 100%, overflow hidden)
-├─ <style>                     组件样式（dvt- 前缀，仅主题 token）
-├─ dvt-chrome
-│   ├─ dvt-toolbar (34px)      仓库选择（原生 select 覆盖层）+ 分支 chip + 刷新 + “⋯”
-│   ├─ dvt-menu (popover)      Fetch / Pull / Commit / Push 分组菜单（SVN: Update / Commit）
-│   ├─ dvt-tabstrip (30px)     来源页签：时间线（提交数）/ 待处理 / 热点 / PR / 审计（记录数）
-│   └─ dvt-filterbar (28px)    搜索框 + 全部/提交 chip + 时间范围 select + 分支范围 +
-│                              显示操作开关 + 筛选按钮（作者输入）+ 分支筛选 chip
-├─ dvt-body
-│   └─ dvt-split (container-type: inline-size)   ← 双栏，容器查询按面板宽度收缩
-│      ├─ dvt-tree (160–300px) 左栏文件树
-│      │   ├─ 头部             “文件 N” + 展开全部/收起全部
-│      │   ├─ 文件名搜索        （client-side，匹配路径与重命名旧路径）
-│      │   ├─ 状态筛选          ∗ 全部 / M / A / D / R，各带计数（0 计数的隐藏）
-│      │   └─ 树               “全部文件”入口 + 目录（计数）/ 文件（A/M/D/R、×N 变更次数）
-│      └─ dvt-pane            右栏
-│          ├─ dvt-pinned       详情/Diff 的 32px 面包屑（返回 + 标题 + 副标题 + 状态徽标）
-│          └─ dvt-scroll
-│              ├─ dvt-selection  选中文件时的 26px 路径条（状态/提交数/×）
-│              ├─ 变更时间线   IDEA 风格竖轴：连续 rail + 每提交节点（合并空心）
-│              │                日期分组头（今天/昨天/日期 + 条数，吸顶）
-│              │                每行：头像(姓名首字母,按名稳定着色) + 作者 + 摘要 + ±
-│              │                第二行：相对时间(悬停精确时间) · hash · HEAD · 分支 · 文件数
-│              │                选中文件时为该文件状态与 ± 行
-│              ├─ 提交详情     hero 摘要 + 元信息网格 + 变更文件（状态字母/重命名旧路径/BIN/±行）
-│              ├─ Diff         行号槽 + 统一 diff 着色 + 底部（路径/行数/字节/截断）
-│              ├─ 审计列表     状态图标 + 操作 · 仓库 + 时间/correlation + 状态徽标
-│              └─ 空/错误/加载  区分：无工作区、未检测到仓库、客户端缺失、空历史、
-│                              筛选无结果、文件窗口无变更、仓库尚无提交、
-│                              数据源未提供文件清单、部分数据、请求失败、加载骨架
+├─ <style>                     STYLES（存量 dvt- 前缀，仅主题 token）
+├─ SwimlaneShell               .swl-page（页面底 + 容器查询容器；内部挂载 SWIMLANE_STYLES）
+│  └─ .swl-frame (flex row, gap 12px)
+│     ├─ .swl-sidebar (260px)  左卡片 = renderFileTree
+│     │   ├─ 头部              “文件 N” + 展开/收起全部
+│     │   ├─ 搜索框            文件名搜索（client-side，匹配路径与重命名旧路径）
+│     │   ├─ 统计胶囊          +增 / −删 / N 个文件（与下方树同源）
+│     │   ├─ 状态筛选          ∗ 全部 / M / A / D / R，各带计数
+│     │   └─ 树                “全部文件” + 目录（计数）/ 文件（A/M/D/R、×N、+行）
+│     └─ .swl-main             右卡片
+│        ├─ .swl-mobilebar     窄栏（<860px）抽屉开关（文件 N）
+│        ├─ .swl-chrome
+│        │   ├─ dvt-toolbar (58px)  仓库 + GIT 徽标 + 分支下拉 + 拉取/推送 + 添加/刷新/⋯
+│        │   ├─ dvt-menu            Fetch / Pull / Commit / Push（SVN: Update / Commit）
+│        │   ├─ dvt-tabstrip (44px) 时间线/待处理/热点/PR/审计 胶囊页签
+│        │   └─ dvt-filterbar (46px) 搜索 + 全部/提交 + 时间范围 + 全部/当前分支 + 显示操作
+│        └─ .swl-content
+│           ├─ .dvt-pane (list/detail)
+│           │   ├─ SwimlaneTimeline（140px 画布 + 40px 轨道；今天/昨天/日期分组）
+│           │   │   图例：轨道色点 + 分支名 + 提交数
+│           │   │   行：语义化胶囊（分支/合并/HEAD/归属）+ 摘要 + 头像/作者/相对时间/短 hash
+│           │   │       + `+增` / `−删` / `N 个文件` 胶囊
+│           │   ├─ 提交详情（面包屑 + 元信息网格 + 变更文件）
+│           │   ├─ Diff（行号槽 + 统一 diff 着色 + 底部统计）
+│           │   ├─ 审计列表/详情、PR 列表/详情
+│           │   └─ 空/错误/加载（区分 10 种状态）
+│           └─ 待处理工作台 / 热点图表 / 文件三栏视图（各自占满 content）
 ├─ dvt-diag (可折叠)           插件/运行时/Git/SVN/工作区/数据目录/警告
 ├─ dvt-statusbar (24px)        工作区状态点 + 分支 + 变更数/冲突 + VCS + 诊断开关
 └─ dvt-dialog (面板内 absolute overlay，非全屏模态)
@@ -306,11 +305,15 @@ dvt-root (flex column, 100%, overflow hidden)
   merge commit 的 name-status 为空 → `changedFiles: []`，不臆造文件。
 - **入口是一个 View，不是浮层**：`conversation.view` 让面板像「上下文」一样占据对话内容区，
   聊天记录与输入框不受影响；切回「对话」即恢复聊天，不存在覆盖层或焦点陷阱。
-- **容器查询而非媒体查询**：侧栏宽度与窗口宽度无关，`@container (max-width: 520px)`
-  按**面板**宽度隐藏行内分支标签等次要信息；400px 侧栏仍可读，1600px 对话区不浪费空间。
-- **多泳道提交图**：`graph.ts` 用父哈希单页扫出泳道（`opened` 标记页边界、父已在其他泳道则汇入避免重复线），
-  UI 用每行一个 SVG 画通栏线段/节点/合并曲线；颜色按泳道 HSL 固定，节点填充用主题底色避免暗色白圈。
-- **列表/详情分栏**：右栏固定为 list（flex 撑满）+ detail（42% 高，min 150px），详情含
+- **容器查询而非媒体查询**：侧栏宽度与窗口宽度无关，`@container swl (max-width: 860px/640px/520px)`
+  按**面板**宽度依次收起左树为抽屉、压缩 Header/工具栏、隐藏次要胶囊；400px 侧栏仍可读，
+  1440px 对话区不浪费空间。
+- **泳道图是数据驱动的真实现**（`ui/swimlane.ts`）：`assignLanes()` 按分支族给出稳定轨道
+  （main=0、feature 依次、hotfix 最后，最多 8 轨），节点 X = `20 + lane*40`（140px 画布，轨道数多时画布变宽）；
+  同轨用 `<line>`、跨轨用三次贝塞尔 `<path d="M prevX 0 C prevX H/4, x H/4, x H/2">`；
+  节点是绝对定位 DOM 圆点（`ring-4` 卡片色描边 + `z-index` 压住 SVG，形成断点），合并提交为空心双环；
+  轨道底色淡线 + 标签「分支轨道」图例让并行分支一眼可读。
+- **列表/详情分栏**：content 内固定为 list（flex 撑满）+ detail（42% 高，min 150px），详情含
   提交/文件 Diff/审计记录/PR 详情四种；列表与左树永不因打开详情而消失。
 - **文件视图是三栏**：文件树 | Diff（`dvt-file-diffpane`，主区域）| 操作信息（`dvt-fileinfo`，右侧）。
   操作信息含：路径/状态/未提交标记、最近作者与相对时间、提交数/作者数/累计 ±、作者分布条形图、
@@ -331,9 +334,14 @@ dvt-root (flex column, 100%, overflow hidden)
   `FileHotspot`，排序键在客户端切换但只重排已返回的行；头部/底部固定写出扫描口径与缓存命中。
 - **v1.1 审计混排**：提交行与审计节点共用同一竖轴与日期分组，但节点图标、卡片样式（虚线）、
   状态徽标与日计数都独立，点击打开审计详情，不改变提交计数与泳道。
-- **时间线优先**：竖轴 + 日期分组让"谁在什么时候做了什么"一眼可读；行高约 51px（两行），
-  树行 23px、详情文件行 26px、Diff 行 16px；控件高度统一 22/24px；
-  字号层级 12 / 11.5 / 10.5 / 10px；圆角 3–8px。
+- **时间线优先**：泳道图 + 日期分组让“谁在什么时候做了什么、在哪条分支上”一眼可读；行高 64px（两行），
+  画布 140px、轨道 40px，树行 25px、详情文件行 26px、Diff 行 16px；控件高度统一 18/28/30px；
+  字号层级 15 / 13 / 12.5 / 11.5 / 10.5 / 10px；圆角 7–14px。
+- **单文件可复用的泳道页面**：`ui/swimlane.ts` 只依赖 React（`React.createElement`，无 JSX、无 Tailwind），
+  导出 `GitCommit`、`assignLanes` / `nodeX` / `rowLinkPath` / `laneTrackWidth` 纯函数与
+  `SwimlaneTimeline` / `SwimlaneHeader` / `SwimlaneToolbar` / `SwimlaneShell` / `SwimlaneDemo`；
+  `SwimlaneDemo` 用 `MOCK_COMMITS` 渲染完整页面（1440×900 / 420×900 两张预览即由它生成），
+  拷到任意 React 18 应用即可运行（样式自带 `hsl()` token 回退）。
 
 
 ## 7. 关键不变量

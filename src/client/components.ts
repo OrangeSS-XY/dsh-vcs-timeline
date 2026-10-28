@@ -1,15 +1,17 @@
 /**
  * dsh-vcs-timeline — panel composition root.
  *
- * Owns only layout: one `<style>` element, the chrome (toolbar/tabs/filters),
- * the source body, the collapsible diagnostics block, the status bar and the
- * write-operation dialog.
+ * Owns only layout: one `<style>` element, the swimlane page shell (sidebar,
+ * chrome and content slots), the collapsible diagnostics block, the status bar
+ * and the write-operation dialogs.
  *
- * The body is an IDE layout: the change timeline keeps its file tree on the
- * left and splits the remaining column into a list (top) and a detail pane
- * (bottom) — commit detail, file diff, audit record or pull request — so the
- * list never disappears when a row is opened. PR and audit sources use the
- * same list/detail split without the tree.
+ * The shell is a page layout: the change timeline keeps its file tree in the
+ * left white card and the right column stacks the chrome (header/toolbar/tabs/
+ * filters) above a list (top) + detail pane (bottom) split — commit detail,
+ * file diff, audit record or pull request — so the list never disappears when
+ * a row is opened. PR, audit, pending and hotspot sources hide the sidebar and
+ * use the full width; the per-file view keeps its own tree|diff|info columns
+ * because there the tree is part of the content, not page navigation.
  * @module dsh-vcs-timeline/client/components
  */
 
@@ -24,10 +26,11 @@ import { commitDetailBody, commitDetailHeader, diffBody, diffHeader } from './ui
 import { renderDialog } from './ui/dialog.ts'
 import { renderFileInfo } from './ui/fileinfo.ts'
 import { renderFileTree } from './ui/filetree.ts'
-import { renderHistory } from './ui/history.ts'
+import { renderHistory, swimlaneLabels } from './ui/history.ts'
 import { renderHotspots } from './ui/hotspots.ts'
 import { prDetailBody, prDetailHeader, renderPullRequests } from './ui/pr.ts'
 import { renderDiagnostics, renderStatusBar } from './ui/status.ts'
+import { SwimlaneShell } from './ui/swimlane.ts'
 import { renderChrome } from './ui/toolbar.ts'
 import { renderPendingWorkbench } from './ui/workbench.ts'
 
@@ -114,11 +117,15 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
       renderFileInfo(state, deps, handlers, view),
     )
   } else {
-    bodyElement = h('div', { key: 'split', className: 'dvt-split' },
-      renderFileTree(state, deps, handlers, view),
-      pane,
-    )
+    // The tree moved into the shell's sidebar, so the content slot is only the
+    // list/detail pane; rendering it twice would duplicate every tree row.
+    bodyElement = pane
   }
+
+  // The tree is page navigation only for the timeline list. The per-file view
+  // embeds it as its own column, and the other sources have no tree at all.
+  const timelineList = state.source === 'timeline' && !fileMode
+  const sidebar = timelineList ? renderFileTree(state, deps, handlers, view) : null
 
   return h('div', {
     className: 'dvt-root',
@@ -127,8 +134,18 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     ...(props.rootRef === undefined ? {} : { ref: props.rootRef }),
   },
   h('style', { key: 'dvt-styles' }, deps.styles ?? STYLES),
-  h('div', { key: 'chrome' }, renderChrome(state, deps, handlers)),
-  h('div', { key: 'body', className: 'dvt-body' }, bodyElement),
+  h(SwimlaneShell, {
+    key: 'shell',
+    className: 'dvt-split',
+    sidebar,
+    // The shell renders only its own chrome copy (the narrow-layout drawer
+    // toggle and its aria label), so it gets the same dictionary-driven labels
+    // as the timeline instead of the demo page's Chinese defaults.
+    labels: swimlaneLabels(deps),
+    sidebarCount: timelineList ? view.visibleFiles.length : undefined,
+    chrome: renderChrome(state, deps, handlers),
+    content: bodyElement,
+  }),
   renderDiagnostics(state, deps),
   renderStatusBar(state, deps, handlers),
   renderDialog(state, deps, handlers),
