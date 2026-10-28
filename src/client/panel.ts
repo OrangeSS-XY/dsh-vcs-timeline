@@ -14,6 +14,7 @@ import * as React from 'react'
 import { DEFAULT_PAGE_SIZE } from '../shared/contracts.ts'
 import type {
   ApiError,
+  ChecksReport,
   DiffQuery,
   OperationAttempt,
   OperationPreview,
@@ -36,12 +37,16 @@ import {
   createAuditSlice,
   createChangeSetSlice,
   createDiffSlice,
+  createHotspotSlice,
   createInitialState,
+  createPendingSlice,
   createPullRequestSlice,
   createTimelineSlice,
 } from './types.ts'
 import type {
+  ChecksScope,
   DialogState,
+  HotspotSort,
   PanelDeps,
   PanelHandlers,
   PanelProps,
@@ -53,6 +58,11 @@ import type {
 function findRepository(state: PanelState, repositoryId: string | null): Repository | null {
   if (repositoryId === null) return null
   return state.repositories.find((entry) => entry.id === repositoryId) ?? null
+}
+
+/** Whether a checks report carries at least one blocking finding. */
+function hasBlockingChecks(report: ChecksReport | null): boolean {
+  return report !== null && report.findings.some((finding) => finding.severity === 'blocking')
 }
 
 /**
@@ -167,6 +177,10 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
     const prDetailTokenRef = React.useRef<number>(0)
     const compareTokenRef = React.useRef<number>(0)
     const statusTokenRef = React.useRef<number>(0)
+    const pendingDiffTokenRef = React.useRef<number>(0)
+    const checksTokenRef = React.useRef<number>(0)
+    const sessionTokenRef = React.useRef<number>(0)
+    const hotspotTokenRef = React.useRef<number>(0)
     const detailTokenRef = React.useRef<number>(0)
     const diffTokenRef = React.useRef<number>(0)
     const dialogTokenRef = React.useRef<number>(0)
@@ -231,6 +245,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
               audit: createAuditSlice(),
               status: null,
               statusError: null,
+              pending: createPendingSlice(),
+              hotspots: createHotspotSlice(),
             }
             : {}),
         }
@@ -264,6 +280,9 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       if (filters.eventTypes.length > 0) query.eventTypes = [...filters.eventTypes]
       const author = filters.author.trim()
       if (author !== '') query.author = author
+      const branch = filters.branch.trim()
+      if (branch !== '') query.branch = branch
+      else if (filters.branchScope === 'all') query.branchScope = 'all'
       const since = windowSince(filters.timePreset, deps.now?.() ?? Date.now())
       if (since !== undefined) query.since = since
       if (cursor !== null) query.cursor = cursor
@@ -383,6 +402,125 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         return
       }
       setState((prev) => ({ ...prev, statusLoading: false, statusError: null, status: result.value }))
+    }
+
+    /** Load one dirty file's working-tree diff (`staged` selects the index side). */
+    const loadPendingDiff = async (repositoryId: string, filePath: string, staged: boolean): Promise<void> => {
+      const token = ++pendingDiffTokenRef.current
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, path: filePath, staged, diff: null, diffLoading: true, diffError: null },
+      }))
+      const result = await deps.api.worktreeDiff({
+        repositoryId,
+        filePath,
+        ...(staged ? { staged: true } : {}),
+      })
+      if (!aliveRef.current || token !== pendingDiffTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({
+          ...prev,
+          pending: { ...prev.pending, diffLoading: false, diffError: result.error },
+        }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, diffLoading: false, diffError: null, diff: result.value },
+      }))
+    }
+
+    /** Load the pre-commit checks report for one side. */
+    const loadChecks = async (repositoryId: string, scope: ChecksScope, refresh: boolean): Promise<void> => {
+      const token = ++checksTokenRef.current
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, checksScope: scope, checksLoading: true, checksError: null },
+      }))
+      if (refresh) {
+        // The Host has no cache for checks, but a refresh must still supersede
+        // an older in-flight request (the token already does that).
+      }
+      const result = await deps.api.checks({
+        repositoryId,
+        ...(scope === 'staged' ? { staged: true } : {}),
+      })
+      if (!aliveRef.current || token !== checksTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({
+          ...prev,
+          pending: { ...prev.pending, checksLoading: false, checksError: result.error },
+        }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, checksLoading: false, checksError: null, checks: result.value },
+      }))
+    }
+
+    /** Load the current session's touched files (always inferred). */
+    const loadSessionChanges = async (repositoryId: string): Promise<void> => {
+      const token = ++sessionTokenRef.current
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, sessionLoading: true, sessionError: null },
+      }))
+      const sessionId = typeof props.sessionId === 'string' && props.sessionId !== '' ? props.sessionId : undefined
+      const result = await deps.api.sessionChanges({
+        repositoryId,
+        ...(sessionId === undefined ? {} : { sessionId }),
+      })
+      if (!aliveRef.current || token !== sessionTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({
+          ...prev,
+          pending: { ...prev.pending, sessionLoading: false, sessionError: result.error },
+        }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, sessionLoading: false, sessionError: null, session: result.value },
+      }))
+    }
+
+    /** Load the file-hotspot ranking. */
+    const loadHotspots = async (repositoryId: string): Promise<void> => {
+      const token = ++hotspotTokenRef.current
+      setState((prev) => ({
+        ...prev,
+        hotspots: { ...prev.hotspots, loading: true, error: null },
+      }))
+      const result = await deps.api.statsHotspots({ repositoryId })
+      if (!aliveRef.current || token !== hotspotTokenRef.current) return
+      if (stateRef.current.selectedRepositoryId !== repositoryId) return
+      if (!result.ok) {
+        setState((prev) => ({ ...prev, hotspots: { ...prev.hotspots, loading: false, error: result.error } }))
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        hotspots: { ...prev.hotspots, loading: false, error: null, data: result.value },
+      }))
+    }
+
+    /** Load the staged checks shown inside the commit dialog. */
+    const loadDialogChecks = async (repositoryId: string): Promise<void> => {
+      const token = ++checksTokenRef.current
+      setState((prev) => prev.dialog === null
+        ? prev
+        : { ...prev, dialog: { ...prev.dialog, checks: null, checksLoading: true } })
+      const result = await deps.api.checks({ repositoryId, staged: true })
+      if (!aliveRef.current || token !== checksTokenRef.current) return
+      setState((prev) => {
+        if (prev.dialog === null) return prev
+        if (!result.ok) return { ...prev, dialog: { ...prev.dialog, checksLoading: false, checks: null } }
+        return { ...prev, dialog: { ...prev.dialog, checksLoading: false, checks: result.value } }
+      })
     }
 
     /** Open one event detail and load its changed-file list. */
@@ -546,6 +684,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         diff: createDiffSlice(),
         audit: createAuditSlice(),
         pullRequests: createPullRequestSlice(),
+        pending: createPendingSlice(),
+        hotspots: createHotspotSlice(),
       }))
       void reloadRepositories()
     }
@@ -622,6 +762,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       }
       const repository = findRepository(snapshot, repositoryId)
       const draft = createOperationDraft(operation, repository, snapshot.dialog)
+      const wantsChecks = operation === 'commit'
       setState((prev) => ({
         ...prev,
         menuOpen: false,
@@ -635,9 +776,13 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           message: draft.message,
           remote: draft.remote,
           branch: draft.branch,
+          checks: null,
+          checksLoading: wantsChecks,
+          acknowledged: false,
         },
       }))
       void runPreview(repositoryId, draft)
+      if (wantsChecks) void loadDialogChecks(repositoryId)
     }
 
     /**
@@ -688,6 +833,9 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         branch: dialog.branch,
       }
       if (draft.operation === 'commit' && draft.message.trim() === '') return
+      // Blocking findings from the real staged diff need an explicit
+      // acknowledgement; the button stays disabled until the box is ticked.
+      if (draft.operation === 'commit' && hasBlockingChecks(dialog.checks) && !dialog.acknowledged) return
       if (repreviewTimerRef.current !== null) {
         clearTimeout(repreviewTimerRef.current)
         repreviewTimerRef.current = null
@@ -790,7 +938,7 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       const repositoryId = state.selectedRepositoryId
       if (repositoryId === null) return
       if (state.source === 'timeline') void loadTimeline(repositoryId, null)
-      else void loadAudit(repositoryId, null)
+      else if (state.source === 'audit') void loadAudit(repositoryId, null)
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       state.selectedRepositoryId,
@@ -799,8 +947,50 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       state.filters.eventTypes.join(','),
       state.filters.author,
       state.filters.timePreset,
+      state.filters.branch,
+      state.filters.branchScope,
       state.refreshTick,
     ])
+
+    // Audit nodes interleaved into the timeline need the audit page too.
+    React.useEffect(() => {
+      const repositoryId = state.selectedRepositoryId
+      if (repositoryId === null) return
+      if (state.source !== 'timeline' || !state.filters.auditInTimeline) return
+      if (state.audit.loading || state.audit.operations.length > 0) return
+      void loadAudit(repositoryId, null)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.selectedRepositoryId, state.source, state.filters.auditInTimeline, state.refreshTick])
+
+    // Pending workbench: dirty-file checks, session attribution and the
+    // selected file's diff are loaded only while that source is visible.
+    // The timeline also needs the session file set for commit-row attribution.
+    React.useEffect(() => {
+      const repositoryId = state.selectedRepositoryId
+      if (repositoryId === null) return
+      if (state.source === 'timeline') {
+        if (state.pending.session === null && !state.pending.sessionLoading) void loadSessionChanges(repositoryId)
+        return
+      }
+      if (state.source !== 'pending') return
+      void loadChecks(repositoryId, state.pending.checksScope, false)
+      void loadSessionChanges(repositoryId)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+      state.selectedRepositoryId,
+      state.source,
+      state.pending.checksScope,
+      state.refreshTick,
+    ])
+
+    // Hotspot ranking is a Host-side scan: load on demand and on refresh.
+    React.useEffect(() => {
+      const repositoryId = state.selectedRepositoryId
+      if (repositoryId === null) return
+      if (state.source !== 'hotspots') return
+      void loadHotspots(repositoryId)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.selectedRepositoryId, state.source, state.hotspots.refreshTick, state.refreshTick])
 
     // First pull-request page whenever the PR source becomes active.
     React.useEffect(() => {
@@ -849,6 +1039,32 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       return () => document.removeEventListener('keydown', onKeyDown)
     }, [overlayOpen])
 
+    /** Select one repository file and reveal its newest diff in the timeline. */
+    const selectFile = (path: string | null): void => {
+      setState((prev) => {
+        if (path === prev.selectedFilePath) return prev
+        const expanded = { ...prev.expandedDirs }
+        if (path !== null) {
+          // Reveal every ancestor of the file so the selection is visible.
+          const segments = path.split('/')
+          let dir = ''
+          for (const segment of segments.slice(0, -1)) {
+            dir = dir === '' ? segment : `${dir}/${segment}`
+            expanded[dir] = true
+          }
+        }
+        return {
+          ...prev,
+          selectedFilePath: path,
+          expandedDirs: expanded,
+          changeSet: createChangeSetSlice(),
+          diff: createDiffSlice(),
+        }
+      })
+      // Selecting a file reveals who changed it and its newest diff.
+      if (path !== null) openLatestFileDiff(path)
+    }
+
     const handlers: PanelHandlers = {
       onRefreshRepositories: () => {
         setState((prev) => ({ ...prev, menuOpen: false, refreshTick: prev.refreshTick + 1, statusTick: prev.statusTick + 1 }))
@@ -873,6 +1089,8 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
             statusLoading: false,
             dialog: null,
             pullRequests: createPullRequestSlice(),
+            pending: createPendingSlice(),
+            hotspots: createHotspotSlice(),
           }
         })
       },
@@ -885,6 +1103,13 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           selectedFilePath: null,
           changeSet: createChangeSetSlice(),
           diff: createDiffSlice(),
+          pending: {
+            ...prev.pending,
+            path: null,
+            diff: null,
+            diffError: null,
+            diffLoading: false,
+          },
           audit: { ...prev.audit, selected: null },
           pullRequests: source === 'pr'
             ? prev.pullRequests
@@ -955,32 +1180,12 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
           fileStatus: 'all',
           auditState: 'all',
           timePreset: 'all',
+          branch: '',
+          branchScope: 'current',
+          auditInTimeline: prev.filters.auditInTimeline,
         },
       })),
-      onSelectFile: (path: string | null) => {
-        setState((prev) => {
-        if (path === prev.selectedFilePath) return prev
-        const expanded = { ...prev.expandedDirs }
-        if (path !== null) {
-          // Reveal every ancestor of the file so the selection is visible.
-          const segments = path.split('/')
-          let dir = ''
-          for (const segment of segments.slice(0, -1)) {
-            dir = dir === '' ? segment : `${dir}/${segment}`
-            expanded[dir] = true
-          }
-        }
-          return {
-            ...prev,
-            selectedFilePath: path,
-            expandedDirs: expanded,
-            changeSet: createChangeSetSlice(),
-            diff: createDiffSlice(),
-          }
-        })
-        // Selecting a file reveals who changed it and its newest diff.
-        if (path !== null) openLatestFileDiff(path)
-      },
+      onSelectFile: (path: string | null) => selectFile(path),
       onTreeQueryChange: (treeQuery: string) => setState((prev) => ({
         ...prev,
         filters: { ...prev.filters, treeQuery },
@@ -1018,7 +1223,11 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         const snapshot = stateRef.current
         if (snapshot.selectedRepositoryId !== null) void loadTimeline(snapshot.selectedRepositoryId, null)
       },
-      onOpenEvent: (event: VcsEvent) => { void openEvent(event) },
+      onOpenEvent: (event: VcsEvent) => {
+        // A commit row always wins over a previously opened audit node.
+        setState((prev) => ({ ...prev, audit: { ...prev.audit, selected: null } }))
+        void openEvent(event)
+      },
       onBackFromDetail: () => setState((prev) => ({ ...prev, changeSet: createChangeSetSlice() })),
       onOpenFile: (filePath: string) => {
         void openDiff(filePath, stateRef.current.changeSet.revision)
@@ -1088,6 +1297,61 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       onToggleWriteMenu: () => setState((prev) => ({ ...prev, menuOpen: !prev.menuOpen })),
       onCloseWriteMenu: () => setState((prev) => (prev.menuOpen ? { ...prev, menuOpen: false } : prev)),
       onToggleDiagnostics: () => setState((prev) => ({ ...prev, diagnosticsOpen: !prev.diagnosticsOpen })),
+      onSelectPendingFile: (path: string, staged: boolean) => {
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId === null) return
+        void loadPendingDiff(repositoryId, path, staged)
+      },
+      onBackFromPendingDiff: () => setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, path: null, diff: null, diffError: null, diffLoading: false },
+      })),
+      onSetChecksScope: (scope: ChecksScope) => setState((prev) => ({
+        ...prev,
+        pending: { ...prev.pending, checksScope: scope },
+      })),
+      onRefreshChecks: () => {
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId === null) return
+        void loadChecks(repositoryId, stateRef.current.pending.checksScope, true)
+      },
+      onRefreshSessionChanges: () => {
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId === null) return
+        void loadSessionChanges(repositoryId)
+      },
+      onRefreshHotspots: () => {
+        setState((prev) => ({ ...prev, hotspots: { ...prev.hotspots, refreshTick: prev.hotspots.refreshTick + 1 } }))
+        const repositoryId = stateRef.current.selectedRepositoryId
+        if (repositoryId !== null) void loadHotspots(repositoryId)
+      },
+      onSetHotspotSort: (sort: HotspotSort) => setState((prev) => ({
+        ...prev,
+        hotspots: { ...prev.hotspots, sort },
+      })),
+      onOpenHotspotFile: (path: string) => {
+        setState((prev) => ({ ...prev, source: 'timeline' }))
+        selectFile(path)
+      },
+      onSelectBranch: (branch: string) => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, branch, branchScope: 'current' },
+      })),
+      onClearBranchFilter: () => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, branch: '' },
+      })),
+      onSetBranchScope: (branchScope: 'current' | 'all') => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, branchScope, ...(branchScope === 'all' ? { branch: '' } : {}) },
+      })),
+      onToggleAuditInTimeline: () => setState((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, auditInTimeline: !prev.filters.auditInTimeline },
+      })),
+      onToggleDialogAck: () => setState((prev) => prev.dialog === null
+        ? prev
+        : { ...prev, dialog: { ...prev.dialog, acknowledged: !prev.dialog.acknowledged } }),
     }
 
     // Cheap keyboard navigation: Alt+1/2/3 switch source, Alt+R refreshes.
@@ -1098,9 +1362,10 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
       const onKeyDown = (event: KeyboardEvent): void => {
         if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
         const current = handlersRef.current
-        if (event.key === '1' || event.key === '2' || event.key === '3') {
+        if (event.key === '1' || event.key === '2' || event.key === '3' || event.key === '4' || event.key === '5') {
           event.preventDefault()
-          current.onSetSource(event.key === '1' ? 'timeline' : event.key === '2' ? 'pr' : 'audit')
+          const sources: PanelSource[] = ['timeline', 'pending', 'hotspots', 'pr', 'audit']
+          current.onSetSource(sources[Number(event.key) - 1] ?? 'timeline')
           return
         }
         if (event.key.toLowerCase() === 'r') {

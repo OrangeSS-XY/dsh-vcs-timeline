@@ -1,4 +1,4 @@
-# 测试报告（dsh-vcs-timeline 0.1.0）
+# 测试报告（dsh-vcs-timeline 0.1.2；历史轮次见 §12 / §13）
 
 本报告只记录**实际执行**过的命令、退出码与结果，以及明确标注的未验证项。
 
@@ -265,6 +265,8 @@ npm install
 npm run typecheck
 npm test
 npm run build
+# v1.1：构建产物 + 真实 git 的路由级验收（不需要运行中的桌面端）
+node scripts\verify-host.mjs
 # 需要运行中的桌面端（本轮为 http://127.0.0.1:7283）
 node scripts\verify-live.mjs http://127.0.0.1:7283
 # 组件渲染截图（本机 Edge/Chrome）
@@ -272,3 +274,85 @@ npm run preview:ui
 ```
 
 测试全部使用 `%TEMP%` 下的临时目录/临时 Git 仓库，结束后删除；不触碰用户的真实仓库。
+
+## 12. v1.1（0.1.1）追加验收 — 2026-10-28
+
+### 12.1 范围
+
+P0 六项：待处理工作台（含逐文件工作区 Diff）、提交前变更体检、审计节点融入时间线、
+分支标签筛选 + 仅当前分支/全部分支、会话改动集 + AI 归因徽标、统计聚合缓存 + 文件热点排行。
+
+### 12.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck`（`tsc --noEmit`） | **exit 0**，0 error |
+| `npm test`（`node --experimental-strip-types src/tests/index.test.ts`） | **exit 0**，`# tests 366 / pass 366 / fail 0`（0.1.0 的 313 项 + v1.1 新增 53 项） |
+| `npm run build`（esbuild） | **exit 0**，`lib/index.js` 287.1 kb、`lib/client.js` 365.6 kb |
+| `node scripts/verify-host.mjs`（构建产物 + 真实 git，14 项） | **14/14 PASS**（详见 12.3） |
+| `node --experimental-strip-types src/tests/checks.test.ts` | 18/18 |
+| `node --experimental-strip-types src/tests/stats.test.ts` | 13/13 |
+| `node --experimental-strip-types src/tests/worktree.test.ts` | 5/5 |
+| `node --experimental-strip-types src/tests/checks-service.test.ts` | 3/3 |
+| `node --experimental-strip-types src/tests/session.test.ts` | 3/3 |
+| `node --experimental-strip-types src/tests/client.v11.test.ts` | 11/11 |
+
+### 12.3 `verify:host`（不需要重启桌面端）
+
+把 `lib/index.js` 挂到一个仅提供 `webServer / subprocess / workspaceRegistry / sessions` 的假 Host 上，
+在 `%TEMP%` 建一次性 Git 仓库（1 个提交 + 已暂存/未暂存/未跟踪/锁文件改动），用真实 `git` 进程
+驱动全部新路由，14/14 通过：
+
+1. `repos/list` 发现工作区仓库；2. `timeline` 带逐提交文件清单；3. `branchScope=all`；
+4. `status` 分组字段；5. 未暂存 Diff；6. 已暂存 Diff；7. 未跟踪文件整文件 Diff；
+8. `checks`（已暂存侧）；9. `checks`（工作区侧，lockfile + untracked-skipped）；
+10. `stats/hotspots`（真实窗口/分支/文件）；11. `session/changes`（成功 write → inferred）；
+12. 非活动会话返回 `available:false`；13. `op/preview` 提交预览；14. diagnostics。
+
+### 12.4 未验证 / 明确声明
+
+- **运行中的桌面端页面未做 v1.1 验收**：Host 代码在进程启动时载入，本轮未重启 DSH 桌面端
+  （重启会中断当前会话）。因此新路由在真实实例上的验收以 `verify:host` 的构建产物级结果为准；
+  重启后应运行 `npm run verify:live http://127.0.0.1:<port>`（脚本已加入 v1.1 新路由检查）。
+- **SVN 仍未联调**：本机 `E:\softData\TortoiseSVN` 只装 GUI 组件，`bin/` 无 `svn.exe`；
+  SVN 的工作区 Diff（无暂存区拒绝）、热点不可用、分支过滤警告只有单元测试覆盖。
+- **会话归因未在真实活动会话上人工核对 UI**：服务层用假 SessionStore 覆盖成功/失败/非白名单/
+  越界路径/去重；真实 UI 上的「推断」徽标只有渲染测试。
+- 热点统计的真实验证只覆盖 1 次提交的仓库（窗口/缓存/截断有单元测试）。
+- 长历史/大仓库性能（500–2000 提交窗口）未做基准测试。
+
+## 13. v1.2（0.1.2）反馈修正验收 — 2026-10-28
+
+### 13.1 修了什么
+
+1. **热点页改为图表**：`HotspotReport.daily`（Host 按 UTC 日聚合的真实提交桶）驱动日历热力格；
+   文件排行改为条形图（指标可切）。不再渲染文件表格。
+2. **Commit 可用性**：`stage` / `unstage` 成为显式写操作（同预览 → 单次 token → 审计），
+   待处理页提供「提交已暂存 / 暂存全部 / 取消暂存全部」；Host `blockedReason` 客户端本地化。
+3. **整侧 Diff 二进制误判**：工作区整个一侧的 diff 含二进制文件时不再把 text 置空并标 `binary:true`，
+   只有单文件请求才做二进制短路（Git/SVN 均修）。
+4. **会话归因**：Host 通过 Cordis `ctx.get('sessions')` 取活动会话，读不到才降级；
+   `verify:host` 的假 Host 同时提供 `get()` 与 `sessions` 属性覆盖该路径。
+5. **翻译兜底**：客户端 bound translator 之后再做一次 `interpolate`，`{count}` 不会漏到界面。
+
+### 13.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | **exit 0** |
+| `npm test` | **exit 0**，`# tests 371 / pass 371 / fail 0` |
+| `npm run build` | **exit 0**，0.1.2 bundle |
+| `node scripts/verify-host.mjs` | **21/21 PASS**（新增 stage/unstage 预览与真实执行、daily 桶、会话 get 路径） |
+| `node --experimental-strip-types src/tests/worktree.test.ts` | 8/8（新增整侧二进制、单文件二进制、stage/unstage 计划） |
+| `node --experimental-strip-types src/tests/stats.test.ts` | 13/13（新增 daily 桶断言） |
+| `node --experimental-strip-types src/tests/client.v11.test.ts` | 13/13（新增图表/操作按钮/阻断原因本地化） |
+
+### 13.3 未验证 / 明确声明
+
+- 运行中的桌面端仍是上一版 Host（本轮未重启，重启会中断会话）。因此新 Host 的
+  `daily` 热力数据、`stage/unstage` 路由、会话归因修复需重启后复查；
+  重启后运行 `npm run verify:live http://127.0.0.1:<port>`。
+- 新 UI 已用真实客户端 bundle + 探针页（把 `/vcs` 代理到运行中的 Host）渲染核对：
+  热点页显示日历热力 + 条形图，待处理页显示三个操作按钮；旧 Host 没有 `daily` 时图表显示
+  诚实的空状态而不是崩溃。
+- 26 周热力图的宽度/窄栏换行只有渲染级验证，未做真实窗口的多分辨率人工签收。

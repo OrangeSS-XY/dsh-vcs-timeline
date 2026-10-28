@@ -33,6 +33,19 @@
   `changedPaths` 上限 200；repository remote 列表脱敏后入库。
 - **前端**：无 `dangerouslySetInnerHTML`；无全局 CSS；仅主题 token；所有可见文案走 i18n；
   危险动作需要打开对话框并显示精确 argv/目标/影响后确认。
+- **v1.1 只读面新增约束**：
+  - `worktree/diff` 的单文件路径先过 `normalizeRepoRelativePath` + `joinRepoPath`；未跟踪文件只读
+    `maxBytes×2` 字节（另加 64 KiB 余量），二进制/NUL 直接判为 binary，不渲染不可控文本。
+  - `checks` 只消费适配器真实返回的 diff 文本，纯函数规则引擎不读文件、不跑命令、不联网；
+    规则里检测到的密钥只在 `detail` 里写模式名，不返回任何密钥片段。
+  - `session/changes` 只从 Host 内存中的活动会话读取（`ctx.sessions.get`，需显式 sessionId），
+    不读磁盘存档；只认成功的写文件工具白名单；参数路径必须 `isInside` 仓库根后才转成相对路径；
+    返回上限 500 条，且 `confidence` 恒为 `inferred`，UI 必须标注推断。
+  - `stats/hotspots` 为只读聚合：Git 两条 `git log`、`--max-count` 有界、输出有上限、60 s 缓存；
+    SVN 不执行命令并返回 `available:false`；返回的 `scope` 明确扫描窗口/分支/是否含 merge。
+- **v1.2 暂存写操作**：`stage` / `unstage` 是显式写操作，和 commit/push 走同一条
+  「预览 → 单次 token → argv 复核 → 执行 → 审计」管线；路径参数过仓库根闸门后才进入 argv；
+  unstage 使用 `git restore --staged`，只改索引、不动工作区内容；插件没有自动暂存路径。
 
 ## 3. 明确不做（首版禁止）
 
@@ -56,6 +69,11 @@
    未做跨进程锁。
 5. **脱敏规则有限**：只能识别已知形态（URL userinfo、key=value、Authorization、私钥块）；
    无键名的裸密钥字符串无法识别。
+6. **会话归因是推断**：`session/changes` 读的是活动会话的工具调用参数，不是提交事实；失败结果、
+   外部终端改动、非白名单工具（如 shell 命令间接改文件）都不会被归因。UI 必须显示「推断」，
+   不能把它当作归属证明或绩效依据。
+7. **待处理工作台能看到仓库内未跟踪文件内容**：这是「即时 Diff」的必要能力，受仓库根闸门与
+   字节上限约束；它不读仓库根之外的路径，也不把内容写入审计/日志。
 
 ## 5. 上线前检查清单
 

@@ -12,7 +12,7 @@ import * as React from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createVcsApi } from './api.ts'
 import { createTimelinePanel } from './panel.ts'
-import { en, normalizeLocale, zh } from './i18n.ts'
+import { en, interpolate, normalizeLocale, zh } from './i18n.ts'
 import type { Locale } from './i18n.ts'
 import type { PanelProps } from './types.ts'
 
@@ -135,8 +135,13 @@ export function apply(ctx: ClientContext): void {
   }
 
   const bound = services.locale?.bind(NS)
-  const translate = (key: string, params?: Record<string, string | number>): string =>
-    bound?.(key, params) ?? zh[key] ?? key
+  const translate = (key: string, params?: Record<string, string | number>): string => {
+    const translated = bound?.(key, params) ?? zh[key] ?? key
+    // The bound translator already interpolates. This second pass is a safety
+    // net for host versions whose bound function ignores the params argument:
+    // a placeholder such as `{count}` must never leak into the UI.
+    return params === undefined ? translated : interpolate(translated, params)
+  }
 
   // One client + panel factory per plugin activation; both are side-effect free
   // until the panel mounts.

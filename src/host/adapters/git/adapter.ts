@@ -4,13 +4,30 @@
  * @module dsh-vcs-timeline/host/adapters/git/adapter
  */
 
-import { realpath } from 'node:fs/promises'
-import type { ApiError, ChangeSet, DiffResult, Repository, WorkingTreeStatus } from '../../../shared/contracts.ts'
+import { open, realpath } from 'node:fs/promises'
+import type {
+  ApiError,
+  ChangeSet,
+  DiffResult,
+  Repository,
+  WorkingTreeStatus,
+  WorktreeDiffResult,
+} from '../../../shared/contracts.ts'
 import { DEFAULT_PAGE_SIZE, HARD_DIFF_MAX_BYTES, MAX_EVENT_FILES, MAX_PAGE_SIZE } from '../../../shared/contracts.ts'
-import { clampInt, decodeCursor, encodeCursor, normalizeRepoRelativePath, repositoryId, safeErrorMessage, truncateUtf8 } from '../../security.ts'
+import {
+  clampInt,
+  decodeCursor,
+  encodeCursor,
+  joinRepoPath,
+  normalizeRepoRelativePath,
+  repositoryId,
+  safeErrorMessage,
+  truncateUtf8,
+} from '../../security.ts'
 import type {
   AdapterResult,
   AdapterDiffQuery,
+  AdapterWorktreeDiffQuery,
   HistoryPage,
   HistoryQuery,
   OperationBeforeState,
@@ -44,6 +61,7 @@ import {
   logArgs,
   logNameStatusArgs,
   logStatsArgs,
+  lsFilesArgs,
   mergeChangedFiles,
   originHeadArgs,
   parseCommitMeta,
@@ -65,9 +83,12 @@ import {
   remoteNamesArgs,
   showDiffArgs,
   stagedNamesArgs,
+  stageArgs,
   statusArgs,
   statusV1Args,
   commitToEvent,
+  unstageArgs,
+  worktreeDiffArgs,
 } from './commands.ts'
 
 /** Default timeout for one read command. */
@@ -115,6 +136,48 @@ function firstLine(text: string): string {
 /** Split NUL-separated output. */
 function nulTokens(text: string): string[] {
   return text.split('\u0000').filter(token => token !== '')
+}
+
+/** One synthesized whole-file addition diff. */
+interface SynthesizedDiff {
+  text: string
+  binary: boolean
+  bytes: number
+  truncated: boolean
+  truncationReason?: string
+}
+
+/**
+ * Build a unified diff for an untracked file.
+ *
+ * Git cannot portably diff a file it does not track against `/dev/null` on
+ * every platform, so the Host reads the file (bounded) and renders the honest
+ * "new file, entire content added" form. It is still a real diff of real bytes,
+ * and the caller labels the file `untracked` — nothing is claimed to be staged.
+ */
+function synthesizeUntrackedDiff(filePath: string, raw: string, maxBytes: number): SynthesizedDiff {
+  if (raw.includes('\u0000')) return { text: '', binary: true, bytes: 0, truncated: false }
+  const lines = raw.split('\n')
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  const hunk = lines.length === 0 ? '@@ -0,0 +0,0 @@' : `@@ -0,0 +1,${lines.length} @@`
+  const header = [
+    `diff --git a/${filePath} b/${filePath}`,
+    'new file mode 100644',
+    'index 0000000..0000000',
+    '--- /dev/null',
+    `+++ b/${filePath}`,
+    hunk,
+  ].join('\n')
+  const body = lines.map(line => `+${line}`).join('\n')
+  const text = body === '' ? `${header}\n` : `${header}\n${body}\n`
+  const capped = truncateUtf8(text, maxBytes)
+  return {
+    text: capped.text,
+    binary: false,
+    bytes: Buffer.byteLength(capped.text, 'utf8'),
+    truncated: capped.truncated,
+    ...(capped.truncated ? { truncationReason: `diff capped at ${maxBytes} bytes` } : {}),
+  }
 }
 
 /** Warnings shared by the write-operation plans. */
@@ -202,6 +265,15 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       const cursor = decodeCursor(query.cursor ?? null)
       const offset = cursor !== null && typeof cursor.o === 'number' && cursor.o >= 0 ? Math.trunc(cursor.o) : 0
       const includeFiles = query.includeFiles === true
+      // A branch filter is a real revision argument, so it must be a safe ref:
+      // a branch name (validated by the commands helper) or an explicit hash.
+      let branch: string | undefined
+      if (typeof query.branch === 'string' && query.branch !== '') {
+        if (!isSafeBranchName(query.branch) && !isCommitHash(query.branch)) {
+          return failure('invalid-request', 'the branch filter is not a valid branch name or commit hash')
+        }
+        branch = query.branch
+      }
       const statsInput = {
         skip: offset,
         limit: limit + 1,
@@ -209,6 +281,8 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
         ...(query.text === undefined ? {} : { text: query.text }),
         ...(query.since === undefined ? {} : { since: query.since }),
         ...(query.until === undefined ? {} : { until: query.until }),
+        ...(branch === undefined ? {} : { branch }),
+        ...(query.branchScope === 'all' ? { branchScope: 'all' as const } : {}),
       }
       const argv = logArgs(statsInput)
       // The stats and name-status probes mirror the history invocation (same
@@ -367,6 +441,111 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
       }
     },
 
+    async worktreeDiff(
+      root,
+      repositoryIdValue,
+      query: AdapterWorktreeDiffQuery,
+      signal,
+    ): Promise<AdapterResult<WorktreeDiffResult>> {
+      const maxBytes = clampInt(query.maxBytes, 1_024, HARD_DIFF_MAX_BYTES, 256 * 1024)
+      const contextLines = clampInt(query.contextLines, 0, 32, 3)
+      const staged = query.staged === true
+      let filePath: string | undefined
+      if (query.filePath !== undefined && query.filePath !== '') {
+        const normalized = normalizeRepoRelativePath(query.filePath)
+        if (normalized === null) return failure('invalid-request', 'the file path must stay inside the repository')
+        filePath = normalized
+      }
+      const outputCap = Math.min(HARD_DIFF_MAX_BYTES * 2, Math.max(maxBytes * 2, 1 << 20))
+
+      // Untracked files can only appear on the unstaged side: answer the real
+      // file content as one whole-file addition and say it is untracked.
+      if (!staged && filePath !== undefined) {
+        const tracked = await run(lsFilesArgs(filePath), root, signal, READ_TIMEOUT_MS, 16 * 1024)
+        if (tracked.exitCode !== 0) {
+          const absolute = joinRepoPath(root, filePath)
+          if (absolute === null) return failure('path-not-allowed', 'the file path must stay inside the repository')
+          let raw = ''
+          let binary = false
+          try {
+            const handle = await open(absolute, 'r')
+            try {
+              const info = await handle.stat()
+              const length = Math.min(info.size, Math.max(maxBytes * 2, 64 * 1024))
+              const buffer = Buffer.alloc(length)
+              const read = await handle.read(buffer, 0, length, 0)
+              raw = buffer.subarray(0, read.bytesRead).toString('utf8')
+            } finally {
+              await handle.close()
+            }
+          } catch (error: unknown) {
+            return failure('invalid-request', 'the untracked file could not be read', safeErrorMessage(error, 200))
+          }
+          if (raw.includes('\u0000')) binary = true
+          const synthesized = synthesizeUntrackedDiff(filePath, raw, maxBytes)
+          return {
+            ok: true,
+            value: {
+              repositoryId: repositoryIdValue,
+              filePath,
+              staged: false,
+              kind: 'untracked',
+              text: synthesized.text,
+              truncated: synthesized.truncated,
+              ...(synthesized.truncationReason === undefined ? {} : { truncationReason: synthesized.truncationReason }),
+              binary: binary || synthesized.binary,
+              bytes: synthesized.bytes,
+            },
+          }
+        }
+      }
+
+      const result = await run(
+        worktreeDiffArgs({ staged, contextLines, ...(filePath === undefined ? {} : { filePath }) }),
+        root,
+        signal,
+        STATUS_TIMEOUT_MS,
+        outputCap,
+      )
+      if (result.exitCode !== 0) return runFailure(result, staged ? 'reading the staged diff' : 'reading the working-tree diff')
+      // A whole-side diff may contain binary files beside textual ones; only a
+      // single-file request can be answered as "this file is binary". For the
+      // whole side the text (including the standard binary markers) is kept,
+      // otherwise a mixed diff would look empty and every rule would report
+      // "no changes".
+      const binary = filePath !== undefined && hasBinaryHeader(result.stdout)
+      if (binary) {
+        return {
+          ok: true,
+          value: {
+            repositoryId: repositoryIdValue,
+            filePath: filePath ?? null,
+            staged,
+            kind: 'tracked',
+            text: '',
+            truncated: false,
+            binary: true,
+            bytes: 0,
+          },
+        }
+      }
+      const capped = truncateUtf8(result.stdout, maxBytes)
+      return {
+        ok: true,
+        value: {
+          repositoryId: repositoryIdValue,
+          filePath: filePath ?? null,
+          staged,
+          kind: 'tracked',
+          text: capped.text,
+          truncated: capped.truncated,
+          ...(capped.truncated ? { truncationReason: `diff capped at ${maxBytes} bytes` } : {}),
+          binary: false,
+          bytes: Buffer.byteLength(capped.text, 'utf8'),
+        },
+      }
+    },
+
     async status(root, repositoryIdValue, signal): Promise<AdapterResult<WorkingTreeStatus>> {
       const result = await run(statusArgs(), root, signal, STATUS_TIMEOUT_MS, 4 * 1024 * 1024)
       if (result.exitCode !== 0) {
@@ -476,6 +655,62 @@ export function createGitAdapter(runner: Runner): VcsAdapter {
               argv: commitArgs(message),
               cwd: root,
               summary: `commit ${before.stagedFiles?.length ?? 0} staged path(s) on ${before.branch ?? 'the current branch'}`,
+              warnings,
+              network: false,
+            },
+          }
+        }
+        case 'stage': {
+          let filePath: string | undefined
+          if (typeof params.path === 'string' && params.path !== '') {
+            const normalized = normalizeRepoRelativePath(params.path)
+            if (normalized === null || joinRepoPath(root, normalized) === null) {
+              return { ok: true, value: blocked('the path to stage must stay inside the repository') }
+            }
+            filePath = normalized
+          }
+          if (before.clean === true) {
+            return { ok: true, value: blocked('the working tree is clean; there is nothing to stage') }
+          }
+          const warningsForStage = [...warnings]
+          if (filePath !== undefined && (before.stagedFiles ?? []).includes(filePath)) {
+            warningsForStage.push(`"${filePath}" is already staged`)
+          }
+          return {
+            ok: true,
+            value: {
+              allowed: true,
+              argv: stageArgs(filePath),
+              cwd: root,
+              summary: filePath === undefined
+                ? 'stage every change (tracked and untracked) so it can be committed'
+                : `stage "${filePath}" so it can be committed`,
+              warnings: warningsForStage,
+              network: false,
+            },
+          }
+        }
+        case 'unstage': {
+          let filePath: string | undefined
+          if (typeof params.path === 'string' && params.path !== '') {
+            const normalized = normalizeRepoRelativePath(params.path)
+            if (normalized === null || joinRepoPath(root, normalized) === null) {
+              return { ok: true, value: blocked('the path to unstage must stay inside the repository') }
+            }
+            filePath = normalized
+          }
+          if ((before.stagedFiles ?? []).length === 0) {
+            return { ok: true, value: blocked('nothing is staged; there is nothing to unstage') }
+          }
+          return {
+            ok: true,
+            value: {
+              allowed: true,
+              argv: unstageArgs(filePath),
+              cwd: root,
+              summary: filePath === undefined
+                ? 'clear the index (the working tree is left untouched)'
+                : `clear the index for "${filePath}" (the working tree is left untouched)`,
               warnings,
               network: false,
             },

@@ -19,6 +19,7 @@ import type {
   VcsEventType,
   VcsType,
   WorkingTreeStatus,
+  WorktreeDiffResult,
 } from '../../shared/contracts.ts'
 
 export type { OperationBeforeState, OperationType } from '../../shared/contracts.ts'
@@ -74,6 +75,10 @@ export interface HistoryQuery {
    * cannot produce the lists must leave the key absent rather than fake it.
    */
   includeFiles?: boolean
+  /** Restrict to one branch/ref (validated by the adapter as a branch name). */
+  branch?: string
+  /** `all` = every local branch; `current`/absent = HEAD only. */
+  branchScope?: 'current' | 'all'
 }
 
 /** One page of repository history. */
@@ -90,6 +95,15 @@ export interface AdapterDiffQuery {
   revisionB?: string
   filePath?: string
   contextLines?: number
+  maxBytes: number
+}
+
+/** Working-tree diff request after validation. */
+export interface AdapterWorktreeDiffQuery {
+  /** One repository-relative file, or omitted for the whole side. */
+  filePath?: string
+  staged: boolean
+  contextLines: number
   maxBytes: number
 }
 
@@ -125,6 +139,17 @@ export interface VcsAdapter {
   changeSet(rootPath: string, repositoryId: string, revision: string, signal?: AbortSignal): Promise<AdapterResult<ChangeSet>>
   /** Unified diff text of one revision or range. */
   diff(rootPath: string, repositoryId: string, query: AdapterDiffQuery, signal?: AbortSignal): Promise<AdapterResult<DiffResult>>
+  /**
+   * Unified diff of the working tree: unstaged side by default, index side
+   * when `staged`. A single untracked file is reported as a whole-file
+   * addition (`kind: 'untracked'`), never silently omitted.
+   */
+  worktreeDiff(
+    rootPath: string,
+    repositoryId: string,
+    query: AdapterWorktreeDiffQuery,
+    signal?: AbortSignal,
+  ): Promise<AdapterResult<WorktreeDiffResult>>
   /** Working tree snapshot. */
   status(rootPath: string, repositoryId: string, signal?: AbortSignal): Promise<AdapterResult<WorkingTreeStatus>>
   /** State read immediately before a write operation. */

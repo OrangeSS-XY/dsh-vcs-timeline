@@ -941,6 +941,9 @@ function registerRoutesForTest(): {
         return sampleCompare(query.repositoryId)
       },
     },
+    checks: { async checks() { throw new Error('checks are not used in this suite') } },
+    stats: { async hotspots() { throw new Error('stats are not used in this suite') } },
+    sessionChanges: { async changes() { throw new Error('session changes are not used in this suite') } },
     diagnostics: async () => ({
       pluginVersion: '0.1.0',
       dshVersion: null,

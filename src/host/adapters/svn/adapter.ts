@@ -35,6 +35,7 @@ import type {
   VcsEvent,
   WorkingTreeEntry,
   WorkingTreeStatus,
+  WorktreeDiffResult,
 } from '../../../shared/contracts.ts'
 import {
   DEFAULT_DIFF_MAX_BYTES,
@@ -46,6 +47,7 @@ import {
 import type {
   AdapterDiffQuery,
   AdapterResult,
+  AdapterWorktreeDiffQuery,
   HistoryPage,
   HistoryQuery,
   OperationParams,
@@ -78,6 +80,7 @@ import {
   buildLogArgs,
   buildStatusArgs,
   buildUpdateArgs,
+  buildWorktreeDiffArgs,
   parseDiffSummarize,
   parseInfoXml,
   parseLogXml,
@@ -720,7 +723,19 @@ export function createSvnAdapter(runner: Runner): VcsAdapter {
         const nextCursor = hasMore && lastEntry !== undefined
           ? encodeCursor({ r: Number(lastEntry.revision) })
           : null
-        return ok({ events, nextCursor, hasMore })
+        // SVN has no branch refs: a requested branch/all-branches filter is
+        // reported instead of silently applied to the wrong history.
+        const branchFilterRequested = (typeof query.branch === 'string' && query.branch !== '')
+          || query.branchScope === 'all'
+        const warnings = branchFilterRequested
+          ? ['branch filtering is not available for SVN; showing the working copy history']
+          : []
+        return ok({
+          events,
+          nextCursor,
+          hasMore,
+          ...(warnings.length === 0 ? {} : { warnings }),
+        })
       } catch (error: unknown) {
         return err(internalError(error))
       }
@@ -930,6 +945,93 @@ export function createSvnAdapter(runner: Runner): VcsAdapter {
           ...(capped.truncated ? { truncationReason: `diff exceeds the ${maxBytes} byte limit` } : {}),
           binary: false,
           bytes,
+        })
+      } catch (error: unknown) {
+        return err(internalError(error))
+      }
+    },
+
+    async worktreeDiff(
+      rootPath: string,
+      repositoryIdValue: string,
+      query: AdapterWorktreeDiffQuery,
+      signal?: AbortSignal,
+    ): Promise<AdapterResult<WorktreeDiffResult>> {
+      try {
+        if (query.staged === true) {
+          // SVN has no index; a "staged" view would be an invented concept.
+          return err(invalidRequest('SVN has no staging area; check the working copy instead'))
+        }
+        const requestedId = requireRepositoryId(repositoryIdValue)
+        if (requestedId === null) return err(invalidRequest('repositoryId is required'))
+        const client = await resolveClient()
+        if (!client.ok) return client
+        const root = resolveRoot(rootPath)
+        if (root === null) return err(invalidRequest('repository root is required'))
+
+        let filePath: string | undefined
+        let target = root
+        if (query.filePath !== undefined && query.filePath !== '') {
+          const normalized = normalizeRepoRelativePath(query.filePath)
+          if (normalized === null) {
+            return err({ code: 'path-not-allowed', message: 'filePath must be a repository-relative path inside the working copy', retryable: false })
+          }
+          const joined = joinRepoPath(root, normalized)
+          if (joined === null) {
+            return err({ code: 'path-not-allowed', message: 'filePath escapes the working copy root', retryable: false })
+          }
+          filePath = normalized
+          target = joined
+        }
+
+        const maxBytes = clampInt(query.maxBytes, 1, HARD_DIFF_MAX_BYTES, DEFAULT_DIFF_MAX_BYTES)
+        const run = await runSvn(buildWorktreeDiffArgs(client.value, target), root, signal, {
+          timeoutMs: DIFF_TIMEOUT_MS,
+          maxBytes: DIFF_OUTPUT_CAP_BYTES,
+        })
+        const combined = `${run.stdout}\n${run.stderr}`
+        const binaryMarker = /Cannot display: file marked as a binary type/i.test(combined)
+        // A whole-working-copy diff may mix binary and text: keep the text and
+        // only answer "binary" when one specific file was requested.
+        const wholeSide = filePath === undefined
+        if (run.exitCode !== 0) {
+          if (binaryMarker && !wholeSide) {
+            return ok({
+              repositoryId: requestedId,
+              filePath: filePath ?? null,
+              staged: false,
+              kind: 'tracked',
+              text: '',
+              truncated: false,
+              binary: true,
+              bytes: 0,
+            })
+          }
+          return err(classifyFailure(run, 'svn diff failed', signal))
+        }
+        if ((binaryMarker && !wholeSide) || run.stdout.includes('\0')) {
+          return ok({
+            repositoryId: requestedId,
+            filePath: filePath ?? null,
+            staged: false,
+            kind: 'tracked',
+            text: '',
+            truncated: false,
+            binary: true,
+            bytes: 0,
+          })
+        }
+        const capped = truncateUtf8(run.stdout, maxBytes)
+        return ok({
+          repositoryId: requestedId,
+          filePath: filePath ?? null,
+          staged: false,
+          kind: 'tracked',
+          text: capped.text,
+          truncated: capped.truncated,
+          ...(capped.truncated ? { truncationReason: `diff exceeds the ${maxBytes} byte limit` } : {}),
+          binary: false,
+          bytes: Buffer.byteLength(capped.text, 'utf8'),
         })
       } catch (error: unknown) {
         return err(internalError(error))

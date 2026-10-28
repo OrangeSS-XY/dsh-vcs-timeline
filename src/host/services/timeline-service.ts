@@ -15,6 +15,8 @@ import type {
   TimelinePage,
   TimelineQuery,
   WorkingTreeStatus,
+  WorktreeDiffQuery,
+  WorktreeDiffResult,
 } from '../../shared/contracts.ts'
 import { DEFAULT_DIFF_MAX_BYTES, DEFAULT_PAGE_SIZE, HARD_DIFF_MAX_BYTES, MAX_PAGE_SIZE } from '../../shared/contracts.ts'
 import type { VcsAdapter } from '../adapters/types.ts'
@@ -80,6 +82,8 @@ export interface TimelineService {
   timeline(query: TimelineQuery): Promise<TimelinePage>
   changeSet(repositoryId: string, revision: string): Promise<ChangeSet>
   diff(query: DiffQuery): Promise<DiffResult>
+  /** Working-tree diff (unstaged or staged side), including untracked files. */
+  worktreeDiff(query: WorktreeDiffQuery): Promise<WorktreeDiffResult>
   status(repositoryId: string): Promise<WorkingTreeStatus>
 }
 
@@ -171,6 +175,7 @@ export function createTimelineService(deps: TimelineServiceDeps): TimelineServic
       const eventTypes = Array.isArray(query.eventTypes)
         ? query.eventTypes.filter((type): type is 'commit' => type === 'commit')
         : undefined
+      const branch = typeof query.branch === 'string' && query.branch.trim() !== '' ? query.branch.trim() : undefined
       const history = await adapter.history(root, repository.id, {
         ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
         limit,
@@ -178,6 +183,8 @@ export function createTimelineService(deps: TimelineServiceDeps): TimelineServic
         ...(typeof query.text === 'string' && query.text.trim() !== '' ? { text: query.text.trim().slice(0, 200) } : {}),
         ...window,
         ...(eventTypes === undefined ? {} : { eventTypes }),
+        ...(branch === undefined ? {} : { branch }),
+        ...(query.branchScope === 'all' ? { branchScope: 'all' as const } : {}),
         includeFiles: query.includeFiles === true,
       })
       if (!history.ok) throw new ServiceError(history.error)
@@ -221,6 +228,20 @@ export function createTimelineService(deps: TimelineServiceDeps): TimelineServic
       const resolved = await deps.resolver.resolve(repositoryId)
       if (!resolved.ok) throw new ServiceError(resolved.error)
       const result = await resolved.value.adapter.status(resolved.value.root, resolved.value.repository.id)
+      if (!result.ok) throw new ServiceError(result.error)
+      return result.value
+    },
+
+    async worktreeDiff(query) {
+      const resolved = await deps.resolver.resolve(query.repositoryId)
+      if (!resolved.ok) throw new ServiceError(resolved.error)
+      const maxBytes = clampInt(query.maxBytes, 1_024, HARD_DIFF_MAX_BYTES, DEFAULT_DIFF_MAX_BYTES)
+      const result = await resolved.value.adapter.worktreeDiff(resolved.value.root, resolved.value.repository.id, {
+        ...(typeof query.filePath === 'string' && query.filePath !== '' ? { filePath: query.filePath } : {}),
+        staged: query.staged === true,
+        contextLines: clampInt(query.contextLines, 0, 32, 3),
+        maxBytes,
+      })
       if (!result.ok) throw new ServiceError(result.error)
       return result.value
     },

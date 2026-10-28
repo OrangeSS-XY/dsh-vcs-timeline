@@ -12,24 +12,32 @@
 import {
   isApiError,
   isChangeSet,
+  isChecksReport,
   isDiffResult,
   isDiagnostics,
+  isHotspotReport,
   isOperationAttempt,
   isOperationPage,
   isBranchCompare,
   isPullRequestDetail,
   isPullRequestList,
   isRepository,
+  isSessionChanges,
   isTimelinePage,
   isWorkingTreeStatus,
+  isWorktreeDiffResult,
 } from '../shared/contracts.ts'
 import type {
   ApiError,
   ApiErrorCode,
   ChangeSet,
+  ChecksQuery,
+  ChecksReport,
   Diagnostics,
   DiffQuery,
   DiffResult,
+  HotspotQuery,
+  HotspotReport,
   OperationAttempt,
   OperationPage,
   OperationPreview,
@@ -43,9 +51,12 @@ import type {
   PullRequestQuery,
   Repository,
   RepositoryList,
+  SessionChanges,
   TimelinePage,
   TimelineQuery,
   WorkingTreeStatus,
+  WorktreeDiffQuery,
+  WorktreeDiffResult,
 } from '../shared/contracts.ts'
 
 /** Minimal response face the client needs from `fetch`. */
@@ -73,6 +84,10 @@ export interface VcsClient {
   timeline(query: TimelineQuery): Promise<ApiResult<TimelinePage>>
   changeSet(repositoryId: string, revision: string): Promise<ApiResult<ChangeSet>>
   diff(query: DiffQuery): Promise<ApiResult<DiffResult>>
+  worktreeDiff(query: WorktreeDiffQuery): Promise<ApiResult<WorktreeDiffResult>>
+  checks(query: ChecksQuery): Promise<ApiResult<ChecksReport>>
+  statsHotspots(query: HotspotQuery): Promise<ApiResult<HotspotReport>>
+  sessionChanges(query: { repositoryId: string; sessionId?: string }): Promise<ApiResult<SessionChanges>>
   status(repositoryId: string): Promise<ApiResult<WorkingTreeStatus>>
   previewOperation(request: OperationRequest): Promise<ApiResult<OperationPreview>>
   executeOperation(request: OperationRequest): Promise<ApiResult<OperationAttempt>>
@@ -230,6 +245,26 @@ export function createVcsApi(fetchImpl: FetchLike): VcsClient {
     diff: (query) => guarded(
       post(fetchImpl, 'vcs/diff', { ...query }),
       isDiffResult,
+    ),
+
+    worktreeDiff: (query) => guarded(
+      post(fetchImpl, 'vcs/worktree/diff', { ...query }),
+      isWorktreeDiffResult,
+    ),
+
+    checks: (query) => guarded(
+      post(fetchImpl, 'vcs/checks', { ...query }),
+      isChecksReport,
+    ),
+
+    statsHotspots: (query) => guarded(
+      post(fetchImpl, 'vcs/stats/hotspots', { ...query }),
+      isHotspotReport,
+    ),
+
+    sessionChanges: (query) => guarded(
+      post(fetchImpl, 'vcs/session/changes', { ...query }),
+      isSessionChanges,
     ),
 
     status: (repositoryId) => guarded(

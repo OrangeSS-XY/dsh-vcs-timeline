@@ -74,6 +74,10 @@ export interface LogArgsInput {
   text?: string
   since?: string
   until?: string
+  /** One branch/ref to walk; omitted means HEAD. */
+  branch?: string
+  /** `all` walks every local branch head; `current`/absent walks HEAD. */
+  branchScope?: 'current' | 'all'
 }
 
 /** History filters shared by the history and the per-commit stats invocations. */
@@ -92,6 +96,20 @@ function logFilterArgs(input: LogArgsInput): string[] {
   return args
 }
 
+/**
+ * The revision/ref part of a history invocation.
+ *
+ * A named branch is passed as a revision so `git log <ref>` really walks that
+ * ref (validated by the adapter before it gets here); `all` uses
+ * `--branches` (local branch heads only, never remote-tracking refs, so the
+ * same commit is not listed twice). Absent means HEAD.
+ */
+function logRevisionArgs(input: LogArgsInput): string[] {
+  if (input.branch !== undefined && input.branch !== '') return [input.branch]
+  if (input.branchScope === 'all') return ['--branches']
+  return []
+}
+
 /** One `git log` page argv. */
 export function logArgs(input: LogArgsInput): string[] {
   return [
@@ -104,6 +122,7 @@ export function logArgs(input: LogArgsInput): string[] {
     `--skip=${Math.max(0, input.skip)}`,
     `--format=${LOG_FORMAT}`,
     ...logFilterArgs(input),
+    ...logRevisionArgs(input),
   ]
 }
 
@@ -124,6 +143,7 @@ export function logStatsArgs(input: LogArgsInput): string[] {
     `--skip=${Math.max(0, input.skip)}`,
     `--format=${SOH}%H`,
     ...logFilterArgs(input),
+    ...logRevisionArgs(input),
   ]
 }
 
@@ -148,6 +168,7 @@ export function logNameStatusArgs(input: LogArgsInput): string[] {
     `--skip=${Math.max(0, input.skip)}`,
     `--format=${SOH}%H`,
     ...logFilterArgs(input),
+    ...logRevisionArgs(input),
   ]
 }
 
@@ -206,6 +227,25 @@ export function statusArgs(): string[] {
   return [...gitBase(), 'status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all']
 }
 
+/** Working-tree diff argv: unstaged by default, index side when `staged`. */
+export function worktreeDiffArgs(input: { staged: boolean; contextLines: number; filePath?: string }): string[] {
+  const argv = [
+    ...gitBase(),
+    'diff',
+    '--no-color',
+    '--find-renames',
+    `-U${input.contextLines}`,
+  ]
+  if (input.staged) argv.push('--cached')
+  if (input.filePath !== undefined) argv.push('--', input.filePath)
+  return argv
+}
+
+/** Whether one path is tracked by the index (`git ls-files --error-unmatch`). */
+export function lsFilesArgs(filePath: string): string[] {
+  return [...gitBase(), 'ls-files', '--error-unmatch', '-z', '--', filePath]
+}
+
 /** Porcelain v1 status argv, used when v2 is unavailable. */
 export function statusV1Args(): string[] {
   return [...gitBase(), 'status', '--porcelain', '-z', '--untracked-files=all']
@@ -239,6 +279,27 @@ export function pullArgs(): string[] {
 /** Commit staged changes argv. */
 export function commitArgs(message: string): string[] {
   return [...gitBase(), 'commit', '-m', message]
+}
+
+/**
+ * Stage argv: every change (`git add -A`) or exactly one repository-relative
+ * path. A path is validated by the adapter before it reaches this helper.
+ */
+export function stageArgs(filePath?: string): string[] {
+  return filePath === undefined
+    ? [...gitBase(), 'add', '-A']
+    : [...gitBase(), 'add', '--', filePath]
+}
+
+/**
+ * Unstage argv: clear the index for the whole repository or one path
+ * (`git restore --staged`). The index entry is restored without touching the
+ * working tree, so no user edit is lost.
+ */
+export function unstageArgs(filePath?: string): string[] {
+  return filePath === undefined
+    ? [...gitBase(), 'restore', '--staged', '--', '.']
+    : [...gitBase(), 'restore', '--staged', '--', filePath]
 }
 
 /** Push explicit remote+branch argv. */

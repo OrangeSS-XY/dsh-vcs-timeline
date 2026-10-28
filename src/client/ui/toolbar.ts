@@ -12,11 +12,13 @@ import {
   IconAudit,
   IconBranch,
   IconCheck,
+  IconChecklist,
   IconChevronDown,
   IconClock,
   IconClose,
   IconDownload,
   IconFilter,
+  IconFlame,
   IconMore,
   IconPr,
   IconRefresh,
@@ -156,6 +158,8 @@ function SourceTabs(props: {
 }): React.ReactElement {
   const { state, handlers, t } = props
   const timelineCount = state.timeline.events.length
+  const pendingCount = state.status?.entries.length ?? 0
+  const hotspotCount = state.hotspots.data?.files.length ?? 0
   const prCount = state.pullRequests.data?.pullRequests.length ?? 0
   const auditCount = state.audit.operations.length
   const tab = (source: PanelSource, label: string, count: number, Icon: typeof IconTimeline): React.ReactElement => h('button', {
@@ -171,6 +175,8 @@ function SourceTabs(props: {
   )
   return h('div', { role: 'tablist', className: 'dvt-tabstrip', 'aria-label': t('tab.title') },
     tab('timeline', t('source.timeline'), timelineCount, IconTimeline),
+    tab('pending', t('source.pending'), pendingCount, IconChecklist),
+    tab('hotspots', t('source.hotspots'), hotspotCount, IconFlame),
     tab('pr', t('source.pr'), prCount, IconPr),
     tab('audit', t('source.audit'), auditCount, IconAudit),
   )
@@ -184,6 +190,14 @@ function FilterBar(props: {
 }): React.ReactElement {
   const { state, handlers, t } = props
   const commitOnly = state.filters.eventTypes.includes('commit')
+  const repository = selectedRepository(state)
+  const gitRepository = repository !== null && repository.vcsType === 'git'
+  const scopeButton = (scope: 'current' | 'all'): React.ReactElement => h('button', {
+    type: 'button',
+    className: 'dvt-seg-btn',
+    'aria-pressed': state.filters.branchScope === scope,
+    onClick: () => handlers.onSetBranchScope(scope),
+  }, t(`timeline.branchScope.${scope}`))
   return h('div', null,
     h('div', { className: 'dvt-filterbar' },
       h('span', { className: 'dvt-search' },
@@ -232,6 +246,19 @@ function FilterBar(props: {
         },
         F.TIME_PRESETS.map((preset) => h('option', { key: preset, value: preset }, F.timePresetLabel(preset, t))),        ),
       ),
+      gitRepository
+        ? h('div', { className: 'dvt-seg', role: 'group', 'aria-label': t('timeline.branchScope') },
+          scopeButton('current'),
+          scopeButton('all'),
+        )
+        : null,
+      h('button', {
+        type: 'button',
+        className: 'dvt-chip',
+        'aria-pressed': state.filters.auditInTimeline,
+        title: t('timeline.audit.toggle'),
+        onClick: handlers.onToggleAuditInTimeline,
+      }, t('timeline.audit.toggleShort')),
       h(IconButton, {
         label: t('filter.toggle'),
         icon: IconFilter,
@@ -239,6 +266,17 @@ function FilterBar(props: {
         onClick: handlers.onToggleAuthor,
       }),
     ),
+    state.filters.branch !== ''
+      ? h('div', { className: 'dvt-active-filter' },
+        h(IconBranch, { size: 10 }),
+        h('span', { className: 'dvt-clip' }, t('timeline.branchFilter', { branch: state.filters.branch })),
+        h(IconButton, {
+          label: t('timeline.branchFilter.clear'),
+          icon: IconClose,
+          onClick: handlers.onClearBranchFilter,
+        }),
+      )
+      : null,
     state.filters.showAuthor
       ? h('div', { className: 'dvt-author-row' },
         h('input', {

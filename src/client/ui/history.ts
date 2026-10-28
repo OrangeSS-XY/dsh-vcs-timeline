@@ -11,14 +11,25 @@
  */
 
 import * as React from 'react'
-import type { FileChangeStatus, VcsEvent } from '../../shared/contracts.ts'
+import type { FileChangeStatus, OperationAttempt, VcsEvent } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
 import type { DayGroup, TimelineView } from '../file-index.ts'
 import { groupEventsByDay } from '../file-index.ts'
 import type { GraphModel, GraphRow } from '../graph.ts'
 import { renderGraphGutter } from './graph.ts'
 import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
-import { IconBranch, IconClock, IconClose, IconError, IconFile, IconRepo, IconTimeline } from './icons.ts'
+import {
+  IconAudit,
+  IconBranch,
+  IconCheck,
+  IconClock,
+  IconClose,
+  IconError,
+  IconFile,
+  IconRepo,
+  IconTimeline,
+  IconWarning,
+} from './icons.ts'
 import {
   Banner,
   DotSep,
@@ -27,6 +38,7 @@ import {
   IconButton,
   LineStats,
   SkeletonRows,
+  StateBadge,
 } from './primitives.ts'
 import {
   hasActiveFilters,
@@ -88,8 +100,8 @@ function AuthorAvatar(props: { actor: string | undefined; deps: PanelDeps }): Re
 }
 
 /** Sticky day header of the timeline. */
-function DayHeader(props: { group: DayGroup; deps: PanelDeps; now: number }): React.ReactElement {
-  const { group, deps, now } = props
+function DayHeader(props: { group: DayGroup; audits: number; deps: PanelDeps; now: number }): React.ReactElement {
+  const { group, audits, deps, now } = props
   const label = F.dayLabel(group.timestamp, deps.locale, new Date(now))
   const text = label.kind === 'today'
     ? deps.t('group.today')
@@ -98,7 +110,12 @@ function DayHeader(props: { group: DayGroup; deps: PanelDeps; now: number }): Re
       : label.text
   return h('div', { className: 'dvt-tl-day' },
     h('span', { className: 'dvt-tl-day-label' }, text),
-    h('span', { className: 'dvt-tl-day-count' }, deps.t('timeline.count.label', { count: group.events.length })),
+    group.events.length > 0
+      ? h('span', { className: 'dvt-tl-day-count' }, deps.t('timeline.count.label', { count: group.events.length }))
+      : null,
+    audits > 0
+      ? h('span', { className: 'dvt-tl-day-audit' }, deps.t('timeline.audit.count', { count: audits }))
+      : null,
   )
 }
 
@@ -123,9 +140,11 @@ function TimelineRow(props: {
   graphRow: GraphRow | null
   /** Total lanes on the page, so every gutter keeps one width. */
   graphLanes: number
+  /** Where this commit came from when the session/audit facts allow saying so. */
+  attribution: 'audit' | 'inferred' | null
   now: number
 }): React.ReactElement {
-  const { event, deps, handlers, selectedPath, visiblePaths, headRevision, graphRow, graphLanes, now } = props
+  const { event, deps, handlers, selectedPath, visiblePaths, headRevision, graphRow, graphLanes, attribution, now } = props
   const { t } = deps
   const merge = F.isMergeCommit(event)
   const head = isHeadEvent(event, headRevision)
@@ -187,10 +206,32 @@ function TimelineRow(props: {
       // marker already says that, so the tag would duplicate it.
       event.branch === undefined || event.branch === '' || event.branch === 'HEAD'
         ? null
-        : h('span', { className: 'dvt-tag dvt-tl-branch', title: event.branch },
-          h(IconBranch, { size: 9 }),
-          h('span', null, F.truncate(event.branch, 22)),
+        : h('span', {
+          className: 'dvt-tag dvt-tl-branch dvt-branch-btn',
+          role: 'button',
+          tabIndex: 0,
+          title: t('timeline.filterBranch', { branch: event.branch }),
+          'aria-label': t('timeline.filterBranch', { branch: event.branch }),
+          onClick: (clickEvent: React.MouseEvent) => {
+            clickEvent.stopPropagation()
+            handlers.onSelectBranch(event.branch as string)
+          },
+          onKeyDown: (keyEvent: React.KeyboardEvent) => {
+            if (keyEvent.key !== 'Enter' && keyEvent.key !== ' ') return
+            keyEvent.preventDefault()
+            keyEvent.stopPropagation()
+            handlers.onSelectBranch(event.branch as string)
+          },
+        },
+        h(IconBranch, { size: 9 }),
+        h('span', null, F.truncate(event.branch, 22)),
         ),
+      attribution === null
+        ? null
+        : h('span', {
+          className: `dvt-tag ${attribution === 'audit' ? 'dvt-tag-attrib' : 'dvt-tag-inferred'}`,
+          title: t(`timeline.attribution.${attribution}.hint`),
+        }, t(`timeline.attribution.${attribution}`)),
       narrow === null
         ? null
         : h('span', {
@@ -208,6 +249,56 @@ function TimelineRow(props: {
         : null,
       h('span', { className: 'dvt-tl-go', 'aria-hidden': 'true' }, '›'),
     ),
+    ),
+  )
+}
+
+/** Icon for one audit state on an interleaved operation node. */
+function auditIcon(state: OperationAttempt['state']): typeof IconAudit {
+  if (state === 'succeeded') return IconCheck
+  if (state === 'failed') return IconError
+  if (state === 'unknown' || state === 'partial') return IconWarning
+  return IconAudit
+}
+
+/**
+ * One plugin-audit node interleaved into the timeline.
+ *
+ * It is deliberately a different shape from a commit row (audit icon on the
+ * rail, an operation title and a state badge) and never joins the commit
+ * count. Clicking it opens the audit detail beside the list.
+ */
+function AuditNode(props: { attempt: OperationAttempt; deps: PanelDeps; handlers: PanelHandlers }): React.ReactElement {
+  const { attempt, deps, handlers } = props
+  const { t } = deps
+  const Icon = auditIcon(attempt.state)
+  const when = whenLabel(attempt.startedAt, deps, Date.now())
+  return h('li', { className: 'dvt-tl-row dvt-tl-audit-li' },
+    h('span', { className: 'dvt-tl-graph dvt-tl-audit-rail', 'aria-hidden': 'true' },
+      h(Icon, { size: 10 }),
+    ),
+    h('button', {
+      type: 'button',
+      className: 'dvt-tl-card dvt-tl-audit-card',
+      title: `${attempt.requestSummary}\n${F.formatTime(attempt.startedAt, deps.locale)}`,
+      'aria-label': t('aria.auditRow', { label: F.operationLabel(attempt.operation, t) }),
+      onClick: () => handlers.onOpenOperation(attempt),
+    },
+    h('span', { className: 'dvt-tl-top' },
+      h('span', { className: 'dvt-tl-audit-icon' }, h(Icon, { size: 12 })),
+      h('span', { className: 'dvt-tl-summary' },
+        `${t('timeline.audit.node')} · ${F.operationLabel(attempt.operation, t)}`,
+      ),
+      h(StateBadge, { state: attempt.state, t }),
+    ),
+    h('span', { className: 'dvt-tl-meta' },
+      h('span', { className: 'dvt-tl-when' }, h(IconClock, { size: 10 }), h('span', null, when)),
+      h(DotSep),
+      h('span', { className: 'dvt-tl-hash dvt-mono' },
+        F.shortHash(attempt.correlationId.replace(/^corr-/, ''), 8)),
+      h('span', { className: 'dvt-tag dvt-tag-attrib', title: t('timeline.audit.sourceHint') },
+        t('timeline.audit.source')),
+      ),
     ),
   )
 }
@@ -383,7 +474,113 @@ export function renderHistory(
     })
   }
 
-  const groups = groupEventsByDay(rows)
+  // Session/audit attribution: exact only when the plugin's own commit audit
+  // records this hash; a session-touched file set makes it an inference. Both
+  // are labelled in the row, and neither changes any count.
+  const auditedCommits = new Set<string>()
+  for (const attempt of state.audit.operations) {
+    if (attempt.operation === 'commit'
+      && typeof attempt.afterRevision === 'string'
+      && attempt.afterRevision !== '') {
+      auditedCommits.add(attempt.afterRevision)
+    }
+  }
+  const session = state.pending.session
+  const sessionPaths = session !== null && session.available === true
+    ? new Set(session.files.map((file) => file.path))
+    : null
+  const attributionOf = (event: VcsEvent): 'audit' | 'inferred' | null => {
+    if (event.commitHash !== undefined && event.commitHash !== '' && auditedCommits.has(event.commitHash)) {
+      return 'audit'
+    }
+    if (sessionPaths === null || sessionPaths.size === 0) return null
+    const files = Array.isArray(event.changedFiles) ? event.changedFiles : []
+    if (files.length === 0) return null
+    return files.every((file) => sessionPaths.has(file.path)) ? 'inferred' : null
+  }
+  const commitRow = (event: VcsEvent): React.ReactElement => h(TimelineRow, {
+    key: event.id,
+    event,
+    deps,
+    handlers,
+    selectedPath: state.selectedFilePath,
+    visiblePaths,
+    headRevision: repository.currentRevision,
+    graphRow: graphRowById.get(event.id) ?? null,
+    graphLanes: graph.lanes,
+    attribution: attributionOf(event),
+    now,
+  })
+
+  // Interleave plugin-audit nodes with commit rows only when asked. The nodes
+  // keep their own icon/badge and never join `timeline.events`, so the commit
+  // count and the graph describe commits only.
+  const showAudit = state.filters.auditInTimeline && state.source === 'timeline'
+  let listBody: React.ReactElement
+  if (!showAudit) {
+    listBody = h(React.Fragment, null, groupEventsByDay(rows).map((group) => h('section', {
+      key: group.key,
+      className: 'dvt-tl-group',
+    },
+    h(DayHeader, { group, audits: 0, deps, now }),
+    h('ul', { className: 'dvt-tl-list' }, group.events.map((event) => commitRow(event))),
+    )))
+  } else {
+    interface MergedGroup {
+      key: string
+      timestamp: string
+      commits: VcsEvent[]
+      audits: OperationAttempt[]
+      entries: Array<{ kind: 'commit'; event: VcsEvent } | { kind: 'audit'; attempt: OperationAttempt }>
+    }
+    const byDay = new Map<string, MergedGroup>()
+    const push = (timestamp: string, add: (group: MergedGroup) => void): void => {
+      const key = F.localDayKey(timestamp) ?? 'unknown'
+      let group = byDay.get(key)
+      if (group === undefined) {
+        group = { key, timestamp, commits: [], audits: [], entries: [] }
+        byDay.set(key, group)
+      }
+      add(group)
+    }
+    for (const event of rows) {
+      push(event.timestamp, (group) => {
+        group.commits.push(event)
+        group.entries.push({ kind: 'commit', event })
+      })
+    }
+    for (const attempt of state.audit.operations) {
+      push(attempt.startedAt, (group) => {
+        group.audits.push(attempt)
+        group.entries.push({ kind: 'audit', attempt })
+      })
+    }
+    const merged = [...byDay.values()].sort(
+      (a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0),
+    )
+    listBody = h(React.Fragment, null, merged.map((group) => h('section', {
+      key: group.key,
+      className: 'dvt-tl-group',
+    },
+    h(DayHeader, {
+      group: { key: group.key, timestamp: group.timestamp, events: group.commits },
+      audits: group.audits.length,
+      deps,
+      now,
+    }),
+    h('ul', { className: 'dvt-tl-list' },
+      group.entries
+        .sort((a, b) => {
+          const left = a.kind === 'commit' ? Date.parse(a.event.timestamp) : Date.parse(a.attempt.startedAt)
+          const right = b.kind === 'commit' ? Date.parse(b.event.timestamp) : Date.parse(b.attempt.startedAt)
+          return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0)
+        })
+        .map((entry) => entry.kind === 'commit'
+          ? commitRow(entry.event)
+          : h(AuditNode, { key: entry.attempt.id, attempt: entry.attempt, deps, handlers })),
+    ),
+    )))
+  }
   return h('div', { className: 'dvt-col dvt-timeline-col' },
     timeline.partial
       ? h(Banner, {
@@ -395,27 +592,14 @@ export function renderHistory(
       })
       : null,
     header,
+    showAudit
+      ? h(Banner, { kind: 'info', text: t('timeline.audit.notice') })
+      : null,
     view.filesReported && view.files.length === 0 && timeline.events.length > 0
       ? h(Banner, { kind: 'info', text: t('timeline.noFilesNotice') })
       : null,
     h('div', { className: 'dvt-tl', role: 'list', 'aria-label': t('source.timeline') },
-      groups.map((group) => h('section', { key: group.key, className: 'dvt-tl-group' },
-        h(DayHeader, { group, deps, now }),
-        h('ul', { className: 'dvt-tl-list' },
-          group.events.map((event) => h(TimelineRow, {
-            key: event.id,
-            event,
-            deps,
-            handlers,
-            selectedPath: state.selectedFilePath,
-            visiblePaths,
-            headRevision: repository.currentRevision,
-            graphRow: graphRowById.get(event.id) ?? null,
-            graphLanes: graph.lanes,
-            now,
-          })),
-        ),
-      )),
+      listBody,
     ),
     h('div', { className: 'dvt-list-count' },
       view.selected === null

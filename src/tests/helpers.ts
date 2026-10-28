@@ -18,9 +18,11 @@ import type {
   TimelinePage,
   TimelineQuery,
   VcsEvent,
+  WorktreeDiffResult,
 } from '../shared/contracts.ts'
 import type {
   AdapterDiffQuery,
+  AdapterWorktreeDiffQuery,
   HistoryPage,
   HistoryQuery,
   OperationBeforeState,
@@ -119,6 +121,7 @@ export interface FakeAdapterOptions {
   status?: Awaited<ReturnType<VcsAdapter['status']>>
   changeset?: ChangeSet
   diff?: (query: AdapterDiffQuery) => Promise<DiffResult>
+  worktreeDiff?: (query: AdapterWorktreeDiffQuery) => Promise<WorktreeDiffResult>
 }
 
 /** Build a scriptable adapter. */
@@ -157,6 +160,22 @@ export function createFakeAdapter(options: FakeAdapterOptions = {}): VcsAdapter 
     async diff(_root, _repositoryId, query) {
       if (options.diff !== undefined) return { ok: true, value: await options.diff(query) }
       return { ok: true, value: { repositoryId: repository.id, revisionA: null, revisionB: 'abc', text: '', truncated: false, binary: false, bytes: 0 } }
+    },
+    async worktreeDiff(_root, _repositoryId, query) {
+      if (options.worktreeDiff !== undefined) return { ok: true, value: await options.worktreeDiff(query) }
+      return {
+        ok: true,
+        value: {
+          repositoryId: repository.id,
+          filePath: query.filePath ?? null,
+          staged: query.staged,
+          kind: 'tracked',
+          text: '',
+          truncated: false,
+          binary: false,
+          bytes: 0,
+        },
+      }
     },
     async status() {
       return options.status ?? { ok: true, value: { repositoryId: repository.id, vcsType, clean: true, entries: [], conflicts: [] } }

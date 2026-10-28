@@ -502,6 +502,9 @@ test('the write dialog mounts only with dialog state and shows argv plus commit 
       message: 'fix: keep me',
       remote: 'origin',
       branch: 'main',
+      checks: null,
+      checksLoading: false,
+      acknowledged: false,
     },
   }))
   assert.ok(html.includes('role="dialog"'))
@@ -531,9 +534,12 @@ test('the write dialog mounts only with dialog state and shows argv plus commit 
       message: '',
       remote: 'origin',
       branch: 'main',
+      checks: null,
+      checksLoading: false,
+      acknowledged: false,
     },
   }))
-  assert.ok(blocked.includes('nothing is staged'))
+  assert.ok(blocked.includes(t('blocked.nothingStaged')))
   assert.ok(blocked.includes(t('op.repreview')))
   assert.ok(!blocked.includes(t('op.confirm')))
 })

@@ -159,8 +159,10 @@ DSH 桌面端为 Chromium ≥ 110，容器查询可用（真实页面截图验�
   路径为**文档相对路径**（页面 `<base href="./">`），不能以 `/` 开头。
 - 统一信封：`{"ok":true,"value":...}` / `{"ok":false,"error":{"code","message","detail?","retryable?"}}`。
 - 传输层加固：仅 loopback、仅 POST、仅 `application/json`、`Origin` 同源校验、请求体 256 KiB 上限。
-- 实测：`POST /vcs/diagnostics` 等 13 条路由全部返回预期信封；非 JSON content-type 返回 415；
-  未知路由 404；跨源被拒（同源校验）。
+- 实测：`POST /vcs/diagnostics` 等路由全部返回预期信封；非 JSON content-type 返回 415；
+  未知路由 404；跨源被拒（同源校验）。v1.1 新增 4 条只读路由
+  （`worktree/diff`、`checks`、`stats/hotspots`、`session/changes`）已由 `npm run verify:host`
+  在构建产物上以真实 git 验证（14/14）。
 
 ## 4.2 PR / MR 路由与运行环境（实测）
 

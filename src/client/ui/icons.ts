@@ -252,3 +252,14 @@ export const IconCollapseAll = icon('collapse-all', [
   h('path', { key: 'a', d: 'M4.6 6.6 8 3.4l3.4 3.2' }),
   h('path', { key: 'b', d: 'M4.6 12.2 8 9l3.4 3.2' }),
 ])
+
+/** Pending-changes tab icon (a checklist). */
+export const IconChecklist = icon('checklist', [
+  h('path', { key: 'a', d: 'M5.4 4.2h8.2M5.4 8h8.2M5.4 11.8h8.2' }),
+  h('path', { key: 'b', d: 'M2.2 4.1l.7.8 1.4-1.6' }),
+])
+
+/** Hotspot-ranking tab icon (a flame). */
+export const IconFlame = icon('flame', [
+  h('path', { key: 'a', d: 'M8 2.2c2.2 2.4 3.9 3.8 3.9 6.4A3.9 3.9 0 0 1 8 12.5a3.9 3.9 0 0 1-3.9-3.9c0-1.4.6-2.4 1.6-3.5.4.9 1 1.4 1.6 1.5-.3-1.5 0-3 .7-4.4Z' }),
+])
