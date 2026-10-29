@@ -494,17 +494,19 @@ Host 立即从匿名切到 authenticated，复现出第二个错误；确认后�
   限流/凭证失效/畸形响应不重试。
 - 降级成功后在 `warnings` 追加
   `team review requests were omitted: the token lacks the read:org scope`，列表/详情/历史都会带出；
-  service 会因 warnings 标 `partial: true`，UI 不会把它当完整数据。
-- `src/tests/pr.test.ts` 新增 3 项：列表 scope 降级重试（断言第二次查询不含 `on Team`、只重试一次）、
-  详情 scope 降级重试、限流不触发降级。
+  service 会因 warnings 标 `partial: true`，UI 不会把它当完整数据。open 与 merged/closed 是两次读、
+  各自降级一次，service 现在对 warnings 去重，同一句只出现一次。
+- `src/tests/pr.test.ts` 新增 4 项：列表 scope 降级重试（断言第二次查询不含 `on Team`、只重试一次）、
+  详情 scope 降级重试、限流不触发降级、service 层 warnings 去重；`client.v11.test.ts` 新增 1 项
+  客户端 partial banner 去重（`uniqueWarningText`）。
 
 ### 16.3 实际执行的命令与结果
 
 | 命令 | 结果 |
 | --- | --- |
 | `npx tsc -p tsconfig.json --noEmit` | **exit 0**，0 诊断 |
-| `npm test` | **exit 0**，`# tests 486 / pass 486 / fail 0`（pr 套件 44/44，含新增 3 项） |
-| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.5: lib/index.js, lib/client.js` |
+| `npm test` | **exit 0**，`# tests 488 / pass 488 / fail 0`（pr 套件 45/45；client.v11 新增 banner 去重） |
+| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.6: lib/index.js, lib/client.js` |
 | `node scripts/verify-host.mjs` | **21/21 PASS** |
 | `node scripts/verify-live.mjs http://127.0.0.1:14392` | **28/28 PASS**（运行中的 Host 仍是 0.1.4 进程） |
 | 手工 GitHub GraphQL（用用户 token、reduced 查询） | 私有仓库 200；已合并/关闭 PR 5 条、字段（review/checks/changedFiles/mergeCommit）均可读 |

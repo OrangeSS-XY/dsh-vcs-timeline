@@ -79,11 +79,11 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
   退化为静态，骨架与状态栏都不含文字。
 - **纯前端改动，无需重启 DSH Host**：新增的刷新/缓存都在浏览器半；重新构建后 `F5` 即可生效。
 
-> 验收口径：`npm run check`（typecheck + 486 项测试 + 构建）与 `npm run verify:host`
+> 验收口径：`npm run check`（typecheck + 488 项测试 + 构建）与 `npm run verify:host`
 >（把构建产物 `lib/index.js` 挂到假 Host 上，用真实 git 跑通全部路由，21/21）通过。
 > 运行中的桌面端如需加载新的 Host 代码仍需重启一次（见「安装」末段）；v1.5 不涉及 Host 代码。
 
-### v1.5.2 PR Token 兼容性（0.1.5）
+### v1.5.2 PR Token 兼容性（0.1.6）
 
 - **根因**：GitHub 的 `Team.name` 字段要求 token 具备 `read:org`（或 `read:discussion`）scope；
   此前列表/详情/历史三处 GraphQL 查询**无条件**请求团队 reviewer 名字，导致只有 `repo` scope 的
@@ -94,8 +94,11 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
   the read:org scope」（UI 显示为部分数据），不把缺字段伪装成完整数据。限流、失效凭证、畸形响应
   等其它错误**不会**被降级重试掩盖。
 - **Token 要求**：私有仓库 PR 读取只需要 `repo` scope；想额外看到团队评审请求再加 `read:org`。
-- 新增 3 个测试：列表 scope 降级重试、详情 scope 降级重试、限流不触发降级。
-- Host 侧改动：重启 DSH 后加载新的 `lib/index.js`；客户端仍是 F5。
+- **UI 去重**：open 列表与 merged/closed 历史是两次读，都会各自降级一次；Host service 与客户端
+  PR 视图现在都对 warnings 去重，同一个「team review requests were omitted」只出现一次，不再刷两遍。
+- 新增 5 个测试：列表 scope 降级重试、详情 scope 降级重试、限流不触发降级、service 层 warnings 去重、
+  客户端 partial banner 去重。
+- Host 侧改动：重启 DSH 后加载新的 `lib/index.js`；客户端仍是 F5（客户端去重只改前端，F5 即生效）。
 
 ### v1.5.1 加载骨架细化（0.1.4）
 

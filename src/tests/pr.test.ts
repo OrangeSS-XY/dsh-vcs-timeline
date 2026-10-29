@@ -693,6 +693,46 @@ test('github does not retry a rate-limited GraphQL query as a scope problem', as
   assert.equal(fetchImpl.calls.length, 1, 'a rate limit is a real failure, not a scope fallback')
 })
 
+test('the service reports one scope warning even when open and closed reads both degrade', async () => {
+  const fetchImpl = createFakeFetch((call) => {
+    const query = graphqlQueryOf(call)
+    if (query.includes('on Team')) {
+      return {
+        body: {
+          errors: [{
+            type: 'INSUFFICIENT_SCOPES',
+            message: "The 'name' field requires one of the following scopes: ['read:org']",
+          }],
+        },
+      }
+    }
+    if (query.includes('states: [MERGED, CLOSED]')) {
+      return {
+        body: graphqlListPayload([
+          graphqlNode({
+            number: 7,
+            state: 'MERGED',
+            mergedAt: '2026-10-28T00:00:00Z',
+            closedAt: '2026-10-28T00:00:00Z',
+          }),
+        ]),
+      }
+    }
+    return { body: graphqlListPayload([]) }
+  })
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-repo-scope' },
+    now: () => new Date('2026-10-29T12:00:00Z'),
+  })
+  const list = await service.list({ repositoryId: REPO_ID })
+  assert.equal(list.authenticated, true)
+  assert.equal(list.pullRequests.length, 1)
+  assert.equal(list.partial, true)
+  assert.equal(list.warnings?.length, 1, 'the same warning is not repeated per provider read')
+  assert.ok(list.warnings?.[0]?.includes('read:org'))
+})
+
 test('github lists open-only, draft-first REST payloads anonymously without review facts', async () => {
   const fetchImpl = createFakeFetch(() => ({
     body: [
