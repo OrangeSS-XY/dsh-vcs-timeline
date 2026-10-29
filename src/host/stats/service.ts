@@ -3,9 +3,11 @@
  *
  * Answers "which files change most" over a bounded commit window with two
  * `git log` reads of the same window: one numstat stream for the per-file line
- * counts and one metadata stream for author, author date and parents. The
- * window asks git for one commit more than it reports; that extra record is how
- * `truncated` stays exact instead of guessed.
+ * counts and one metadata stream for author, author date, parents and subject.
+ * The same window also yields the contributor ranking and the recent-activity
+ * stream, so no extra history read is spent on them. The window asks git for
+ * one commit more than it reports; that extra record is how `truncated` stays
+ * exact instead of guessed.
  *
  * The read path is honest by construction: SVN line statistics are not
  * available through this Host path and say so, an empty repository answers with
@@ -69,6 +71,8 @@ function copyReport(report: HotspotReport, cached: boolean): HotspotReport {
   return {
     ...report,
     files: report.files.map(file => ({ ...file, authors: [...file.authors] })),
+    authors: report.authors.map(author => ({ ...author })),
+    recent: report.recent.map(commit => ({ ...commit, files: [...commit.files] })),
     daily: report.daily.map(day => ({ ...day })),
     scope: { ...report.scope },
     ...(report.warnings === undefined ? {} : { warnings: [...report.warnings] }),
@@ -111,6 +115,8 @@ export function createStatsService(deps: StatsServiceDeps): StatsService {
     vcsType: 'git',
     available: true,
     files: [],
+    authors: [],
+    recent: [],
     daily: [],
     scannedCommits: 0,
     truncated: false,
@@ -154,6 +160,8 @@ export function createStatsService(deps: StatsServiceDeps): StatsService {
           available: false,
           unsupportedReason: SVN_UNSUPPORTED_REASON,
           files: [],
+          authors: [],
+          recent: [],
           daily: [],
           scannedCommits: 0,
           truncated: false,
@@ -203,6 +211,8 @@ export function createStatsService(deps: StatsServiceDeps): StatsService {
         vcsType: 'git',
         available: true,
         files: aggregate.files,
+        authors: aggregate.authors,
+        recent: aggregate.recent,
         daily: aggregate.daily,
         scannedCommits: aggregate.scannedCommits,
         truncated: aggregate.truncated,

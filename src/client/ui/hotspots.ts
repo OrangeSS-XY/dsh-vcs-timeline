@@ -1,44 +1,78 @@
 /**
- * Hotspot view: a chart first, files second.
+ * Hotspot view — a multi-dimensional Git dashboard.
  *
- * Two visualizations over the same bounded scan:
- *  - a calendar heatmap of commits per day (`HotspotReport.daily`), so "when was
- *    this repository hot" is read at a glance, and
- *  - a bar chart of the busiest files by the selected measured metric, so the
- *    ranking is visual instead of a table.
+ * One scanned commit window feeds three different bodies behind one segmented
+ * control, and no tab ever borrows another tab's shape:
  *
- * Every number comes from the Host's report; the coverage badges state the
- * scanned window, truncation and cache hit, and a missing line count renders as
- * "not provided" instead of a fabricated zero. Sorting is a client-side
- * re-order of the rows the Host returned.
+ *  - `files`    churn ranking of the most-changed paths (blue micro bar),
+ *  - `authors`  contributor ranking of the same window (purple micro bar,
+ *               dark initial avatar, role derived from commit share),
+ *  - `activity` a GitHub-style timeline feed of the newest commits: who, what,
+ *               which files, and when. No bars there by design.
+ *
+ * Bar lengths are `Math.sqrt(value) / Math.sqrt(max)`, which keeps a 10-line
+ * file visible next to a 17 000-line one instead of collapsing it to zero.
+ * Every number comes from the Host report; a file without line statistics says
+ * "not provided" rather than printing a fabricated zero.
  * @module dsh-vcs-timeline/client/ui/hotspots
  */
 
 import * as React from 'react'
-import type { FileHotspot, HotspotReport } from '../../shared/contracts.ts'
+import type {
+  FileHotspot,
+  HotspotAuthor,
+  HotspotCommit,
+  HotspotReport,
+} from '../../shared/contracts.ts'
 import * as F from '../format.ts'
-import type { HotspotSort, PanelDeps, PanelHandlers, PanelState } from '../types.ts'
+import type {
+  HotspotDimension,
+  HotspotSort,
+  PanelDeps,
+  PanelHandlers,
+  PanelState,
+} from '../types.ts'
 import { IconClock, IconError, IconFlame, IconRefresh, IconWarning } from './icons.ts'
-import {
-  Banner,
-  DotSep,
-  EmptyState,
-  IconButton,
-  SkeletonRows,
-  errorText,
-} from './primitives.ts'
+import { Banner, EmptyState, IconButton, SkeletonRows, errorText } from './primitives.ts'
 import { missingTool, selectedRepository } from './shared.ts'
 
 const h = React.createElement
 
-/** How many bars the file chart shows. */
-const MAX_BARS = 12
-/** How many calendar weeks the activity chart shows. */
-const MAX_HEATMAP_WEEKS = 26
-/** Intensity buckets of the calendar heatmap. */
-const HEAT_LEVELS = 4
+/** File rows the churn ranking shows before it stops. */
+const MAX_FILE_ROWS = 18
+/** Contributor rows the ranking shows. */
+const MAX_AUTHOR_ROWS = 12
+/** Activity entries the feed shows. */
+const MAX_ACTIVITY_ROWS = 18
+/** File chips one activity entry shows before it folds the rest into +N. */
+const MAX_ACTIVITY_FILES = 3
 
-/** Sort a copy of the Host rows by the selected explainable dimension. */
+/** The three dashboard bodies, in display order. */
+const DIMENSIONS: HotspotDimension[] = ['files', 'authors', 'activity']
+
+/* --------------------------------------------------------------- helpers */
+
+/**
+ * Compressed share `sqrt(value) / sqrt(max)` clamped to 0..1.
+ *
+ * Long-tail churn is the norm in a real repository, so a linear bar would make
+ * every row but the first invisible. The square root keeps ordering intact
+ * while giving small values a readable length.
+ */
+export function sqrtRatio(value: number | null | undefined, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0
+  if (!(max > 0) || !Number.isFinite(max)) return 0
+  return Math.min(1, Math.sqrt(value) / Math.sqrt(max))
+}
+
+/** CSS width of one micro bar; 0 becomes 0%, any positive value keeps a nib. */
+export function barWidth(value: number | null | undefined, max: number): string {
+  const ratio = sqrtRatio(value, max)
+  if (ratio <= 0) return '0%'
+  return `${Math.max(2, Math.round(ratio * 1000) / 10)}%`
+}
+
+/** Sort a copy of the Host rows by the selected explainable metric. */
 export function sortHotspots(files: readonly FileHotspot[], sort: HotspotSort): FileHotspot[] {
   const rows = [...files]
   const numeric = (value: number | null | undefined): number => (typeof value === 'number' ? value : -1)
@@ -55,7 +89,7 @@ export function sortHotspots(files: readonly FileHotspot[], sort: HotspotSort): 
   return rows
 }
 
-/** The numeric value one bar length represents for the selected metric. */
+/** The numeric value one row's bar represents. */
 export function metricValue(file: FileHotspot, sort: HotspotSort): number | null {
   if (sort === 'commits') return file.commits
   if (sort === 'authors') return file.authorCount
@@ -67,153 +101,309 @@ export function metricValue(file: FileHotspot, sort: HotspotSort): number | null
   return file.churn
 }
 
-/** One UTC day plus its commit count. */
-export interface HeatDay {
-  date: string
-  commits: number
+/** Largest reported value of one list, so bars share a single scale. */
+function maxOf(values: readonly (number | null | undefined)[]): number {
+  let max = 0
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > max) max = value
+  }
+  return max
+}
+
+/** Grouped integer for the mono values; `—` for a value the Host never reported. */
+function countLabel(value: number | null | undefined, deps: PanelDeps): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return deps.t('hotspot.churn.unavailable')
+  try {
+    return new Intl.NumberFormat(deps.locale ?? 'zh').format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/** Relative "when" label for the activity feed, with a compact fallback. */
+function whenLabel(iso: string | undefined, deps: PanelDeps, now: number): string {
+  const { t } = deps
+  if (iso === undefined || iso === '') return t('common.unknown')
+  const relative = F.relativeTime(iso, now)
+  if (relative === null) return F.formatCompactTime(iso, deps.locale)
+  switch (relative.unit) {
+    case 'justNow': return t('rel.justNow')
+    case 'minutes': return t('rel.minutesAgo', { count: relative.count })
+    case 'hours': return t('rel.hoursAgo', { count: relative.count })
+    default: return t('rel.daysAgo', { count: relative.count })
+  }
 }
 
 /**
- * Build the day list the calendar heatmap renders: `MAX_HEATMAP_WEEKS` weeks
- * ending today. Days outside the scanned window have no bucket (rendered
- * faint), never a fake zero that would claim the day was measured.
+ * Role of one contributor, derived from their share of window commits.
+ *
+ * The Host reports commits and churn only; a stored role would be a second,
+ * drift-prone source of truth. Thresholds are presentation, and the tooltip
+ * says so.
  */
-export function heatmapDays(report: HotspotReport, now: Date = new Date()): HeatDay[] {
-  const counts = new Map<string, number>()
-  // An older Host build may not carry `daily` yet; the chart then renders its
-  // honest empty state instead of crashing the panel.
-  for (const day of Array.isArray(report.daily) ? report.daily : []) counts.set(day.date, day.commits)
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  // Anchor the chart on the newest bucket the Host actually reported, unless
-  // that is in the future (clock skew); a 26-week window ending today would
-  // render an old-but-real window as empty.
-  const latest = [...counts.keys()].sort((a, b) => b.localeCompare(a))[0]
-  const anchor = latest !== undefined && latest < today.toISOString().slice(0, 10)
-    ? new Date(`${latest}T00:00:00.000Z`)
-    : today
-  const endWeekday = (anchor.getUTCDay() + 6) % 7
-  const endOfWeek = new Date(anchor.getTime() + (6 - endWeekday) * 86_400_000)
-  const start = new Date(endOfWeek.getTime() - (MAX_HEATMAP_WEEKS * 7 - 1) * 86_400_000)
-  const days: HeatDay[] = []
-  for (let cursor = start.getTime(); cursor <= endOfWeek.getTime(); cursor += 86_400_000) {
-    days.push({ date: new Date(cursor).toISOString().slice(0, 10), commits: counts.get(new Date(cursor).toISOString().slice(0, 10)) ?? 0 })
-  }
-  return days
+export function authorRoleKey(author: HotspotAuthor, totalCommits: number): string {
+  if (!(totalCommits > 0)) return 'hotspot.author.role.guest'
+  const share = author.commits / totalCommits
+  if (share >= 0.4) return 'hotspot.author.role.lead'
+  if (share >= 0.2) return 'hotspot.author.role.core'
+  if (share >= 0.08) return 'hotspot.author.role.active'
+  return 'hotspot.author.role.guest'
 }
 
-/** One intensity bucket (0 = no commit in this window bucket). */
-function heatLevel(commits: number, max: number): number {
-  if (commits <= 0) return 0
-  if (max <= 1) return 1
-  return Math.min(HEAT_LEVELS, Math.max(1, Math.ceil((commits / max) * HEAT_LEVELS)))
+/** Dark circular initial avatar with a stable hue per name. */
+function Avatar(props: { name: string; size?: 'sm' | 'md' }): React.ReactElement {
+  const hue = F.authorHue(props.name)
+  return h('span', {
+    className: `dvt-hs-avatar${props.size === 'sm' ? ' dvt-hs-avatar-sm' : ''}`,
+    'aria-hidden': 'true',
+    style: { '--dvt-hs-hue': String(hue) } as unknown as React.CSSProperties,
+  }, F.authorInitials(props.name))
 }
 
-/** The calendar heatmap (weeks as columns, Monday..Sunday as rows). */
-function ActivityChart(props: { report: HotspotReport; deps: PanelDeps }): React.ReactElement {
-  const { report, deps } = props
-  const { t } = deps
-  const days = heatmapDays(report)
-  const max = days.reduce((best, day) => Math.max(best, day.commits), 0)
-  const weekdayLabels = [
-    t('hotspot.chart.weekday.mon'),
-    t('hotspot.chart.weekday.tue'),
-    t('hotspot.chart.weekday.wed'),
-    t('hotspot.chart.weekday.thu'),
-    t('hotspot.chart.weekday.fri'),
-    t('hotspot.chart.weekday.sat'),
-    t('hotspot.chart.weekday.sun'),
-  ]
-  const active = days.filter((day) => day.commits > 0).length
-  return h('div', { className: 'dvt-card dvt-hotspot-chart' },
-    h('div', { className: 'dvt-card-head' },
-      h('span', { className: 'dvt-card-title' }, t('hotspot.chart.title')),
-      h('span', { className: 'dvt-faint dvt-hotspot-chart-meta' }, t('hotspot.chart.active', { count: active })),
-    ),
-    h('div', { className: 'dvt-card-hint' }, t('hotspot.chart.subtitle')),
-    max === 0
-      ? h('div', { className: 'dvt-card-hint' }, t('hotspot.chart.empty'))
-      : h('div', { className: 'dvt-heatmap' },
-        h('div', { className: 'dvt-heatmap-weekdays', 'aria-hidden': 'true' },
-          weekdayLabels.map((label) => h('span', { key: label, className: 'dvt-heatmap-weekday' }, label)),
-        ),
-        h('div', {
-          className: 'dvt-heatmap-grid',
-          role: 'img',
-          'aria-label': t('hotspot.chart.label', { count: report.scannedCommits }),
-        },
-        days.map((day) => h('span', {
-          key: day.date,
-          className: `dvt-heatmap-cell dvt-heat-${heatLevel(day.commits, max)}`,
-          title: t('hotspot.chart.cell', { date: day.date, count: day.commits }),
-          'data-date': day.date,
-          'data-commits': day.commits,
-        })),
-        ),
-      ),
-    h('div', { className: 'dvt-heatmap-legend' },
-      h('span', { className: 'dvt-faint' }, t('hotspot.chart.legend')),
-      Array.from({ length: HEAT_LEVELS + 1 }, (_, level) => h('span', {
-        key: `legend-${level}`,
-        className: `dvt-heatmap-cell dvt-heat-${level}`,
-        'aria-hidden': 'true',
-      })),
+/** One micro bar: a track plus the sqrt-compressed fill (none when the value is unknown). */
+function MicroBar(props: { value: number | null | undefined; max: number; tone: 'blue' | 'purple' }): React.ReactElement {
+  return h('span', { className: 'dvt-hs-meter', 'aria-hidden': 'true' },
+    h('span', { className: 'dvt-hs-track' },
+      sqrtRatio(props.value, props.max) <= 0
+        ? null
+        : h('span', {
+          className: `dvt-hs-fill dvt-hs-fill-${props.tone}`,
+          style: { width: barWidth(props.value, props.max) },
+        }),
     ),
   )
 }
 
-/** The file bar chart (visual ranking; labels are real paths). */
-function FileBars(props: { report: HotspotReport; sort: HotspotSort; deps: PanelDeps; handlers: PanelHandlers }): React.ReactElement {
-  const { report, sort, deps, handlers } = props
+/* --------------------------------------------------------------- controls */
+
+/** The segmented control: one tab per dimension, with the row counts. */
+function DimensionSwitch(props: {
+  active: HotspotDimension
+  counts: Record<HotspotDimension, number | null>
+  deps: PanelDeps
+  handlers: PanelHandlers
+}): React.ReactElement {
+  const { deps, handlers, active, counts } = props
   const { t } = deps
-  const rows = sortHotspots(report.files, sort).slice(0, MAX_BARS)
-  const valueOf = (file: FileHotspot): number => {
-    const value = metricValue(file, sort)
-    return typeof value === 'number' ? value : 0
+  return h('div', {
+    className: 'dvt-hs-seg',
+    role: 'tablist',
+    'aria-label': t('hotspot.dim.label'),
+  },
+  DIMENSIONS.map((dimension) => {
+    const count = counts[dimension]
+    return h('button', {
+      key: dimension,
+      type: 'button',
+      role: 'tab',
+      className: 'dvt-hs-seg-btn',
+      'aria-selected': active === dimension,
+      'data-dimension': dimension,
+      onClick: () => handlers.onSetHotspotDimension(dimension),
+    },
+    h('span', null, t(`hotspot.dim.${dimension}`)),
+    count === null
+      ? null
+      : h('span', { className: 'dvt-hs-seg-count' }, String(count)),
+    )
+  }),
+  )
+}
+
+/* ----------------------------------------------------------------- files */
+
+/** Churn ranking: mono path, blue sqrt bar, mono value. */
+function FileRanking(props: {
+  report: HotspotReport
+  deps: PanelDeps
+  handlers: PanelHandlers
+}): React.ReactElement {
+  const { report, deps, handlers } = props
+  const { t } = deps
+  const rows = sortHotspots(report.files, 'churn').slice(0, MAX_FILE_ROWS)
+  if (rows.length === 0) {
+    return h(EmptyState, { icon: IconFlame, title: t('hotspot.empty.title'), hint: t('hotspot.empty.hint') })
   }
-  const max = rows.reduce((best, file) => Math.max(best, valueOf(file)), 0)
-  return h('div', { className: 'dvt-card dvt-hotspot-bars' },
-    h('div', { className: 'dvt-card-head' },
-      h('span', { className: 'dvt-card-title' }, t('hotspot.bars.title')),
-      h('span', { className: 'dvt-faint dvt-hotspot-chart-meta' }, t(`hotspot.metric.${sort}`)),
-    ),
-    h('div', { className: 'dvt-card-hint' }, t('hotspot.bars.subtitle')),
-    h('ul', { className: 'dvt-bars', role: 'list' },
+  const max = maxOf(rows.map((file) => file.churn))
+  return h('div', { className: 'dvt-hs-body', role: 'tabpanel', 'aria-label': t('hotspot.dim.files') },
+    h('p', { className: 'dvt-hs-hint' }, t('hotspot.files.hint')),
+    h('ul', { className: 'dvt-hs-list', role: 'list' },
       rows.map((file) => {
-        const value = metricValue(file, sort)
-        const width = max <= 0 ? 0 : Math.max(2, Math.round((valueOf(file) / max) * 100))
-        const { dir, name } = F.splitRepoPath(file.path)
-        const display = typeof value === 'number'
-          ? sort === 'recent'
-            ? F.formatCompactTime(file.lastChangedAt, deps.locale)
-            : String(value)
-          : t('hotspot.bars.unknown')
-        return h('li', { key: file.path, className: 'dvt-bar-item' },
+        const split = F.splitRepoPath(file.path)
+        const churn = file.churn
+        return h('li', { key: file.path, className: 'dvt-hs-item' },
           h('button', {
             type: 'button',
-            className: 'dvt-bar-row',
+            className: 'dvt-hs-row dvt-hs-row-file',
             title: t('hotspot.open', { path: file.path }),
             'aria-label': t('aria.hotspotRow', { path: file.path }),
             onClick: () => handlers.onOpenHotspotFile(file.path),
           },
-          h('span', { className: 'dvt-bar-track', 'aria-hidden': 'true' },
-            h('span', { className: `dvt-bar-fill dvt-bar-${sort}`, style: { width: `${width}%` } }),
+          h('span', { className: 'dvt-hs-path' },
+            h('span', { className: 'dvt-hs-pathline dvt-mono' },
+              // `splitRepoPath` keeps the trailing slash on the directory part;
+              // appending another one would render "src/client//file.ts".
+              split.dir === '' ? null : h('span', { className: 'dvt-hs-dir' }, split.dir),
+              h('span', { className: 'dvt-hs-name' }, split.name),
+            ),
+            h('span', { className: 'dvt-hs-sub' }, t('hotspot.file.meta', {
+              commits: file.commits,
+              authors: file.authorCount,
+            })),
           ),
-          h('span', { className: 'dvt-bar-label dvt-clip' },
-            dir === '' ? null : h('span', { className: 'dvt-file-dir' }, dir),
-            h('span', { className: 'dvt-bar-name' }, name),
-          ),
-          h('span', { className: 'dvt-bar-value dvt-mono' }, display),
+          h(MicroBar, {
+            value: typeof churn === 'number' ? churn : 0,
+            max,
+            tone: 'blue',
+          }),
+          h('span', {
+            className: `dvt-hs-value dvt-mono${typeof churn === 'number' ? '' : ' dvt-hs-value-muted'}`,
+            title: typeof churn === 'number' ? t('hotspot.file.churnTitle', { count: churn }) : undefined,
+          }, countLabel(churn, deps)),
           ),
         )
       }),
     ),
-    report.files.length > MAX_BARS
-      ? h('div', { className: 'dvt-card-hint' }, t('hotspot.bars.more', { count: MAX_BARS }))
+    report.files.length > MAX_FILE_ROWS
+      ? h('p', { className: 'dvt-hs-hint' }, t('hotspot.files.more', { count: MAX_FILE_ROWS }))
       : null,
   )
 }
 
-/** The hotspot ranking body. */
+/* --------------------------------------------------------------- authors */
+
+/** Contributor ranking: avatar, role, purple sqrt bar, mono churn. */
+function AuthorRanking(props: { report: HotspotReport; deps: PanelDeps }): React.ReactElement {
+  const { report, deps } = props
+  const { t } = deps
+  const rows = report.authors.slice(0, MAX_AUTHOR_ROWS)
+  if (rows.length === 0) {
+    return h(EmptyState, {
+      icon: IconFlame,
+      title: t('hotspot.authors.empty'),
+      hint: t('hotspot.authors.emptyHint'),
+    })
+  }
+  const totalCommits = report.authors.reduce((sum, author) => sum + author.commits, 0)
+  const max = maxOf(rows.map((author) => author.churn))
+  return h('div', { className: 'dvt-hs-body', role: 'tabpanel', 'aria-label': t('hotspot.dim.authors') },
+    h('p', { className: 'dvt-hs-hint' }, t('hotspot.authors.hint')),
+    h('ul', { className: 'dvt-hs-list', role: 'list' },
+      rows.map((author) => {
+        const churn = author.churn
+        return h('li', { key: author.name, className: 'dvt-hs-item' },
+          h('div', {
+            className: 'dvt-hs-row dvt-hs-row-author',
+            title: t('hotspot.author.churnTitle', {
+              count: typeof churn === 'number' ? churn : 0,
+            }),
+          },
+          h(Avatar, { name: author.name }),
+          h('span', { className: 'dvt-hs-person' },
+            h('span', { className: 'dvt-hs-personline' },
+              h('span', { className: 'dvt-hs-name' }, author.name),
+              h('span', {
+                className: 'dvt-hs-role',
+                title: t('hotspot.author.roleTitle'),
+              }, t(authorRoleKey(author, totalCommits))),
+            ),
+            h('span', { className: 'dvt-hs-sub' }, t('hotspot.author.meta', {
+              commits: author.commits,
+              files: author.files,
+            })),
+          ),
+          h(MicroBar, {
+            value: typeof churn === 'number' ? churn : 0,
+            max,
+            tone: 'purple',
+          }),
+          h('span', {
+            className: `dvt-hs-value dvt-mono${typeof churn === 'number' ? '' : ' dvt-hs-value-muted'}`,
+          }, countLabel(churn, deps)),
+          ),
+        )
+      }),
+    ),
+    report.authors.length > MAX_AUTHOR_ROWS
+      ? h('p', { className: 'dvt-hs-hint' }, t('hotspot.authors.more', { count: MAX_AUTHOR_ROWS }))
+      : null,
+  )
+}
+
+/* -------------------------------------------------------------- activity */
+
+/** One activity entry's action sentence. */
+function actionLabel(commit: HotspotCommit, branch: string, t: PanelDeps['t']): string {
+  const key = commit.merge ? 'hotspot.activity.merge' : 'hotspot.activity.commit'
+  return t(key, { branch })
+}
+
+/** GitHub-style timeline feed: no bars, just events. */
+function ActivityFeed(props: { report: HotspotReport; deps: PanelDeps }): React.ReactElement {
+  const { report, deps } = props
+  const { t } = deps
+  const now = deps.now?.() ?? Date.now()
+  const rows = report.recent.slice(0, MAX_ACTIVITY_ROWS)
+  if (rows.length === 0) {
+    return h(EmptyState, {
+      icon: IconClock,
+      title: t('hotspot.activity.empty'),
+      hint: t('hotspot.activity.emptyHint'),
+    })
+  }
+  const branch = report.scope.branch === null || report.scope.branch === ''
+    ? t('hotspot.activity.branchUnknown')
+    : report.scope.branch
+  return h('div', { className: 'dvt-hs-body', role: 'tabpanel', 'aria-label': t('hotspot.dim.activity') },
+    h('p', { className: 'dvt-hs-hint' }, t('hotspot.activity.hint')),
+    h('ol', { className: 'dvt-hs-feed', role: 'list' },
+      rows.map((commit) => {
+        const extraFiles = commit.fileCount - commit.files.length
+        return h('li', { key: commit.hash, className: 'dvt-hs-event' },
+          h('span', { className: 'dvt-hs-rail', 'aria-hidden': 'true' }),
+          h(Avatar, { name: commit.author === '' ? t('common.unknown') : commit.author, size: 'sm' }),
+          h('div', { className: 'dvt-hs-event-body' },
+            h('div', { className: 'dvt-hs-action' },
+              h('strong', null, commit.author === '' ? t('common.unknown') : commit.author),
+              h('span', null, actionLabel(commit, branch, t)),
+              h('span', { className: 'dvt-hs-when' }, whenLabel(commit.timestamp, deps, now)),
+            ),
+            commit.subject === ''
+              ? null
+              : h('div', { className: 'dvt-hs-subject' }, commit.subject),
+            h('div', { className: 'dvt-hs-files' },
+              commit.files.slice(0, MAX_ACTIVITY_FILES).map((path) => h('span', {
+                key: `${commit.hash}:${path}`,
+                className: 'dvt-hs-file dvt-mono',
+                title: path,
+              }, path)),
+              extraFiles > 0
+                ? h('span', { className: 'dvt-hs-filemore' }, t('hotspot.activity.moreFiles', { count: extraFiles }))
+                : null,
+            ),
+            h('div', { className: 'dvt-hs-eventmeta' },
+              commit.timestamp === undefined
+                ? null
+                : h('span', { title: F.formatTime(commit.timestamp, deps.locale) }, F.formatCompactTime(commit.timestamp, deps.locale)),
+              h('span', { className: 'dvt-hs-hash dvt-mono' }, F.shortHash(commit.hash, 7)),
+              commit.additions === undefined && commit.deletions === undefined
+                ? null
+                : h('span', { className: 'dvt-hs-lines dvt-mono' }, t('hotspot.activity.lines', {
+                  add: commit.additions ?? 0,
+                  del: commit.deletions ?? 0,
+                })),
+              commit.merge ? h('span', { className: 'dvt-hs-merge' }, t('hotspot.activity.mergeTag')) : null,
+            ),
+          ),
+        )
+      }),
+    ),
+  )
+}
+
+/* ------------------------------------------------------------------- page */
+
+/** The hotspot dashboard body. */
 export function renderHotspots(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
   const { t } = deps
   const repository = selectedRepository(state)
@@ -236,38 +426,23 @@ export function renderHotspots(state: PanelState, deps: PanelDeps, handlers: Pan
   }
   const hotspots = state.hotspots
   const report: HotspotReport | null = hotspots.data
-  const sorts: HotspotSort[] = ['commits', 'churn', 'authors', 'recent']
-  const metrics = h('div', { className: 'dvt-seg', role: 'group', 'aria-label': t('hotspot.metric.label') },
-    sorts.map((sort) => h('button', {
-      key: sort,
-      type: 'button',
-      className: 'dvt-seg-btn',
-      'aria-pressed': hotspots.sort === sort,
-      onClick: () => handlers.onSetHotspotSort(sort),
-    }, t(`hotspot.metric.${sort}`))),
-  )
-  const head = h('div', { className: 'dvt-hotspot-head' },
-    h('div', { className: 'dvt-hotspot-title-col' },
-      h('div', { className: 'dvt-hotspot-title' }, t('hotspot.title')),
-      h('div', { className: 'dvt-hotspot-subtitle' }, t('hotspot.subtitle')),
-    ),
-    h('div', { className: 'dvt-hotspot-controls' },
-      metrics,
-      h(IconButton, { label: t('hotspot.refresh'), icon: IconRefresh, onClick: handlers.onRefreshHotspots }),
-    ),
-  )
+  const dimension = hotspots.dimension
+  const counts: Record<HotspotDimension, number | null> = {
+    files: report === null ? null : report.files.length,
+    authors: report === null ? null : report.authors.length,
+    activity: report === null ? null : report.recent.length,
+  }
   const coverage = report === null
     ? null
-    : h('div', { className: 'dvt-hotspot-coverage' },
-      h(IconClock, { size: 10 }),
-      h('span', null, t('hotspot.coverage', { count: report.scannedCommits })),
-      report.truncated ? h(DotSep) : null,
-      report.truncated ? h('span', { className: 'dvt-danger' }, t('hotspot.truncated')) : null,
-      report.cached ? h(DotSep) : null,
-      report.cached ? h('span', { className: 'dvt-faint' }, t('hotspot.cached')) : null,
-      h(DotSep),
-      h('span', { className: 'dvt-faint' }, t('hotspot.window', { count: report.scope.windowCommits })),
-    )
+    : [
+      t('hotspot.coverage', { count: report.scannedCommits }),
+      t('hotspot.window', { count: report.scope.windowCommits }),
+      ...(report.daily.some((day) => day.commits > 0)
+        ? [t('hotspot.activeDays', { count: report.daily.filter((day) => day.commits > 0).length })]
+        : []),
+      ...(report.truncated ? [t('hotspot.truncated')] : []),
+      ...(report.cached ? [t('hotspot.cached')] : []),
+    ].join(' · ')
   let body: React.ReactElement
   if (hotspots.loading && report === null) body = h(SkeletonRows, { rows: 8 })
   else if (hotspots.error !== null) {
@@ -286,23 +461,30 @@ export function renderHotspots(state: PanelState, deps: PanelDeps, handlers: Pan
       hint: t('hotspot.unavailable.hint'),
       actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshHotspots }, t('common.retry')),
     })
-  } else {
-    body = h('div', { className: 'dvt-hotspot-charts' },
-      h(ActivityChart, { report, deps }),
-      report.files.length === 0
-        ? h(EmptyState, { icon: IconFlame, title: t('hotspot.empty.title'), hint: t('hotspot.empty.hint') })
-        : h(FileBars, { report, sort: hotspots.sort, deps, handlers }),
-    )
-  }
-  return h('div', { className: 'dvt-col dvt-hotspots' },
-    head,
+  } else if (dimension === 'authors') body = h(AuthorRanking, { report, deps })
+  else if (dimension === 'activity') body = h(ActivityFeed, { report, deps })
+  else body = h(FileRanking, { report, deps, handlers })
+  return h('div', { className: 'dvt-hs', 'data-dimension': dimension },
+    h('div', { className: 'dvt-hs-head' },
+      h('div', { className: 'dvt-hs-title-col' },
+        h('div', { className: 'dvt-hs-title' }, t('hotspot.dashboard.title')),
+        h('div', { className: 'dvt-hs-subtitle' }, t('hotspot.dashboard.subtitle')),
+        coverage === null ? null : h('div', { className: 'dvt-hs-coverage', title: coverage },
+          h(IconClock, { size: 10 }),
+          h('span', { className: 'dvt-clip' }, coverage),
+        ),
+      ),
+      h('div', { className: 'dvt-hs-head-actions' },
+        h(IconButton, { label: t('hotspot.refresh'), icon: IconRefresh, onClick: handlers.onRefreshHotspots }),
+      ),
+    ),
+    h(DimensionSwitch, { active: dimension, counts, deps, handlers }),
     report !== null && report.warnings !== undefined && report.warnings.length > 0
       ? h(Banner, { kind: 'warn', text: t('hotspot.warning') })
       : null,
-    coverage,
     body,
     report !== null && report.available === true
-      ? h('div', { className: 'dvt-hotspot-foot' }, t('hotspot.foot', {
+      ? h('div', { className: 'dvt-hs-foot' }, t('hotspot.foot', {
         files: report.files.length,
         commits: report.scannedCommits,
         branch: report.scope.branch ?? t('common.unknown'),

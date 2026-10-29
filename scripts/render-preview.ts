@@ -23,6 +23,7 @@ import type {
   ChangeSet,
   Diagnostics,
   DiffResult,
+  HotspotReport,
   OperationAttempt,
   Repository,
   VcsEvent,
@@ -458,6 +459,125 @@ function stateWith(overrides: Partial<PanelState>): PanelState {
   }
 }
 
+/* ---------------------------------------------- hotspot dashboard fixture */
+
+/**
+ * One realistic hotspot report for the multi-dimensional dashboard: a 20-file
+ * churn ranking with a long tail (17 238 down to 40 plus one binary file with
+ * unreported churn), six contributors of very different commit share (one of
+ * them with `churn: null`), and ten recent commits including a merge, a commit
+ * whose `files` array is capped below `fileCount`, and a binary-only commit.
+ * `daily` is carried even though the dashboard currently renders only the three
+ * explicit dimensions; scope/truncated/cached drive the honesty badges.
+ */
+const hotspotReport: HotspotReport = {
+  repositoryId: repository.id,
+  vcsType: 'git',
+  available: true,
+  files: [
+    { path: 'src/client/components.ts', commits: 48, additions: 12_004, deletions: 5_234, churn: 17_238, authors: ['Lin Wei', 'Chen Yu', 'Zhao Min', 'Sun Qi', 'Wang Bo'], authorCount: 5, lastChangedAt: '2026-10-29T02:41:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/client/ui/hotspots.ts', commits: 31, additions: 9_860, deletions: 2_199, churn: 12_059, authors: ['Chen Yu', 'Lin Wei', 'Zhao Min', 'Sun Qi'], authorCount: 4, lastChangedAt: '2026-10-29T02:05:00.000Z', lastAuthor: 'Chen Yu' },
+    { path: 'src/client/styles.ts', commits: 29, additions: 7_010, deletions: 2_411, churn: 9_421, authors: ['Lin Wei', 'Zhao Min', 'Chen Yu', 'Wang Bo', 'Sun Qi'], authorCount: 5, lastChangedAt: '2026-10-28T17:40:00.000Z', lastAuthor: 'Zhao Min' },
+    { path: 'src/client/ui/swimlane.ts', commits: 22, additions: 6_390, deletions: 1_817, churn: 8_207, authors: ['Chen Yu', 'Lin Wei', 'Sun Qi'], authorCount: 3, lastChangedAt: '2026-10-27T09:12:00.000Z', lastAuthor: 'Chen Yu' },
+    { path: 'src/client/ui/history.ts', commits: 26, additions: 5_210, deletions: 1_680, churn: 6_890, authors: ['Zhao Min', 'Chen Yu', 'Lin Wei', 'Sun Qi'], authorCount: 4, lastChangedAt: '2026-10-28T11:08:00.000Z', lastAuthor: 'Zhao Min' },
+    { path: 'src/client/ui/toolbar.ts', commits: 19, additions: 3_980, deletions: 1_140, churn: 5_120, authors: ['Lin Wei', 'Chen Yu', 'Wang Bo'], authorCount: 3, lastChangedAt: '2026-10-27T08:41:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/host/services/stats-service.ts', commits: 14, additions: 3_380, deletions: 920, churn: 4_300, authors: ['Chen Yu', 'Lin Wei'], authorCount: 2, lastChangedAt: '2026-10-29T01:12:00.000Z', lastAuthor: 'Chen Yu' },
+    { path: 'src/client/ui/filetree.ts', commits: 12, additions: 2_410, deletions: 770, churn: 3_180, authors: ['Lin Wei', 'Zhao Min'], authorCount: 2, lastChangedAt: '2026-10-26T15:22:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/client/ui/detail.ts', commits: 11, additions: 1_830, deletions: 620, churn: 2_450, authors: ['Zhao Min', 'Lin Wei', 'Chen Yu'], authorCount: 3, lastChangedAt: '2026-10-28T17:40:00.000Z', lastAuthor: 'Zhao Min' },
+    { path: 'src/client/ui/pr.ts', commits: 9, additions: 1_430, deletions: 440, churn: 1_870, authors: ['Sun Qi', 'Chen Yu'], authorCount: 2, lastChangedAt: '2026-10-25T15:02:00.000Z', lastAuthor: 'Sun Qi' },
+    { path: 'src/host/adapters/git/commands.ts', commits: 8, additions: 1_090, deletions: 330, churn: 1_420, authors: ['Lin Wei', 'Chen Yu'], authorCount: 2, lastChangedAt: '2026-10-27T09:12:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/shared/contracts.ts', commits: 7, additions: 860, deletions: 320, churn: 1_180, authors: ['Lin Wei', 'Zhao Min'], authorCount: 2, lastChangedAt: '2026-10-28T11:08:00.000Z', lastAuthor: 'Zhao Min' },
+    { path: 'src/client/ui/audit.ts', commits: 6, additions: 640, deletions: 250, churn: 890, authors: ['Sun Qi', 'Chen Yu'], authorCount: 2, lastChangedAt: '2026-10-24T09:36:00.000Z', lastAuthor: 'Sun Qi' },
+    { path: 'docs/ARCHITECTURE.md', commits: 5, additions: 520, deletions: 120, churn: 640, authors: ['Lin Wei', 'Wang Bo'], authorCount: 2, lastChangedAt: '2026-10-29T02:41:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/client/format.ts', commits: 5, additions: 410, deletions: 110, churn: 520, authors: ['Chen Yu', 'Lin Wei'], authorCount: 2, lastChangedAt: '2026-10-25T15:02:00.000Z', lastAuthor: 'Chen Yu' },
+    { path: 'src/tests/hotspots.test.ts', commits: 4, additions: 380, deletions: 80, churn: 460, authors: ['Chen Yu'], authorCount: 1, lastChangedAt: '2026-10-29T02:05:00.000Z', lastAuthor: 'Chen Yu' },
+    { path: 'src/host/routes.ts', commits: 4, additions: 240, deletions: 70, churn: 310, authors: ['Lin Wei', 'Zhao Min'], authorCount: 2, lastChangedAt: '2026-10-24T09:36:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'src/client/ui/icons.ts', commits: 3, additions: 170, deletions: 40, churn: 210, authors: ['Sun Qi'], authorCount: 1, lastChangedAt: '2026-10-23T14:12:00.000Z', lastAuthor: 'Sun Qi' },
+    { path: 'package.json', commits: 3, additions: 62, deletions: 34, churn: 96, authors: ['Lin Wei', 'Zhao Min'], authorCount: 2, lastChangedAt: '2026-10-22T10:05:00.000Z', lastAuthor: 'Lin Wei' },
+    { path: 'assets/branch-graph.svg', commits: 2, churn: null, authors: ['Lin Wei'], authorCount: 1, lastChangedAt: '2026-10-26T17:05:00.000Z', lastAuthor: 'Lin Wei' },
+  ],
+  authors: [
+    { name: 'Lin Wei', commits: 62, additions: 19_040, deletions: 8_360, churn: 27_400, files: 38, firstCommitAt: '2026-09-03T02:10:00.000Z', lastCommitAt: '2026-10-29T02:41:00.000Z' },
+    { name: 'Chen Yu', commits: 41, additions: 10_980, deletions: 4_250, churn: 15_230, files: 31, firstCommitAt: '2026-09-08T06:22:00.000Z', lastCommitAt: '2026-10-29T02:05:00.000Z' },
+    { name: 'Zhao Min', commits: 26, additions: 6_820, deletions: 3_020, churn: 9_840, files: 24, firstCommitAt: '2026-09-15T03:40:00.000Z', lastCommitAt: '2026-10-28T17:40:00.000Z' },
+    { name: 'Sun Qi', commits: 14, additions: 3_050, deletions: 1_160, churn: 4_210, files: 12, firstCommitAt: '2026-09-28T08:15:00.000Z', lastCommitAt: '2026-10-25T15:02:00.000Z' },
+    { name: 'Wang Bo', commits: 7, additions: 1_430, deletions: 550, churn: 1_980, files: 8, firstCommitAt: '2026-10-02T12:31:00.000Z', lastCommitAt: '2026-10-23T14:12:00.000Z' },
+    { name: 'dependabot[bot]', commits: 3, churn: null, files: 3, firstCommitAt: '2026-10-11T01:05:00.000Z', lastCommitAt: '2026-10-22T10:05:00.000Z' },
+  ],
+  recent: [
+    {
+      hash: 'b5685a0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60', author: 'Lin Wei', timestamp: '2026-10-29T02:41:00.000Z',
+      subject: "Merge branch 'fix/unicode-paths' into main", merge: true, fileCount: 9, additions: 96, deletions: 210,
+      files: ['src/client/components.ts', 'src/client/styles.ts', 'src/client/ui/hotspots.ts', 'docs/ARCHITECTURE.md', 'src/client/ui/history.ts', 'src/host/services/stats-service.ts', 'src/client/ui/toolbar.ts'],
+    },
+    {
+      hash: '9d2f41ab0c58b3d1f1c0a9e473ac90fe41ee77c2', author: 'Chen Yu', timestamp: '2026-10-29T02:05:00.000Z',
+      subject: 'feat(hotspots): 三维热点仪表盘与 sqrt 压缩微条形图', merge: false, fileCount: 14, additions: 986, deletions: 219,
+      files: ['src/client/ui/hotspots.ts', 'src/client/styles.ts', 'src/shared/contracts.ts', 'src/client/types.ts', 'src/tests/hotspots.test.ts', 'src/host/services/stats-service.ts', 'src/client/components.ts', 'src/client/ui-i18n.ts'],
+    },
+    {
+      hash: '0c58b3d1e9a44177b26e147b5685a0c1d2e3f4a5', author: 'Zhao Min', timestamp: '2026-10-29T01:12:00.000Z',
+      subject: 'chore: 更新分支图与预览截图', merge: false, fileCount: 2,
+      files: ['assets/branch-graph.svg', 'docs/ui-preview/wide-light.png'],
+    },
+    {
+      hash: '73ac90fe41ee77c2b5685a0c9d2f41ab0c58b3d1', author: 'Zhao Min', timestamp: '2026-10-28T17:40:00.000Z',
+      subject: 'fix: 提交详情中的重命名路径显示旧文件名', merge: false, fileCount: 3, additions: 18, deletions: 6,
+      files: ['src/client/ui/detail.ts', 'src/client/ui/history.ts', 'src/client/format.ts'],
+    },
+    {
+      hash: '41ee77c2f1c0a9e4b5685a0c9d2f41ab73ac90fe', author: 'Sun Qi', timestamp: '2026-10-28T15:22:00.000Z',
+      subject: 'refactor: 收敛主题变量到 --swl-* 并移除硬编码色值', merge: false, fileCount: 5, additions: 96, deletions: 158,
+      files: ['src/client/styles.ts', 'src/client/ui/swimlane.ts', 'src/client/ui/hotspots.ts', 'src/shared/contracts.ts', 'docs/ARCHITECTURE.md'],
+    },
+    {
+      hash: 'f1c0a9e4b5685a0c9d2f41ab73ac90fe41ee77c2', author: 'Chen Yu', timestamp: '2026-10-28T11:08:00.000Z',
+      subject: 'test: 补充热点聚合边界用例', merge: false, fileCount: 2, additions: 232, deletions: 12,
+      files: ['src/tests/hotspots.test.ts', 'src/host/services/stats-service.ts'],
+    },
+    {
+      hash: 'b5685a0c9d2f41ab73ac90fe41ee77c2f1c0a9e4', author: 'Lin Wei', timestamp: '2026-10-27T09:12:00.000Z',
+      subject: 'feat(timeline): 紧凑工具栏、提交图与增删统计', merge: false, fileCount: 7, additions: 214, deletions: 158,
+      files: ['src/client/components.ts', 'src/client/styles.ts', 'src/client/ui/history.ts', 'src/client/ui/detail.ts'],
+    },
+    {
+      hash: 'de72be4b5685a0c9d2f41ab73ac90fe41ee77c2', author: 'Wang Bo', timestamp: '2026-10-26T17:05:00.000Z',
+      subject: 'docs: 兼容性记录补充右侧栏 slot 契约', merge: false, fileCount: 1, additions: 64, deletions: 4,
+      files: ['docs/ARCHITECTURE.md'],
+    },
+    {
+      hash: 'a1f30d4b5685a0c9d2f41ab73ac90fe41ee77c2', author: 'Lin Wei', timestamp: '2026-10-25T15:02:00.000Z',
+      subject: 'chore: 引入 JSONL 审计存储与写入串行化', merge: false, fileCount: 5, additions: 432, deletions: 12,
+      files: ['src/host/services/stats-service.ts', 'src/host/routes.ts', 'src/client/ui/audit.ts'],
+    },
+    {
+      hash: '66826a8b5685a0c9d2f41ab73ac90fe41ee77c2', author: 'Chen Yu', timestamp: '2026-10-24T09:36:00.000Z',
+      subject: 'style: 调整胶囊徽标与分组标题密度', merge: false, fileCount: 2, additions: 28, deletions: 12,
+      files: ['src/client/styles.ts', 'src/client/ui/toolbar.ts'],
+    },
+  ],
+  daily: [
+    { date: '2026-10-22', commits: 4, files: 9, additions: 220, deletions: 96 },
+    { date: '2026-10-23', commits: 6, files: 14, additions: 410, deletions: 180 },
+    { date: '2026-10-24', commits: 3, files: 7, additions: 140, deletions: 72 },
+    { date: '2026-10-25', commits: 8, files: 19, additions: 680, deletions: 240 },
+    { date: '2026-10-26', commits: 5, files: 11, additions: 320, deletions: 130 },
+    { date: '2026-10-27', commits: 9, files: 22, additions: 890, deletions: 410 },
+    { date: '2026-10-28', commits: 7, files: 17, additions: 640, deletions: 260 },
+    { date: '2026-10-29', commits: 4, files: 12, additions: 480, deletions: 190 },
+  ],
+  scannedCommits: 187,
+  truncated: true,
+  scope: {
+    branch: 'feature/sidebar-timeline',
+    mergesIncluded: true,
+    since: '2026-09-01T00:00:00.000Z',
+    windowCommits: 500,
+  },
+  computedAt: '2026-10-29T02:45:00.000Z',
+  cached: true,
+}
+
 /** One preview scenario: a state, a theme and the stage size it needs. */
 interface Scenario {
   name: string
@@ -636,6 +756,46 @@ const scenarios: Scenario[] = [
       timeline: { ...initial.timeline, events: [], warnings: ['this repository has no commits yet'] },
     }),
   },
+  {
+    name: 'hotspot-files-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'files' },
+    }),
+  },
+  {
+    name: 'hotspot-authors-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'authors' },
+    }),
+  },
+  {
+    name: 'hotspot-activity-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'activity' },
+    }),
+  },
+  {
+    name: 'hotspot-authors-dark',
+    theme: 'dark',
+    width: 1600,
+    height: 900,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'authors' },
+    }),
+  },
 ]
 
 /**
@@ -736,6 +896,11 @@ await writeFile(resolve(outDir, 'render.md'), [
   '',
   '场景：文件树 + 时间线（亮/暗，侧栏与宽屏）、单文件三栏（树 | Diff | 操作信息）、提交详情、',
   'PR 列表 / 未认证提示、审计列表/详情、写操作确认、操作菜单、诊断展开、加载中、空仓库、未初始化仓库。',
+  '',
+  '热点仪表盘（`source: hotspots`，1600×900）：`hotspot-files-light` / `hotspot-authors-light` /',
+  '`hotspot-activity-light` 三个维度各一个亮色场景，外加 `hotspot-authors-dark` 验证暗色 token；',
+  '固定报告里包含 20 个文件的 churn 长尾、6 位贡献者（含一位 churn 未知）、10 条近期提交（含合并、',
+  '文件列表被截断与纯二进制提交）。',
   '',
   '另外两个场景渲染独立演示页 `SwimlaneDemo`（`src/client/ui/swimlane.ts`，自带样式与 MOCK 数据）：',
   '`swimlane-wide`（1440×900，260px 文件树 + 页头/工具栏 + 多轨道泳道）与',

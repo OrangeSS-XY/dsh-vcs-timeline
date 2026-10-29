@@ -46,7 +46,7 @@ import {
 import type {
   ChecksScope,
   DialogState,
-  HotspotSort,
+  HotspotDimension,
   PanelDeps,
   PanelHandlers,
   PanelProps,
@@ -1325,9 +1325,9 @@ export function createTimelinePanel(deps: PanelDeps): React.ComponentType<PanelP
         const repositoryId = stateRef.current.selectedRepositoryId
         if (repositoryId !== null) void loadHotspots(repositoryId)
       },
-      onSetHotspotSort: (sort: HotspotSort) => setState((prev) => ({
+      onSetHotspotDimension: (dimension: HotspotDimension) => setState((prev) => ({
         ...prev,
-        hotspots: { ...prev.hotspots, sort },
+        hotspots: { ...prev.hotspots, dimension },
       })),
       onOpenHotspotFile: (path: string) => {
         setState((prev) => ({ ...prev, source: 'timeline' }))

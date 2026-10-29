@@ -4,15 +4,21 @@
  *
  * Two `git log` invocations describe exactly the same commit window: the
  * numstat stream carries the per-file line counts, the metadata stream carries
- * each commit's author, author date and parents. Nothing here performs I/O; the
- * service module runs the commands and owns the report cache.
+ * each commit's author, author date, parents and subject. Nothing here performs
+ * I/O; the service module runs the commands and owns the report cache.
  *
  * The window is walked newest first (the order `--date-order` prints), which is
- * what makes "last change" and "last author" exact without a second read.
+ * what makes "last change", "last author" and the contributor window exact
+ * without a second read.
  * @module dsh-vcs-timeline/host/stats/hotspots
  */
 
-import type { FileHotspot, HotspotDay } from '../../shared/contracts.ts'
+import type { FileHotspot, HotspotAuthor, HotspotCommit, HotspotDay } from '../../shared/contracts.ts'
+import {
+  MAX_HOTSPOT_COMMIT_FILES,
+  MAX_HOTSPOT_CONTRIBUTORS,
+  MAX_HOTSPOT_RECENT_COMMITS,
+} from '../../shared/contracts.ts'
 import type { NumstatEntry } from '../adapters/git/commands.ts'
 import { gitBase } from '../adapters/git/commands.ts'
 import { parseIsoTimestamp } from '../security.ts'
@@ -33,8 +39,12 @@ export const HOTSPOT_META_CAP = 2 * 1024 * 1024
 /** Field separator inside one commit record. */
 const NUL = '\u0000'
 
-/** `--format` of the metadata stream: hash, author, author date, parents. */
-const META_FORMAT = '%H%x00%an%x00%aI%x00%P'
+/**
+ * `--format` of the metadata stream: hash, author, author date, parents and
+ * subject. A commit subject is one line and cannot contain NUL, so the five
+ * fields stay unambiguous for the parser below.
+ */
+const META_FORMAT = '%H%x00%an%x00%aI%x00%P%x00%s'
 
 /** The window size handed to git; the caller passes its probe size. */
 function windowSize(windowCommits: number): number {
@@ -96,16 +106,22 @@ export interface HotspotCommitMeta {
    * and merge commits stay visible.
    */
   parents: string[]
+  /** Commit subject (first line of the message); empty for an empty message. */
+  subject: string
 }
 
+/** Fields git prints per commit; the parser groups the stream in this size. */
+const META_FIELDS = 5
+
 /**
- * Parse `git log -z --format=%H%x00%an%x00%aI%x00%P` output.
+ * Parse `git log -z --format=%H%x00%an%x00%aI%x00%P%x00%s` output.
  *
- * Each commit is four NUL-separated fields; `-z` terminates the record with NUL
+ * Each commit is five NUL-separated fields; `-z` terminates the record with NUL
  * as well, so the stream ends with an empty token. A leading newline git may
- * add between records is stripped, an empty parent field is a root commit, and
- * a malformed trailing group is dropped instead of throwing: the stream is
- * untrusted output, never an exception.
+ * add between records is stripped, an empty parent field is a root commit, an
+ * empty subject is a commit with an empty message, and a malformed trailing
+ * group is dropped instead of throwing: the stream is untrusted output, never
+ * an exception.
  * @param text - raw stdout of the metadata command.
  * @returns the parsed commits, newest first.
  */
@@ -114,17 +130,19 @@ export function parseHotspotMetaZ(text: string): HotspotCommitMeta[] {
   const tokens = text.split(NUL).map(token => token.replace(/^\r?\n+/, ''))
   if (tokens.length > 0 && tokens[tokens.length - 1] === '') tokens.pop()
   const commits: HotspotCommitMeta[] = []
-  for (let index = 0; index + 3 < tokens.length; index += 4) {
+  for (let index = 0; index + META_FIELDS - 1 < tokens.length; index += META_FIELDS) {
     const hash = (tokens[index] ?? '').trim()
     if (hash === '') continue
     const author = tokens[index + 1] ?? ''
     const authorDate = parseIsoTimestamp(tokens[index + 2] ?? '')
     const parents = (tokens[index + 3] ?? '').split(' ').filter(value => value !== '')
+    const subject = tokens[index + 4] ?? ''
     commits.push({
       hash,
       author,
       ...(authorDate === null ? {} : { authorDate }),
       parents,
+      subject,
     })
   }
   return commits
@@ -144,6 +162,22 @@ interface FileAccumulator {
   lastAuthor?: string
 }
 
+/** One author's running totals while the window is walked newest first. */
+interface AuthorAccumulator {
+  name: string
+  commits: number
+  additions: number
+  deletions: number
+  /** True when at least one of the author's commits reported numeric line counts. */
+  lineStats: boolean
+  /** Distinct paths the author changed in the window. */
+  files: Set<string>
+  /** Oldest covered author date; the newest-first walk keeps overwriting it. */
+  firstCommitAt?: string
+  /** Newest covered author date; the first dated commit the walk sees. */
+  lastCommitAt?: string
+}
+
 /** Input of one window aggregation. */
 export interface AggregateHotspotsInput {
   /** Commits of the window, newest first (the metadata stream order). */
@@ -160,6 +194,10 @@ export interface AggregateHotspotsInput {
 export interface AggregateHotspotsResult {
   /** Ranked, limited rows. */
   files: FileHotspot[]
+  /** Contributors of the same window, ranked by line contribution. */
+  authors: HotspotAuthor[]
+  /** Newest commits of the window, newest first (already capped). */
+  recent: HotspotCommit[]
   /** Commit activity per UTC day, newest first (chart data). */
   daily: HotspotDay[]
   /** Commits actually covered by the ranking. */
@@ -171,13 +209,16 @@ export interface AggregateHotspotsResult {
 }
 
 /**
- * Rank files by churn over one bounded commit window.
+ * Rank files by churn, aggregate their contributors and collect the newest
+ * commits over one bounded commit window.
  *
  * A file that a commit reports more than once (a malformed stream) still counts
  * that commit twice; git never does that. A file whose every record is binary
  * keeps `churn: null` and no additions/deletions instead of inventing zeros.
+ * Nothing is extrapolated beyond the window: the contributor totals and the
+ * activity stream describe exactly the scanned commits.
  * @param input - window commits, numstat records, window size and row limit.
- * @returns the ranked rows plus the scanned/truncated/since facts.
+ * @returns the rankings, contributors, activity stream and scanned/truncated/since facts.
  */
 export function aggregateHotspots(input: AggregateHotspotsInput): AggregateHotspotsResult {
   const windowCommits = windowSize(input.windowCommits)
@@ -242,6 +283,81 @@ export function aggregateHotspots(input: AggregateHotspotsInput): AggregateHotsp
     }
   }
 
+  // Contributors describe the same newest-first window, so the first time an
+  // author appears is their newest covered commit and every later appearance is
+  // older. A commit without a recorded author cannot be presented as a person,
+  // so it stays out of the ranking while still counting in the window.
+  const byAuthor = new Map<string, AuthorAccumulator>()
+  for (const commit of scanned) {
+    if (commit.author === '') continue
+    let author = byAuthor.get(commit.author)
+    if (author === undefined) {
+      author = { name: commit.author, commits: 0, additions: 0, deletions: 0, lineStats: false, files: new Set<string>() }
+      byAuthor.set(commit.author, author)
+    }
+    author.commits += 1
+    if (commit.authorDate !== undefined) {
+      if (author.lastCommitAt === undefined) author.lastCommitAt = commit.authorDate
+      author.firstCommitAt = commit.authorDate
+    }
+    for (const entry of input.numstat.get(commit.hash) ?? []) {
+      if (entry.path !== '') author.files.add(entry.path)
+      if (entry.binary !== true) {
+        author.additions += entry.additions ?? 0
+        author.deletions += entry.deletions ?? 0
+        author.lineStats = true
+      }
+    }
+  }
+  const authors: HotspotAuthor[] = [...byAuthor.values()]
+    .map(author => ({
+      name: author.name,
+      commits: author.commits,
+      churn: author.lineStats ? author.additions + author.deletions : null,
+      ...(author.lineStats ? { additions: author.additions, deletions: author.deletions } : {}),
+      files: author.files.size,
+      ...(author.firstCommitAt === undefined ? {} : { firstCommitAt: author.firstCommitAt }),
+      ...(author.lastCommitAt === undefined ? {} : { lastCommitAt: author.lastCommitAt }),
+    }))
+    .sort(compareContributors)
+    .slice(0, MAX_HOTSPOT_CONTRIBUTORS)
+
+  // The activity stream is the head of the same window: newest first and capped
+  // for transport. `fileCount` keeps the real distinct total even when `files`
+  // is cut, so the UI can say "+N more" instead of guessing.
+  const recent: HotspotCommit[] = []
+  for (const commit of scanned) {
+    if (recent.length >= MAX_HOTSPOT_RECENT_COMMITS) break
+    const paths: string[] = []
+    const seenPaths = new Set<string>()
+    let fileCount = 0
+    let additions = 0
+    let deletions = 0
+    let lineStats = false
+    for (const entry of input.numstat.get(commit.hash) ?? []) {
+      if (entry.path !== '' && !seenPaths.has(entry.path)) {
+        seenPaths.add(entry.path)
+        fileCount += 1
+        if (paths.length < MAX_HOTSPOT_COMMIT_FILES) paths.push(entry.path)
+      }
+      if (entry.binary !== true) {
+        additions += entry.additions ?? 0
+        deletions += entry.deletions ?? 0
+        lineStats = true
+      }
+    }
+    recent.push({
+      hash: commit.hash,
+      author: commit.author,
+      ...(commit.authorDate === undefined ? {} : { timestamp: commit.authorDate }),
+      subject: commit.subject,
+      files: paths,
+      fileCount,
+      ...(lineStats ? { additions, deletions } : {}),
+      merge: commit.parents.length > 1,
+    })
+  }
+
   const files: FileHotspot[] = []
   for (const accumulator of byPath.values()) {
     files.push({
@@ -269,6 +385,8 @@ export function aggregateHotspots(input: AggregateHotspotsInput): AggregateHotsp
   const oldest = scanned.length === 0 ? undefined : scanned[scanned.length - 1]?.authorDate
   return {
     files: files.slice(0, windowSize(input.limit)),
+    authors,
+    recent,
     daily,
     scannedCommits: scanned.length,
     truncated,
@@ -291,4 +409,21 @@ function compareHotspots(a: FileHotspot, b: FileHotspot): number {
   }
   if (a.commits !== b.commits) return b.commits - a.commits
   return a.path.localeCompare(b.path)
+}
+
+/**
+ * Contributor rank order: churn descending with unknown churn last, then commit
+ * count descending, then name ascending so the order is always total and stable.
+ * @param a - one contributor.
+ * @param b - the other contributor.
+ * @returns the comparator result.
+ */
+function compareContributors(a: HotspotAuthor, b: HotspotAuthor): number {
+  if (a.churn !== b.churn) {
+    if (a.churn === null) return 1
+    if (b.churn === null) return -1
+    return b.churn - a.churn
+  }
+  if (a.commits !== b.commits) return b.commits - a.commits
+  return a.name.localeCompare(b.name)
 }
