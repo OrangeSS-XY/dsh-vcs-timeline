@@ -155,6 +155,16 @@ function requiredPositiveInt(payload: Record<string, unknown>, key: string): num
   return value
 }
 
+/** Read an optional positive integer (e.g. the PR history window). */
+function optionalPositiveInt(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0 || value > 1_000_000_000) {
+    throw new ServiceError({ code: 'invalid-request', message: `${key} must be a positive integer` })
+  }
+  return value
+}
+
 /** Build a timeline query from a request payload. */
 function timelineQuery(payload: Record<string, unknown>): TimelineQuery {
   const eventTypes = payload.eventTypes
@@ -349,9 +359,13 @@ export function registerVcsRoutes(ctx: Context, deps: VcsRoutesDeps): () => void
           return
         case '/vcs/pr/list': {
           const refresh = optionalBoolean(payload, 'refresh')
+          const includeClosed = optionalBoolean(payload, 'includeClosed')
+          const windowDays = optionalPositiveInt(payload, 'windowDays')
           writeJson(res, 200, ok(await deps.pullRequests.list({
             repositoryId: requiredString(payload, 'repositoryId', 1024),
             ...(refresh === undefined ? {} : { refresh }),
+            ...(includeClosed === undefined ? {} : { includeClosed }),
+            ...(windowDays === undefined ? {} : { windowDays }),
           })))
           return
         }

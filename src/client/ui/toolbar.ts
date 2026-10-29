@@ -28,6 +28,7 @@ import {
   IconUpload,
 } from './icons.ts'
 import { Banner, IconButton } from './primitives.ts'
+import { isContentLoading } from './skeleton.ts'
 import { selectedRepository, WRITE_OPERATIONS, operationGroup } from './shared.ts'
 
 const h = React.createElement
@@ -361,6 +362,15 @@ export function renderChrome(
   // dialog owns the single-use confirmation token) or before the first boot
   // read, because the preview would describe stale branch/cleanliness state.
   const operationLocked = state.dialog !== null || state.boot === 'loading'
+  const syncRefreshing = state.sync.refreshing
+  // The cold boot paints the layout skeleton, and a skeleton screen must not
+  // carry a progress bar, a "正在更新…" capsule or live-region text: the gray
+  // blocks already say "loading". Only a quiet refresh on top of real content
+  // gets the subtle chrome feedback.
+  const showSyncChrome = syncRefreshing && !isContentLoading(state)
+  // A quiet refresh failed while the previously loaded data is still on screen:
+  // say so above the content instead of letting the panel look current.
+  const staleSync = state.sync.lastError !== null && !syncRefreshing && state.repositories.length > 0
   const operationButton = (
     operation: 'pull' | 'push',
     label: string,
@@ -381,6 +391,19 @@ export function renderChrome(
   h('span', null, label),
   )
   return h('div', { className: 'dvt-chrome' },
+    // Thin indeterminate bar pinned to the very top of the chrome. It is
+    // rendered only while a quiet revalidation runs, and its zero-height
+    // positioned slot keeps the toolbar from moving when it appears.
+    showSyncChrome
+      ? h('div', { className: 'dvt-syncslot' },
+        h('div', {
+          className: 'dvt-syncbar',
+          role: 'progressbar',
+          'aria-label': t('aria.syncProgress'),
+          'aria-valuetext': t('sync.refreshing'),
+        }, h('span', { className: 'dvt-syncbar-fill' })),
+      )
+      : null,
     h('div', { className: 'dvt-toolbar' },
       h(RepositoryPicker, { state, handlers, t }),
       h(BranchChip, { state, handlers, t, repository }),
@@ -395,9 +418,25 @@ export function renderChrome(
         h(IconButton, {
           label: t('aria.refresh'),
           icon: IconRefresh,
+          // Stays enabled during a quiet refresh: a manual refresh is allowed
+          // to supersede the in-flight one, and the spinning icon shows why.
           disabled: state.boot === 'loading',
+          extraClass: showSyncChrome ? 'dvt-syncing' : undefined,
           onClick: handlers.onRefreshRepositories,
         }),
+        // The live region is always mounted but only carries text while a
+        // quiet refresh runs, so "正在更新…" is announced once, not on every
+        // render — and never on the cold-boot skeleton screen.
+        h('span', {
+          className: 'dvt-sync-state',
+          role: 'status',
+          'aria-live': 'polite',
+        }, showSyncChrome
+          ? [
+            h('span', { key: 'dot', className: 'dvt-sync-state-dot', 'aria-hidden': 'true' }),
+            h('span', { key: 'text', className: 'dvt-sync-state-text' }, t('sync.refreshing')),
+          ]
+          : null),
         h(IconButton, {
           label: t('aria.writeMenu'),
           icon: IconMore,
@@ -421,6 +460,16 @@ export function renderChrome(
       ? h(Banner, {
         kind: 'error',
         text: F.errorMessage(state.bootError, t),
+        action: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.retry')),
+      })
+      : null,
+    // Stale-while-revalidate: a failed quiet refresh keeps the last good data
+    // visible, so the chrome has to say the data is from the last sync instead
+    // of hiding it behind the old error state.
+    staleSync
+      ? h(Banner, {
+        kind: 'warn',
+        text: t('sync.staleWarning'),
         action: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.retry')),
       })
       : null,

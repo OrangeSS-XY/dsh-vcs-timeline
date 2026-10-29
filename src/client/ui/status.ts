@@ -8,6 +8,7 @@ import * as F from '../format.ts'
 import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
 import { IconChevronDown, IconChevronRight, IconSliders } from './icons.ts'
 import { DotSep } from './primitives.ts'
+import { isContentLoading, SkeletonBlock } from './skeleton.ts'
 import { selectedRepository, vcsLabel } from './shared.ts'
 
 const h = React.createElement
@@ -22,6 +23,17 @@ function treeState(state: PanelState): { cls: string; label: string } {
 
 /** 24px status bar: repository state left, diagnostics control right. */
 export function renderStatusBar(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
+  // A skeleton screen must stay text-free: while the layout skeleton is up the
+  // status bar renders placeholder blocks instead of "未选择仓库/读取状态中…".
+  if (isContentLoading(state)) {
+    return h('div', { className: 'dvt-statusbar dvt-skel-statusbar', 'aria-hidden': 'true' },
+      h(SkeletonBlock, { width: 10, height: 10, radius: '50%' }),
+      h(SkeletonBlock, { width: 96, height: 8, radius: 4 }),
+      h(SkeletonBlock, { width: 52, height: 8, radius: 4 }),
+      h('span', { className: 'dvt-status-spacer' }),
+      h(SkeletonBlock, { width: 48, height: 8, radius: 4 }),
+    )
+  }
   const { t } = deps
   const repository = selectedRepository(state)
   const status = state.status

@@ -416,6 +416,10 @@ export interface PullRequest {
   baseBranch: string
   createdAt: string
   updatedAt: string
+  /** Provider merge timestamp; present for merged PRs when the provider reports it. */
+  mergedAt?: string
+  /** Provider close timestamp; present for closed PRs when the provider reports it. */
+  closedAt?: string
   reviewState: PullRequestReviewState
   checksState: PullRequestChecksState
   /** True/false from the provider; null when it did not report mergeability. */
@@ -450,6 +454,13 @@ export interface PullRequestList {
   /** True when the Host authenticated (richer facts: reviews, CI, mergeable). */
   authenticated: boolean
   pullRequests: PullRequest[]
+  /**
+   * How far back merged/closed pull requests were requested for the analytics
+   * dashboard, in days. Absent when history was not included.
+   */
+  closedWindowDays?: number
+  /** True when the provider cap cut the merged/closed side of the list. */
+  historyTruncated?: boolean
   /** True when some provider data could not be read. */
   partial?: boolean
   warnings?: string[]
@@ -481,6 +492,14 @@ export interface PullRequestQuery {
   repositoryId: string
   /** Bypass the Host cache (the refresh button). */
   refresh?: boolean
+  /**
+   * Also read recently merged/closed pull requests, so the client can show the
+   * analytics dashboard (merge readiness, conflicts, merged counts, authors).
+   * Defaults to true; the Host clamps the window.
+   */
+  includeClosed?: boolean
+  /** How far back merged/closed history is requested, in days. */
+  windowDays?: number
 }
 
 /** Input of one pull-request detail request. */
@@ -606,6 +625,12 @@ export interface VcsApi {
 export const MAX_PULL_REQUESTS = 40
 /** How long one pull-request list stays fresh in the Host cache, in ms. */
 export const PULL_REQUEST_CACHE_MS = 60_000
+/** Days of merged/closed pull-request history the analytics dashboard reads. */
+export const DEFAULT_PR_HISTORY_DAYS = 30
+/** Upper bound the Host clamps a requested history window to. */
+export const MAX_PR_HISTORY_DAYS = 90
+/** Most merged/closed pull requests one list read carries. */
+export const MAX_CLOSED_PULL_REQUESTS = 40
 
 /** Largest timeline page the Host will serve. */
 export const MAX_PAGE_SIZE = 100

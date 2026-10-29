@@ -14,7 +14,6 @@ import {
   EmptyState,
   errorText,
   SectionHeader,
-  SkeletonRows,
   StateBadge,
 } from './primitives.ts'
 import { missingTool, selectedRepository } from './shared.ts'
@@ -80,11 +79,13 @@ function AuditRow(props: {
 }
 
 /** Audit list with its own loading/empty/error states. */
-export function renderAuditList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
+export function renderAuditList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement | null {
   const { t } = deps
   const repository = selectedRepository(state)
   const audit = state.audit
-  if (state.boot === 'loading') return h(SkeletonRows, { rows: 4 })
+  // First load of this source: the composition root's SkeletonSwap owns the
+  // loading surface, so the view returns no element of its own.
+  if (state.boot === 'loading') return null
   if (state.boot === 'error') {
     return h(EmptyState, {
       icon: IconError,
@@ -110,7 +111,9 @@ export function renderAuditList(state: PanelState, deps: PanelDeps, handlers: Pa
       hint: t('error.vcs-not-installed'),
     })
   }
-  if (audit.loading) return h(SkeletonRows, { rows: 4 })
+  // Same rule as history: only a first page with no records yields to the
+  // composition root's skeleton; a quiet reload keeps the recorded list.
+  if (audit.loading && audit.operations.length === 0) return null
   if (audit.error !== null) {
     return h(EmptyState, {
       icon: IconError,
