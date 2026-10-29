@@ -129,6 +129,32 @@ const hotspots: HotspotReport = {
     { path: 'src/b.ts', commits: 2, additions: 1, deletions: 1, churn: 2, authors: ['Bob'], authorCount: 1, lastChangedAt: '2026-01-01T00:00:00.000Z' },
     { path: 'assets/logo.png', commits: 1, churn: null, authors: ['Alice'], authorCount: 1 },
   ],
+  authors: [
+    { name: 'Ada Lovelace', commits: 4, churn: 900, additions: 800, deletions: 100, files: 3, firstCommitAt: '2026-01-01T00:00:00.000Z', lastCommitAt: '2026-01-02T00:00:00.000Z' },
+    { name: 'Bob', commits: 2, churn: 40, additions: 30, deletions: 10, files: 2 },
+  ],
+  recent: [
+    {
+      hash: 'abcdef0123456789abcdef0123456789abcdef01',
+      author: 'Ada Lovelace',
+      timestamp: '2026-01-02T00:00:00.000Z',
+      subject: 'feat: multi-dimensional dashboard',
+      files: ['src/a.ts', 'src/b.ts', 'assets/logo.png', 'src/c.ts'],
+      fileCount: 5,
+      additions: 11,
+      deletions: 3,
+      merge: false,
+    },
+    {
+      hash: 'deadbeef0123456789abcdef0123456789abcdef',
+      author: 'Bob',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      subject: "Merge branch 'feature'",
+      files: ['src/b.ts'],
+      fileCount: 1,
+      merge: true,
+    },
+  ],
   daily: [
     { date: '2026-01-02', commits: 4, files: 2, additions: 11, deletions: 3 },
     { date: '2026-01-01', commits: 2, files: 1, additions: 1, deletions: 1 },
@@ -244,25 +270,51 @@ test('the pending workbench shows the selected untracked file as a whole-file di
   assert.ok(html.includes('hello'))
 })
 
-test('the hotspot page renders a calendar heatmap and a bar chart, not a file table', () => {
-  const html = render(ready({
+test('the hotspot dashboard switches between file churn, contributors and activity', () => {
+  const base = { ...createInitialState().hotspots, data: hotspots }
+  const files = render(ready({ source: 'hotspots', hotspots: base }))
+  assert.ok(files.includes(t('hotspot.dashboard.title')))
+  assert.ok(files.includes('dvt-hs-seg'))
+  assert.ok(files.includes('dvt-hs-row-file'))
+  assert.ok(files.includes('dvt-hs-fill-blue'))
+  assert.ok(files.includes('src/a.ts'))
+  assert.ok(files.includes(t('hotspot.files.hint')))
+  assert.ok(files.includes(t('hotspot.coverage', { count: 6 })))
+  // sqrt compression: 12 is the max (100%) and 2 is sqrt(2/12) ≈ 40.8%.
+  assert.ok(files.includes('width:100%'))
+  assert.ok(files.includes('width:40.8%'))
+  // A file without line stats says so instead of printing a zero.
+  assert.ok(files.includes(t('hotspot.churn.unavailable')))
+  // The other two bodies must not leak into this tab.
+  assert.ok(!files.includes(t('hotspot.authors.hint')))
+  assert.ok(!files.includes('dvt-hs-fill-purple'))
+  assert.ok(!files.includes('dvt-hs-feed'))
+
+  const authors = render(ready({
     source: 'hotspots',
-    hotspots: { ...createInitialState().hotspots, data: hotspots },
+    hotspots: { ...base, dimension: 'authors' },
   }))
-  assert.ok(html.includes(t('hotspot.title')))
-  assert.ok(html.includes(t('hotspot.chart.title')))
-  assert.ok(html.includes('dvt-heatmap-grid'))
-  assert.ok(html.includes('dvt-heatmap-cell'))
-  assert.ok(html.includes('dvt-bar-row'))
-  assert.ok(html.includes(t('hotspot.bars.title')))
-  assert.ok(html.includes(t('hotspot.coverage', { count: 6 })))
-  for (const sort of ['churn', 'commits', 'authors', 'recent'] as const) {
-    assert.ok(html.includes(t(`hotspot.metric.${sort}`)))
-  }
-  assert.ok(html.includes('src/a.ts'))
-  assert.ok(html.includes(t('hotspot.bars.unknown')))
-  // The old table headers are gone: this page is a chart, not a file list.
-  assert.ok(!html.includes(t('hotspot.col.churn')))
+  assert.ok(authors.includes('dvt-hs-row-author'))
+  assert.ok(authors.includes('dvt-hs-fill-purple'))
+  assert.ok(authors.includes(t('hotspot.author.role.lead')))
+  assert.ok(authors.includes('Ada Lovelace'))
+  assert.ok(authors.includes(t('hotspot.author.meta', { commits: 4, files: 3 })))
+  assert.ok(!authors.includes('dvt-hs-row-file'))
+  assert.ok(!authors.includes('dvt-hs-feed'))
+
+  const activity = render(ready({
+    source: 'hotspots',
+    hotspots: { ...base, dimension: 'activity' },
+  }))
+  assert.ok(activity.includes('dvt-hs-feed'))
+  assert.ok(activity.includes('dvt-hs-rail'))
+  assert.ok(activity.includes(t('hotspot.activity.commit', { branch: 'main' })))
+  assert.ok(activity.includes(t('hotspot.activity.merge', { branch: 'main' })))
+  assert.ok(activity.includes(t('hotspot.activity.moreFiles', { count: 1 })))
+  assert.ok(activity.includes('src/a.ts'))
+  // Timeline feed: no micro bars on this tab.
+  assert.ok(!activity.includes('dvt-hs-meter'))
+  assert.ok(!activity.includes('dvt-hs-row-file'))
 })
 
 test('an unavailable hotspot report says why instead of showing fake zeros', () => {
@@ -377,7 +429,7 @@ test('the new state slices and filters start empty and the tab strip exposes the
     sessionLoading: false,
     sessionError: null,
   })
-  assert.equal(state.hotspots.sort, 'churn')
+  assert.equal(state.hotspots.dimension, 'files')
   assert.equal(state.filters.branch, '')
   assert.equal(state.filters.branchScope, 'current')
   assert.equal(state.filters.auditInTimeline, false)

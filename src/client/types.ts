@@ -40,8 +40,17 @@ export type PanelSource = 'timeline' | 'pending' | 'hotspots' | 'pr' | 'audit'
 /** Which side of the working tree a diff/checks request describes. */
 export type ChecksScope = 'staged' | 'worktree'
 
-/** Sort keys of the hotspot table (client-side re-ordering only). */
+/** Sort keys of the file hotspot ranking (client-side re-ordering only). */
 export type HotspotSort = 'churn' | 'commits' | 'authors' | 'recent'
+
+/**
+ * Which dimension the hotspot dashboard shows.
+ *
+ * One switch, three different bodies: a file churn ranking, a contributor
+ * ranking, or the recent-activity feed. They share the same scanned window, so
+ * the numbers can be compared across tabs.
+ */
+export type HotspotDimension = 'files' | 'authors' | 'activity'
 
 /** Server-side history window presets offered by the time filter. */
 export type TimePreset = 'all' | '24h' | '7d' | '30d'
@@ -166,8 +175,8 @@ export interface HotspotSlice {
   data: HotspotReport | null
   loading: boolean
   error: ApiError | null
-  /** Client-side sort key over the already-loaded rows. */
-  sort: HotspotSort
+  /** Active dashboard dimension; the three bodies never show each other's data. */
+  dimension: HotspotDimension
   refreshTick: number
 }
 
@@ -311,8 +320,8 @@ export interface PanelHandlers {
   onRefreshSessionChanges(): void
   /** Reload the hotspot ranking (bypasses the Host cache). */
   onRefreshHotspots(): void
-  /** Re-sort the already-loaded hotspot rows. */
-  onSetHotspotSort(sort: HotspotSort): void
+  /** Switch the hotspot dashboard dimension (files / authors / activity). */
+  onSetHotspotDimension(dimension: HotspotDimension): void
   /** Jump from a hotspot row to that file's history in the timeline. */
   onOpenHotspotFile(path: string): void
   /** Filter history to one branch decoration. */
@@ -435,7 +444,7 @@ export function createPendingSlice(): PendingSlice {
 
 /** Empty hotspot state. */
 export function createHotspotSlice(): HotspotSlice {
-  return { data: null, loading: false, error: null, sort: 'churn', refreshTick: 0 }
+  return { data: null, loading: false, error: null, dimension: 'files', refreshTick: 0 }
 }
 
 /** Fully empty panel state; tests start from here and override slices. */
@@ -541,7 +550,7 @@ export function createNoopHandlers(): PanelHandlers {
     onRefreshChecks: noop,
     onRefreshSessionChanges: noop,
     onRefreshHotspots: noop,
-    onSetHotspotSort: noop,
+    onSetHotspotDimension: noop,
     onOpenHotspotFile: noop,
     onSelectBranch: noop,
     onClearBranchFilter: noop,

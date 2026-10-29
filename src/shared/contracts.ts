@@ -877,6 +877,53 @@ export interface FileHotspot {
   lastAuthor?: string
 }
 
+/**
+ * One contributor ranked over the same scanned window as the file ranking.
+ *
+ * Roles are not stored here: they are a presentation of `commits` relative to
+ * the window total, so the client can never disagree with the facts.
+ */
+export interface HotspotAuthor {
+  /** Author name exactly as the VCS printed it. */
+  name: string
+  /** Commits of the window authored by this person. */
+  commits: number
+  /** additions + deletions across the window; null when the VCS reported none. */
+  churn: number | null
+  additions?: number
+  deletions?: number
+  /** Distinct files this author changed in the window. */
+  files: number
+  /** Author date of the oldest covered commit by this person, when known. */
+  firstCommitAt?: string
+  /** Author date of the newest covered commit by this person, when known. */
+  lastCommitAt?: string
+}
+
+/**
+ * One commit of the recent-activity stream.
+ *
+ * `files` is capped for transport; `fileCount` always states the real total so
+ * the UI can say "+N more" without guessing.
+ */
+export interface HotspotCommit {
+  hash: string
+  /** Author name; empty when the log carried none. */
+  author: string
+  /** Author date as ISO 8601, when git printed a parseable value. */
+  timestamp?: string
+  /** Commit subject (first line of the message). */
+  subject: string
+  /** Paths changed by the commit, newest-first window order. */
+  files: string[]
+  /** Total changed paths, even when `files` is capped. */
+  fileCount: number
+  additions?: number
+  deletions?: number
+  /** True when the commit has more than one parent. */
+  merge: boolean
+}
+
 /** Honest scope facts attached to every statistics answer. */
 export interface HotspotScope {
   /** Branch the scan was anchored on; null when the VCS cannot say. */
@@ -897,6 +944,10 @@ export interface HotspotReport {
   available: boolean
   unsupportedReason?: string
   files: FileHotspot[]
+  /** Contributors of the same window, ranked by line contribution. */
+  authors: HotspotAuthor[]
+  /** Newest commits of the window, for the activity stream. */
+  recent: HotspotCommit[]
   /** Commit activity per UTC day inside the scanned window (chart data). */
   daily: HotspotDay[]
   /** Commits actually scanned (the honesty badge). */
@@ -912,6 +963,12 @@ export interface HotspotReport {
 
 /** Largest hotspot page the Host will serve. */
 export const MAX_HOTSPOT_FILES = 100
+/** Most contributor rows one report carries. */
+export const MAX_HOTSPOT_CONTRIBUTORS = 20
+/** Most activity commits one report carries. */
+export const MAX_HOTSPOT_RECENT_COMMITS = 24
+/** Most paths one activity commit lists (the total stays in `fileCount`). */
+export const MAX_HOTSPOT_COMMIT_FILES = 8
 /** Default number of commits a hotspot scan covers. */
 export const DEFAULT_HOTSPOT_COMMITS = 500
 /** How long one hotspot report stays fresh in the Host cache, in ms. */

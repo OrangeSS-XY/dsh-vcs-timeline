@@ -30,7 +30,7 @@ Client (浏览器)                          Host (DSH 主进程)
 │  ├ graph.ts 多泳道路由     │            │  ├ stats/service.ts 热点统计 + 缓存          │
 │  ├ ui/fileinfo.ts 文件活动 │            │  ├ session/changes.ts 会话归因（推断）       │
 │  ├ ui/workbench.ts 待处理  │            │  ├ discovery.ts     仓库发现 + 路径闸门     │
-│  ├ ui/hotspots.ts 热点排行 │            │  ├ pr/*             PR 读取（远端/凭据/API）  │
+│  ├ ui/hotspots.ts 数据看板 │            │  ├ pr/*             PR 读取（远端/凭据/API）  │
 │  ├ ui/addrepo.ts 添加仓库  │            │  ├ branch/*         本地分支洞察（离线 PR）  │
 │  ├ components.ts 纯视图   │            │  ├ toolchain.ts     可执行文件探测/vcs-config │
 │  ├ api.ts 信封客户端      │            │  ├ adapters/git/**  Git 适配器              │
@@ -147,8 +147,11 @@ UI 侧（`panel.ts` 状态编排）：
 - 待处理工作台是三栏派生视图：左列直接由 `WorkingTreeStatus.entries` 分组（冲突优先于暂存/未暂存/
   未跟踪，SVN 无 staged 字段时归入未暂存），中列即时 Diff，右列体检/会话归因/分支洞察三张卡；
   左列顶部是「提交已暂存 / 暂存全部 / 取消暂存全部」，没有已暂存文件时提交按钮禁用并说明原因。
-- 热点来源是**图表页**（`ui/hotspots.ts`）：`HotspotReport.daily` 渲染成日历热力格子
-  （最近 26 周、以最新数据日为锚点），`files` 渲染成条形图（指标可切）；不再渲染文件表格。
+- 热点来源是**多维度数据看板**（`ui/hotspots.ts`）：顶部胶囊分段控制器切换三个展示主体，
+  三者共用同一扫描窗口但**渲染完全不同的 body**——`files` 是 churn 文件榜（蓝色 √ 比例微条）、
+  `authors` 是贡献者榜（深底白字头像 + 派生角色 + 紫色微条）、`activity` 是 GitHub 风格活动流
+  （无进度条，头像 + 竖轴 + 操作描述 + 文件路径胶囊 + 时间/hash/±行）。`daily` 只用于
+  「窗口内 N 天有提交」这一句口径，不再渲染日历热力；维度是 `hotspots.dimension` 状态。
 - 提交确认框里 Host 的 `blockedReason` 经 `blockedReasonLabel` 映射成本地化句子，
   未识别的理由回退原文（不隐藏原因）。
 - 体检结果同时出现在提交确认框：存在 `blocking` 项时确认按钮禁用，必须勾选「我已确认上述风险」；
@@ -281,7 +284,7 @@ dvt-root (flex column, 100%, overflow hidden)
 │           │   ├─ Diff（行号槽 + 统一 diff 着色 + 底部统计）
 │           │   ├─ 审计列表/详情、PR 列表/详情
 │           │   └─ 空/错误/加载（区分 10 种状态）
-│           └─ 待处理工作台 / 热点图表 / 文件三栏视图（各自占满 content）
+│           └─ 待处理工作台 / 热点数据看板 / 文件三栏视图（各自占满 content）
 ├─ dvt-diag (可折叠)           插件/运行时/Git/SVN/工作区/数据目录/警告
 ├─ dvt-statusbar (24px)        工作区状态点 + 分支 + 变更数/冲突 + VCS + 诊断开关
 └─ dvt-dialog (面板内 absolute overlay，非全屏模态)
@@ -330,8 +333,11 @@ dvt-root (flex column, 100%, overflow hidden)
 - **v1.1 待处理工作台**：`ui/workbench.ts` 三栏（分组脏文件 | 即时 Diff | 体检/会话/分支洞察），
   分组直接来自 `WorkingTreeStatus.entries` 的 `staged`/`worktreeStatus`/`conflicts`，
   不额外发明一套「待处理」数据源；未选中文件时中列给出选择提示而不是空白。
-- **v1.1 热点排行**：`ui/hotspots.ts` 用固定网格列（文件/提交/±行/作者/最近）展示 Host 返回的
-  `FileHotspot`，排序键在客户端切换但只重排已返回的行；头部/底部固定写出扫描口径与缓存命中。
+- **v1.3 热点数据看板**：`ui/hotspots.ts` 的三个维度由 `hotspots.dimension` 驱动，Host 的
+  `HotspotReport` 同时携带 `files` / `authors` / `recent`（同一窗口、同一次扫描），
+  条长统一用 `sqrt(value)/sqrt(max)` 压缩长尾；角色不落库，由窗口内提交占比在客户端推导，
+  避免第二份会漂移的事实源。数据口径（窗口/分支/截断/缓存/活跃天数）固定在头部，
+  文件行可跳回时间线定位。
 - **v1.1 审计混排**：提交行与审计节点共用同一竖轴与日期分组，但节点图标、卡片样式（虚线）、
   状态徽标与日计数都独立，点击打开审计详情，不改变提交计数与泳道。
 - **时间线优先**：泳道图 + 日期分组让“谁在什么时候做了什么、在哪条分支上”一眼可读；行高 64px（两行），
@@ -360,5 +366,6 @@ dvt-root (flex column, 100%, overflow hidden)
 9. 体检只对真实 diff 的字节下结论；未跟踪文件、被截断的 diff、SVN 的缺失能力都以警告/规则项
    显式说明，不输出「全部通过」的假安心。
 10. 会话归因只读活动会话且只认成功的写文件工具调用；路径必须落在仓库根内；结果一律标注推断。
-11. 热点榜只展示可解释分项（churn/提交数/作者数/最近变更）与扫描口径（窗口/分支/截断/缓存），
-    不出现单一神秘分数；SVN 没有行级统计时显示不可用，不补零。
+11. 热点看板三个维度只展示可解释分项（文件 churn / 作者提交与行数贡献 / 最近提交），
+    全部共用同一扫描窗口并写出扫描口径（窗口/分支/截断/缓存/活跃天数），不出现单一神秘分数；
+    角色由提交占比推导并在悬停说明；SVN 没有行级统计时显示不可用，不补零。
