@@ -76,6 +76,17 @@ function positiveNumber(value: unknown): number | null {
 }
 
 /**
+ * De-duplicate provider warnings, keeping the first-seen order.
+ *
+ * The open list and the merged/closed history are separate reads; a token-scope
+ * fallback (or any other shared degradation) is reported by both, so the same
+ * sentence would otherwise appear twice in one banner.
+ */
+function uniqueWarnings(warnings: readonly string[]): string[] {
+  return [...new Set(warnings)]
+}
+
+/**
  * Clamp a requested merged/closed history window to the contract bounds.
  *
  * A missing or unusable value falls back to {@link DEFAULT_PR_HISTORY_DAYS}; a
@@ -276,6 +287,7 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
         windowDays,
       )
       if (!result.ok) throw providerFailure(result.error, token !== null)
+      const warnings = uniqueWarnings(result.value.warnings)
       const value: PullRequestList = {
         repositoryId: resolved.repositoryId,
         provider: remote.provider,
@@ -286,9 +298,9 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
         pullRequests: result.value.pullRequests,
         ...(includeClosed ? { closedWindowDays: windowDays } : {}),
         ...(result.value.historyTruncated === true ? { historyTruncated: true } : {}),
-        ...(result.value.warnings.length === 0
+        ...(warnings.length === 0
           ? {}
-          : { warnings: result.value.warnings, partial: true }),
+          : { warnings, partial: true }),
         fetchedAt,
       }
       cache.set(cacheKey, { value, expiresAt: currentMs + PULL_REQUEST_CACHE_MS })
@@ -323,7 +335,7 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
         files: result.value.files,
         ...(body === undefined ? {} : { body }),
         ...(truncated ? { truncated } : {}),
-        ...(warnings.length === 0 ? {} : { warnings }),
+        ...(uniqueWarnings(warnings).length === 0 ? {} : { warnings: uniqueWarnings(warnings) }),
       }
     },
   }

@@ -28,6 +28,17 @@ import { selectedRepository } from './shared.ts'
 
 const h = React.createElement
 
+/**
+ * De-duplicate provider warning sentences for the one-line partial banner.
+ *
+ * Open and merged/closed reads are separate provider calls; a shared degradation
+ * (for example a token-scope fallback) is reported by both, so the same sentence
+ * would otherwise appear twice in the banner.
+ */
+export function uniqueWarningText(warnings: readonly string[] | undefined): string {
+  return [...new Set((warnings ?? []).filter((warning) => warning.trim() !== ''))].join('; ')
+}
+
 /** Localized action label for one suggested next step. */
 export function actionLabel(kind: PullRequestActionKind, t: PanelDeps['t']): string {
   return t(`pr.action.${kind}`)
@@ -952,7 +963,7 @@ export function renderPullRequests(
   return h('div', { className: 'dvt-col dvt-pr-view' },
     summaryBar,
     data.partial === true
-      ? h(Banner, { kind: 'warn', title: t('state.partial.title'), text: (data.warnings ?? []).join('; ') || t('pr.detail.partial') })
+      ? h(Banner, { kind: 'warn', title: t('state.partial.title'), text: uniqueWarningText(data.warnings) || t('pr.detail.partial') })
       : null,
     body,
     !data.authenticated ? h(AuthHint, { deps }) : null,

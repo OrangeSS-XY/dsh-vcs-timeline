@@ -27,6 +27,7 @@ import { STYLES } from '../client/styles.ts'
 import { blockedReasonLabel } from '../client/format.ts'
 import { groupPendingEntries } from '../client/ui/workbench.ts'
 import { sortHotspots } from '../client/ui/hotspots.ts'
+import { uniqueWarningText } from '../client/ui/pr.ts'
 import type { VcsClient } from '../client/api.ts'
 
 const t = createTranslator('zh')
@@ -522,4 +523,12 @@ test('the blocked reason is localized instead of leaking the host sentence', () 
   assert.equal(blockedReasonLabel('nothing is staged; there is nothing to unstage', t), t('blocked.nothingToUnstage'))
   assert.equal(blockedReasonLabel('some brand new host reason', t), 'some brand new host reason')
   assert.equal(blockedReasonLabel(undefined, t), t('op.blocked.generic'))
+})
+
+test('duplicate provider warnings are rendered once in the partial banner', () => {
+  const warning = 'team review requests were omitted: the token lacks the read:org scope'
+  assert.equal(uniqueWarningText([warning, warning]), warning)
+  assert.equal(uniqueWarningText([warning, 'another warning', warning]), `${warning}; another warning`)
+  assert.equal(uniqueWarningText([]), '')
+  assert.equal(uniqueWarningText(undefined), '')
 })
