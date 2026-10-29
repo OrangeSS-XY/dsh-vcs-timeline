@@ -459,3 +459,61 @@ P0 六项：待处理工作台（含逐文件工作区 Diff）、提交前变更
   两态渲染、260ms 窗口、grid 叠层与 `aria-busy/aria-hidden` 契约，不是逐帧动画核对。
 - 未重新生成 `docs/ui-preview/` 截图；`docs/ui-preview/loading-dark.*` 仍是旧版加载态预览。
 - 运行中的桌面端 Host 插件版本仍是旧进程；v1.5.1 全部在 `lib/client.js`，F5 后加载新客户端。
+
+## 16. v1.5.2（0.1.5）PR Token 兼容性验收 — 2026-10-29
+
+### 16.1 现场诊断（为什么配了 `GITHUB_TOKEN` 还拉不到）
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 用户环境变量 `GITHUB_TOKEN` | **存在**（长度 40，未打印内容） |
+| 运行中的 DSH 进程环境 | **不存在** `GITHUB_TOKEN` / `GH_TOKEN`（本会话子进程同样读不到） |
+| DSH 进程 | PID 36756（父 19364），创建于 2026-10-29 17:42:45 →
+  Host 在 token 生效前启动，或不是从带该变量的上下文启动 |
+| 直接验证 token | `GET /user` 200（login 已确认）、`GET /repos/...` 私有仓库 200、scope=`repo` |
+| Host 网络 | 可达 api.github.com：公开仓库匿名 PR 能读到；私有仓库返回 `auth-required`（凭据缺失） |
+| 回退凭据 | `~/.git-credentials`、`<dataDir>/pr-auth.json` 均不存在 |
+
+结论：**两个独立原因叠加**。①环境变量只在新进程启动时继承，运行中的 Host 看不到；
+②token 只有 `repo` scope，而 v1.5.1 的 GitHub GraphQL 查询无条件请求 `Team.name`（需要 `read:org`），
+于是即使 token 被读到，查询也会被 GitHub 拒绝（`INSUFFICIENT_SCOPES`）。
+
+现场处理：先用插件支持的 `<dataDir>/pr-auth.json` 写入用户已配置的 token（不打印内容），
+Host 立即从匿名切到 authenticated，复现出第二个错误；确认后已删除该临时文件（最终依赖重启继承
+环境变量；文件是可选的免重启路径，插件文档已说明）。
+
+### 16.2 代码修复
+
+`src/host/pr/github.ts`：
+
+- `PULL_REQUEST_FIELDS` 拆成带/不带 `... on Team { name }` 两个版本；
+  `GITHUB_LIST_QUERY` / `GITHUB_CLOSED_QUERY` / `GITHUB_DETAIL_QUERY` 各生成 full / reduced 两版，
+  公开导出的 full 版查询文本保持不变。
+- 新增 `isInsufficientScopes()`（识别 `INSUFFICIENT_SCOPES` / `required scopes` / `read:org`）与
+  `postGraphQLWithScopeFallback()`：仅当第一次 GraphQL 响应是 scope 缺失时，用 reduced 查询重试一次；
+  限流/凭证失效/畸形响应不重试。
+- 降级成功后在 `warnings` 追加
+  `team review requests were omitted: the token lacks the read:org scope`，列表/详情/历史都会带出；
+  service 会因 warnings 标 `partial: true`，UI 不会把它当完整数据。
+- `src/tests/pr.test.ts` 新增 3 项：列表 scope 降级重试（断言第二次查询不含 `on Team`、只重试一次）、
+  详情 scope 降级重试、限流不触发降级。
+
+### 16.3 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npx tsc -p tsconfig.json --noEmit` | **exit 0**，0 诊断 |
+| `npm test` | **exit 0**，`# tests 486 / pass 486 / fail 0`（pr 套件 44/44，含新增 3 项） |
+| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.5: lib/index.js, lib/client.js` |
+| `node scripts/verify-host.mjs` | **21/21 PASS** |
+| `node scripts/verify-live.mjs http://127.0.0.1:14392` | **28/28 PASS**（运行中的 Host 仍是 0.1.4 进程） |
+| 手工 GitHub GraphQL（用用户 token、reduced 查询） | 私有仓库 200；已合并/关闭 PR 5 条、字段（review/checks/changedFiles/mergeCommit）均可读 |
+
+### 16.4 未验证 / 明确声明
+
+- **没有重启用户的 DSH 进程**：环境变量继承与 Host 新代码都需要完全退出 DSH（含托盘）后重新启动，
+  本轮只验证了进程环境缺失这一事实与修复后的单元/手工请求，**未在重启后的真实 Host 上复测**
+  `/vcs/pr/list`；重启后可用 `GET /vcs/pr/list` 确认 `authenticated:true`。
+- 用户的 token scope 仍是 `repo`；团队评审请求会按设计降级省略，若需要团队名请重新签发带
+  `read:org` 的 token。
+- 临时 `pr-auth.json` 已删除；若以后选择不重启而用文件方式，请确保文件权限仅当前用户可读。

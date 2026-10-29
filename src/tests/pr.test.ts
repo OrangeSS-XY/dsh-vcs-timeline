@@ -636,6 +636,63 @@ test('github GraphQL list maps draft, review, rollup, reviewers, mergeable and l
   assert.ok(!JSON.stringify(result.value).includes('tok-secret'))
 })
 
+test('github list retries without team fields when the token lacks read:org', async () => {
+  let graphqlCalls = 0
+  const fetchImpl = createFakeFetch((call) => {
+    if (call.url === GITHUB_GRAPHQL_URL) {
+      graphqlCalls += 1
+      if (graphqlCalls === 1) {
+        return {
+          body: {
+            errors: [{
+              type: 'INSUFFICIENT_SCOPES',
+              message: "Your token has not been granted the required scopes to execute this query. The 'name' field requires one of the following scopes: ['read:org', 'read:discussion']",
+            }],
+          },
+        }
+      }
+    }
+    return { body: graphqlListPayload([graphqlNode()]) }
+  })
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-repo-scope',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.pullRequests.length, 1)
+  assert.ok(result.value.warnings.some((warning) => warning.includes('read:org')))
+  assert.equal(graphqlCalls, 2, 'the scope rejection is retried exactly once')
+  const first = graphqlQueryOf(fetchImpl.calls[0])
+  const second = graphqlQueryOf(fetchImpl.calls[1])
+  assert.ok(first.includes('... on Team { name }'), 'the first attempt keeps team reviewer names')
+  assert.ok(!second.includes('on Team'), 'the retry must not ask for team names')
+  assert.ok(second.includes('states: [OPEN]'))
+})
+
+test('github does not retry a rate-limited GraphQL query as a scope problem', async () => {
+  const fetchImpl = createFakeFetch(() => ({
+    body: {
+      errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }],
+      data: { rateLimit: { remaining: 0, resetAt: '2026-01-03T00:00:00Z' } },
+    },
+  }))
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+  })
+  assert.equal(result.ok, false)
+  if (result.ok) return
+  assert.equal(result.error.kind, 'rate-limited')
+  assert.equal(fetchImpl.calls.length, 1, 'a rate limit is a real failure, not a scope fallback')
+})
+
 test('github lists open-only, draft-first REST payloads anonymously without review facts', async () => {
   const fetchImpl = createFakeFetch(() => ({
     body: [
@@ -932,6 +989,42 @@ test('github authenticated detail maps files, description and lifecycle state', 
   ])
   assert.equal(fetchImpl.calls.length, 2)
   for (const call of fetchImpl.calls) assert.equal(call.headers.authorization, 'bearer tok-secret')
+})
+
+test('github detail also falls back to the reduced query when team names need a scope', async () => {
+  let graphqlCalls = 0
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url === GITHUB_GRAPHQL_URL) {
+      graphqlCalls += 1
+      if (graphqlCalls === 1) {
+        return {
+          body: {
+            errors: [{
+              type: 'INSUFFICIENT_SCOPES',
+              message: "The 'name' field requires one of the following scopes: ['read:org']",
+            }],
+          },
+        }
+      }
+      return { body: graphqlDetailPayload(graphqlNode({ number: 42, state: 'OPEN', body: 'ok' })) }
+    }
+    if (call.url.includes('/files')) return { body: REST_FILES }
+    return { status: 404, body: { message: 'not found' } }
+  })
+  const result = await fetchGitHubDetail({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-repo-scope',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+    number: 42,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.pullRequest.number, 42)
+  assert.ok(result.value.warnings.some((warning) => warning.includes('read:org')))
+  assert.equal(graphqlCalls, 2)
+  assert.ok(!graphqlQueryOf(fetchImpl.calls[1]).includes('on Team'))
 })
 
 test('github anonymous detail maps a closed pull request and degrades a failed files read', async () => {

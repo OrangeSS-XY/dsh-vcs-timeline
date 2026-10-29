@@ -1,6 +1,6 @@
 {
   "name": "dsh-vcs-timeline",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "DSH 代码时间线：Git/SVN 仓库历史、变更与 Diff 查看，以及本插件 VCS 操作审计。",
   "icon": "icon.svg",

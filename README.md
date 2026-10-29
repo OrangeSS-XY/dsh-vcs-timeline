@@ -79,9 +79,23 @@ DeepSeek Harness（DSH）桌面端插件：以**文件为中心**浏览 **Git / 
   退化为静态，骨架与状态栏都不含文字。
 - **纯前端改动，无需重启 DSH Host**：新增的刷新/缓存都在浏览器半；重新构建后 `F5` 即可生效。
 
-> 验收口径：`npm run check`（typecheck + 483 项测试 + 构建）与 `npm run verify:host`
+> 验收口径：`npm run check`（typecheck + 486 项测试 + 构建）与 `npm run verify:host`
 >（把构建产物 `lib/index.js` 挂到假 Host 上，用真实 git 跑通全部路由，21/21）通过。
 > 运行中的桌面端如需加载新的 Host 代码仍需重启一次（见「安装」末段）；v1.5 不涉及 Host 代码。
+
+### v1.5.2 PR Token 兼容性（0.1.5）
+
+- **根因**：GitHub 的 `Team.name` 字段要求 token 具备 `read:org`（或 `read:discussion`）scope；
+  此前列表/详情/历史三处 GraphQL 查询**无条件**请求团队 reviewer 名字，导致只有 `repo` scope 的
+  常见 classic PAT 在私有仓库上直接失败（公开仓库匿名本来能读，一旦带了 token 反而走 authenticated
+  路径失败）。
+- **修复**：三处查询都提供「不含团队字段」的降级版本；只有 GitHub 返回 `INSUFFICIENT_SCOPES` 时才
+  自动重试一次，成功后在 `warnings` 里明确写「team review requests were omitted: the token lacks
+  the read:org scope」（UI 显示为部分数据），不把缺字段伪装成完整数据。限流、失效凭证、畸形响应
+  等其它错误**不会**被降级重试掩盖。
+- **Token 要求**：私有仓库 PR 读取只需要 `repo` scope；想额外看到团队评审请求再加 `read:org`。
+- 新增 3 个测试：列表 scope 降级重试、详情 scope 降级重试、限流不触发降级。
+- Host 侧改动：重启 DSH 后加载新的 `lib/index.js`；客户端仍是 F5。
 
 ### v1.5.1 加载骨架细化（0.1.4）
 
@@ -293,8 +307,17 @@ PR 的评审、CI、可合并状态需要访问令牌；插件按以下顺序读
    （数据目录见状态栏“诊断”，本机为 `C:\Users\Lenovo\.dsh\storages\dsh-vcs-timeline`）
 
 都没有时以**匿名**方式读取公开仓库：只显示基础信息（作者/分支/更新时间），评审/CI/可合并显示为未知，
-并在页面提示凭据来源。当前验收机器的 **Host 进程无法访问 api.github.com**（直连 node 进程可以），
-因此页面会显示「无法连接 GitHub/GitLab」网络错误态，这是环境的真实状态而不是插件伪造。
+并在页面提示凭据来源。Host 进程能直连 api.github.com；页面若显示“无法连接”，是 Host 真实的网络失败，
+不是插件伪造。
+
+注意两点：
+
+- **环境变量只在 DSH 进程启动时继承**。在 Windows 用 `setx` / 系统属性改完 `GITHUB_TOKEN` 后，
+  必须**完全退出 DSH（含托盘）再重新启动**；只关闭窗口或刷新页面不会让已经在运行的 Host 看到新变量。
+  不想重启时可把 token 写进第 3 项的 `pr-auth.json`（插件按请求读取，立即生效）。
+- **GitHub token scope**：私有仓库 PR 读取只需要 `repo`；团队 reviewer 名字需要额外 `read:org`
+  （GitHub 的 `Team.name` 限制），缺失时插件会自动降级查询并在 `warnings` 中注明团队评审请求被省略，
+  不会因此让整个 PR 列表失败。
 
 ## 开发
 
