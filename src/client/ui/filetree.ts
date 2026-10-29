@@ -103,6 +103,12 @@ function TreeNodeRow(props: {
         status: F.statusLabel(node.entry.status, t),
       }),
       onClick: () => handlers.onSelectFile(selected ? null : node.path),
+      // Warm the diff on hover so opening the file feels instant; the panel
+      // debounces this read and cancels it when the pointer leaves.
+      onMouseEnter: () => handlers.onPrefetchFile(node.path),
+      onMouseLeave: () => handlers.onCancelPrefetchFile(node.path),
+      onFocus: () => handlers.onPrefetchFile(node.path),
+      onBlur: () => handlers.onCancelPrefetchFile(node.path),
     },
     h('span', { className: 'dvt-tree-icon', 'aria-hidden': 'true' }, h(IconFile, { size: 12 })),
     h('span', { className: 'dvt-tree-name dvt-clip' }, node.name),

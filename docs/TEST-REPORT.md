@@ -356,3 +356,164 @@ P0 六项：待处理工作台（含逐文件工作区 Diff）、提交前变更
   热点页显示日历热力 + 条形图，待处理页显示三个操作按钮；旧 Host 没有 `daily` 时图表显示
   诚实的空状态而不是崩溃。
 - 26 周热力图的宽度/窄栏换行只有渲染级验证，未做真实窗口的多分辨率人工签收。
+
+## 14. v1.5（0.1.3）动态加载 / 热加载验收 — 2026-10-29
+
+### 14.1 范围
+
+纯浏览器半改动，未新增/修改 Host 路由：
+
+- `src/client/cache.ts`（新增）：页面生命周期内存缓存（workspace 列表 + repository 切片 + 时间戳），
+  `timelineQueryKey` / `workspaceKey` 保证不同筛选与 Windows 路径不会互相命中；仓库 LRU 8。
+- `src/client/sync.ts`（新增）：插件激活即预热（1.2s 首轮 → 30s），面板打开暂停、关闭 800ms 补一轮，
+  visibility 恢复时补 warm（5s 节流），失败指数退避 30→60→120→240s，token 丢弃 stop 后在途结果。
+- `src/client/panel.ts`：首帧 `hydratePanelState` 水合；首屏加载在已有数据时静默（不清列表）；
+  `mergeTimelineRefresh` / `mergeAuditRefresh` 原位合并并保留已加载旧页；10s status 指纹探测、
+  30s 完整静默刷新、visibility/focus 立即刷新（5s 节流）；刷新计数器成对释放（被取代的请求
+  `cancelRefresh`），进度条不会卡死；冷启动失败仍走原错误态，静默失败保留旧数据并写 `sync.lastError`。
+- `src/client/index.ts`：激活时 `sync.start()`，卸载 `sync.stop()`，并把 `sync` 注入面板。
+- `src/client/styles.ts` / `ui/toolbar.ts` / `i18n.ts`：3px 不确定进度条（零高度槽，不推动布局）、
+  旋转刷新图标、`role=status` live region、stale 警告 Banner、shimmer 骨架屏、reduced-motion 退化。
+- `src/client/types.ts`：`SyncState`、`HydrationSnapshot`、`PanelSync`、`SyncRuntimeState`。
+
+### 14.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npx tsc -p tsconfig.json --noEmit` | **exit 0**，0 诊断 |
+| `npm test` | **exit 0**，`# tests 470 / pass 470 / fail 0`（新增 41 项：cache 6 / dynamic 8 / sync 21 / sync-ui 6） |
+| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.3: lib/index.js, lib/client.js` |
+| `node scripts/verify-host.mjs` | **21/21 PASS**（Host 未改，回归） |
+| `node scripts/verify-live.mjs http://127.0.0.1:2613` | **28/28 PASS**（运行中的桌面端 Host 仍是 0.1.2 进程；v1.5 不涉及 Host 代码） |
+| `node --experimental-strip-types src/tests/client.cache.test.ts` | 6/6 |
+| `node --experimental-strip-types src/tests/client.dynamic.test.ts` | 8/8（水合、错误筛选不命中、仓库回退、原位合并、审计合并） |
+| `node --experimental-strip-types src/tests/sync.test.ts` | 21/21（假调度器 + 可控时钟，零真实计时；含 2 分钟仓库列表复用） |
+| `node --experimental-strip-types src/tests/client.sync-ui.test.ts` | 6/6（进度条/live region/stale Banner/样式断言） |
+
+补充一次**临时视觉核对**（产物未入库）：用真实 `renderPanelView` + `sync.refreshing = true` 渲染
+1600×900 浅色页面，Edge headless 截图确认工具栏出现“正在更新…”胶囊、刷新图标为旋转态、
+主卡片顶部 3px 进度条槽渲染（像素采样 y≈12–14 为 `--dsw-alias-bg-layer-2`）；因 headless
+截图不推进 CSS 动画，只核对了布局与静态形态，动画本身由样式/渲染测试覆盖。
+
+### 14.3 未验证 / 明确声明
+
+- **未在真实页面上做 F5 后的人工/自动化视觉签收**：本轮环境里 GUI 需要会话授权，且没有启动新的
+  Playwright 浏览器核对；首次/二次打开的骨架差异、进度条位置、滚动保持等都是组件级渲染 + 纯状态测试，
+  不是真实桌面端截图。可按 [docs/DYNAMIC-LOADING.md](DYNAMIC-LOADING.md) §4 的 10 条步骤手工验收。
+- **预热/计时的“感知性能”未量化**：`sync.test.ts` 验证了调度、退避、单飞与缓存写入，但没有在真实
+  Host 上测 30s 轮询的 CPU 占用或点击到首帧的毫秒数；10s 状态探测依赖 `git status`，超大仓库的开销
+  未测。
+- **运行中的桌面端 Host 插件版本仍是 0.1.2**：`diagnostics` 返回 0.1.2，说明 Host 进程未重启；
+  v1.5 全部在 `lib/client.js`，浏览器 F5 后加载 0.1.3 客户端，不需要重启 Host。若应用启动时缓存了
+  旧客户端 bundle，需重挂载/重装插件。
+- 多面板实例边界（右侧栏 + 对话区同时挂载）没有做实例计数，见 README 已知限制。
+- 未重新生成 `docs/ui-preview/` 截图（样式新增进度条/shimmer，但预览页是示例数据渲染，不是运行时状态）。
+
+## 15. v1.5.1（0.1.4）加载骨架细化验收 — 2026-10-29
+
+### 15.1 范围
+
+按“X/Twitter 卡片列表加载”的视觉重做加载动画（纯客户端）：
+
+- 新增 `src/client/ui/skeleton.ts`：`SkeletonBlock/Line`、`SkeletonCardList`、`SkeletonTimelineList`、
+  `SkeletonTree`、`SkeletonHotspots`、`SkeletonWorkbench`、`SkeletonContent`，以及有状态的
+  `SkeletonSwap`（骨架 260ms 淡出 + 内容同帧淡入，grid 同格叠层防跳动）。
+- `src/client/components.ts`：`isContentLoading(state)` 决定是否铺骨架（boot loading 或当前 source
+  首次加载且无已显示数据；有数据的静默刷新绝不出骨架）；主内容包 `SkeletonSwap`；timeline 首次加载
+  /冷启动时左树用 `SkeletonTree`。
+- `src/client/ui/history.ts / audit.ts / pr.ts / hotspots.ts / workbench.ts`：主列表 loading 分支改为
+  返回 `null`（由 composition root 的覆盖层负责骨架），局部 pane（detail/diff/checks/session/compare/
+  dialog）继续用 `SkeletonRows`，但内部换成新灰块样式。
+- `src/client/ui/toolbar.ts` / `status.ts`：冷启动骨架阶段隐藏进度条、“正在更新…”胶囊与 live 文案；
+  状态栏换成灰块，保证骨架屏无文字。
+- `src/client/styles.ts`：`.dvt-skel-block` 灰块 + `::after` 白色微光扫光（1.5s 循环，负延迟首帧可见）、
+  `dvt-skel-out` / `dvt-content-in` 交叉淡入淡出、`prefers-reduced-motion` 退化；状态栏/时间线/卡片/
+  树/热点/待办骨架布局样式。
+- 新增 `src/tests/client.skeleton.test.ts`（11 项），并加入 `src/tests/index.test.ts` 的默认测试入口。
+
+### 15.2 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npx tsc -p tsconfig.json --noEmit` | **exit 0**，0 诊断 |
+| `npm test` | **exit 0**，`# tests 483 / pass 483 / fail 0`（新增 13 项：skeleton 11 + dynamic 2 个“首帧 loading”用例） |
+| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.4: lib/index.js, lib/client.js` |
+| `node scripts/verify-host.mjs` | **21/21 PASS**（Host 未改，回归） |
+| `node scripts/verify-live.mjs http://127.0.0.1:2613` | **28/28 PASS**（运行中的桌面端 Host 仍是旧进程；v1.5.1 不涉及 Host） |
+| `node --experimental-strip-types src/tests/client.skeleton.test.ts` | 11/11 |
+
+补充**视觉核对**：新增预览场景 `loading-skeleton-light` / `loading-skeleton-dark`（1600×900，
+`npm run preview:ui` 用真实 `renderPanelView` + 示例数据渲染并由本机 Edge 截图，产物见
+[docs/ui-preview/loading-skeleton-light.png](ui-preview/loading-skeleton-light.png) 与
+[docs/ui-preview/loading-skeleton-dark.png](ui-preview/loading-skeleton-dark.png)）。核对结果：
+左树为 `SkeletonTree`、主内容为时间线灰块（140px 泳道占位 + 行结构）、底部状态栏为灰块、
+无“正在更新…”胶囊/无空状态文字；灰块白色扫光渐变已做像素采样确认（浅色下 238→245 再回落）。
+截图不推进 CSS 动画，循环扫光与交叉淡入淡出的时长/关键帧由样式断言 + `SkeletonSwap` 契约测试覆盖。
+
+### 15.3 未验证 / 明确声明
+
+- **未在真实 DSH 页面做 F5 后的人工/自动化视觉签收**：本环境 GUI 需要会话授权，且没有启动新的
+  Playwright 浏览器；骨架布局、无文字、淡入淡出的最终观感需在真实页面按 F5 后确认
+  （`README` v1.5.1 与 `docs/DYNAMIC-LOADING.md` §4 有验收步骤）。
+- 交叉淡入淡出的**运行时时序**（React effect、260ms 后卸载骨架）只能在浏览器里发生；Node 测试固定了
+  两态渲染、260ms 窗口、grid 叠层与 `aria-busy/aria-hidden` 契约，不是逐帧动画核对。
+- 未重新生成 `docs/ui-preview/` 截图；`docs/ui-preview/loading-dark.*` 仍是旧版加载态预览。
+- 运行中的桌面端 Host 插件版本仍是旧进程；v1.5.1 全部在 `lib/client.js`，F5 后加载新客户端。
+
+## 16. v1.5.2（0.1.5）PR Token 兼容性验收 — 2026-10-29
+
+### 16.1 现场诊断（为什么配了 `GITHUB_TOKEN` 还拉不到）
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 用户环境变量 `GITHUB_TOKEN` | **存在**（长度 40，未打印内容） |
+| 运行中的 DSH 进程环境 | **不存在** `GITHUB_TOKEN` / `GH_TOKEN`（本会话子进程同样读不到） |
+| DSH 进程 | PID 36756（父 19364），创建于 2026-10-29 17:42:45 →
+  Host 在 token 生效前启动，或不是从带该变量的上下文启动 |
+| 直接验证 token | `GET /user` 200（login 已确认）、`GET /repos/...` 私有仓库 200、scope=`repo` |
+| Host 网络 | 可达 api.github.com：公开仓库匿名 PR 能读到；私有仓库返回 `auth-required`（凭据缺失） |
+| 回退凭据 | `~/.git-credentials`、`<dataDir>/pr-auth.json` 均不存在 |
+
+结论：**两个独立原因叠加**。①环境变量只在新进程启动时继承，运行中的 Host 看不到；
+②token 只有 `repo` scope，而 v1.5.1 的 GitHub GraphQL 查询无条件请求 `Team.name`（需要 `read:org`），
+于是即使 token 被读到，查询也会被 GitHub 拒绝（`INSUFFICIENT_SCOPES`）。
+
+现场处理：先用插件支持的 `<dataDir>/pr-auth.json` 写入用户已配置的 token（不打印内容），
+Host 立即从匿名切到 authenticated，复现出第二个错误；确认后已删除该临时文件（最终依赖重启继承
+环境变量；文件是可选的免重启路径，插件文档已说明）。
+
+### 16.2 代码修复
+
+`src/host/pr/github.ts`：
+
+- `PULL_REQUEST_FIELDS` 拆成带/不带 `... on Team { name }` 两个版本；
+  `GITHUB_LIST_QUERY` / `GITHUB_CLOSED_QUERY` / `GITHUB_DETAIL_QUERY` 各生成 full / reduced 两版，
+  公开导出的 full 版查询文本保持不变。
+- 新增 `isInsufficientScopes()`（识别 `INSUFFICIENT_SCOPES` / `required scopes` / `read:org`）与
+  `postGraphQLWithScopeFallback()`：仅当第一次 GraphQL 响应是 scope 缺失时，用 reduced 查询重试一次；
+  限流/凭证失效/畸形响应不重试。
+- 降级成功后在 `warnings` 追加
+  `team review requests were omitted: the token lacks the read:org scope`，列表/详情/历史都会带出；
+  service 会因 warnings 标 `partial: true`，UI 不会把它当完整数据。
+- `src/tests/pr.test.ts` 新增 3 项：列表 scope 降级重试（断言第二次查询不含 `on Team`、只重试一次）、
+  详情 scope 降级重试、限流不触发降级。
+
+### 16.3 实际执行的命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `npx tsc -p tsconfig.json --noEmit` | **exit 0**，0 诊断 |
+| `npm test` | **exit 0**，`# tests 486 / pass 486 / fail 0`（pr 套件 44/44，含新增 3 项） |
+| `npm run build` | **exit 0**，`built dsh-vcs-timeline@0.1.5: lib/index.js, lib/client.js` |
+| `node scripts/verify-host.mjs` | **21/21 PASS** |
+| `node scripts/verify-live.mjs http://127.0.0.1:14392` | **28/28 PASS**（运行中的 Host 仍是 0.1.4 进程） |
+| 手工 GitHub GraphQL（用用户 token、reduced 查询） | 私有仓库 200；已合并/关闭 PR 5 条、字段（review/checks/changedFiles/mergeCommit）均可读 |
+
+### 16.4 未验证 / 明确声明
+
+- **没有重启用户的 DSH 进程**：环境变量继承与 Host 新代码都需要完全退出 DSH（含托盘）后重新启动，
+  本轮只验证了进程环境缺失这一事实与修复后的单元/手工请求，**未在重启后的真实 Host 上复测**
+  `/vcs/pr/list`；重启后可用 `GET /vcs/pr/list` 确认 `authenticated:true`。
+- 用户的 token scope 仍是 `repo`；团队评审请求会按设计降级省略，若需要团队名请重新签发带
+  `read:org` 的 token。
+- 临时 `pr-auth.json` 已删除；若以后选择不重启而用文件方式，请确保文件权限仅当前用户可读。

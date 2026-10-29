@@ -40,6 +40,11 @@ const baseZh: Record<string, string> = {
   'common.showingCount': '已显示 {count} 条',
   'common.bytes': '{bytes} 字节',
 
+  'sync.refreshing': '正在更新…',
+  'sync.staleWarning': '后台刷新失败，当前显示的是上次的数据。',
+  'sync.updated': '已更新于 {time}',
+  'sync.updatedJustNow': '刚刚更新',
+
   'aria.repository': '选择仓库',
   'aria.refresh': '刷新仓库列表与数据',
   'aria.closeDialog': '关闭对话框',
@@ -53,6 +58,7 @@ const baseZh: Record<string, string> = {
   'aria.file': '查看文件 Diff {path}',
   'aria.toggleFilters': '展开或收起筛选',
   'aria.retryStatus': '重试读取工作区状态',
+  'aria.syncProgress': '后台数据同步',
 
   'repo.label': '仓库',
   'repo.select': '选择仓库',
@@ -156,6 +162,7 @@ const baseZh: Record<string, string> = {
   'op.update': 'Update',
   'op.commit': 'Commit',
   'op.previewing': '正在生成操作预览…',
+  'op.updating': '正在按新参数更新预览…',
   'op.previewFailed': '预览失败，未执行任何操作。',
   'op.summary': '操作摘要',
   'op.argv': '将执行的命令参数',
@@ -298,6 +305,11 @@ const baseEn: Record<string, string> = {
   'common.showingCount': '{count} shown',
   'common.bytes': '{bytes} bytes',
 
+  'sync.refreshing': 'Updating…',
+  'sync.staleWarning': 'Background refresh failed; showing the last known data.',
+  'sync.updated': 'Updated {time}',
+  'sync.updatedJustNow': 'Updated just now',
+
   'aria.repository': 'Select repository',
   'aria.refresh': 'Refresh repositories and data',
   'aria.closeDialog': 'Close dialog',
@@ -311,6 +323,7 @@ const baseEn: Record<string, string> = {
   'aria.file': 'View file diff {path}',
   'aria.toggleFilters': 'Expand or collapse filters',
   'aria.retryStatus': 'Retry working tree status',
+  'aria.syncProgress': 'Background data sync',
 
   'repo.label': 'Repository',
   'repo.select': 'Select repository',
@@ -414,6 +427,7 @@ const baseEn: Record<string, string> = {
   'op.update': 'Update',
   'op.commit': 'Commit',
   'op.previewing': 'Preparing operation preview…',
+  'op.updating': 'Refreshing the preview for the new parameters…',
   'op.previewFailed': 'Preview failed; nothing was executed.',
   'op.summary': 'Summary',
   'op.argv': 'Command arguments',

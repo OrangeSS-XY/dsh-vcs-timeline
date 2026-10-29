@@ -38,29 +38,39 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = resolve(root, 'docs/ui-preview')
 const t = createTranslator('zh')
 
+/**
+ * Light-theme tokens copied from the installed DSH monochrome theme.
+ *
+ * The important truth: `--dsw-alias-brand-primary` is MONOCHROME (#0f1115),
+ * not a blue accent. Chart/heat colours must therefore come from the explicit
+ * `--dvt-data-blue` / `--dvt-data-purple` palette owned by the panel stylesheet;
+ * this fixture is what proves they do. Neutral greys and semantic
+ * green/red/amber are the installed theme's values.
+ */
 const LIGHT_TOKENS: Record<string, string> = {
   '--dsw-alias-bg-base': '#ffffff',
-  '--dsw-alias-bg-layer-1': '#f7f8fa',
-  '--dsw-alias-bg-layer-2': '#eceff3',
+  '--dsw-alias-bg-layer-1': '#f4f4f4',
+  '--dsw-alias-bg-layer-2': '#ebebeb',
   '--dsw-alias-bg-overlay': '#ffffff',
-  '--dsw-alias-bg-mask-drop': 'rgba(15, 23, 42, 0.32)',
-  '--dsw-alias-border-l1': '#e3e6ea',
-  '--dsw-alias-border-l2': '#cfd4da',
-  '--dsw-alias-label-primary': '#1c2229',
-  '--dsw-alias-label-secondary': '#4d5865',
-  '--dsw-alias-label-tertiary': '#7d8894',
-  '--dsw-alias-brand-primary': '#2f6feb',
+  '--dsw-alias-bg-mask-drop': 'rgba(15, 17, 21, 0.32)',
+  '--dsw-alias-border-l1': '#e6e6e6',
+  '--dsw-alias-border-l2': '#d2d2d2',
+  '--dsw-alias-label-primary': '#0f1115',
+  '--dsw-alias-label-secondary': '#5b616b',
+  '--dsw-alias-label-tertiary': '#8a909a',
+  '--dsw-alias-brand-primary': '#0f1115',
   '--dsw-alias-state-success-primary': '#1a7f37',
   '--dsw-alias-state-error-primary': '#cf222e',
   '--dsw-alias-state-warn-primary': '#9a6700',
-  '--dsw-alias-interactive-hover': 'rgba(15, 23, 42, 0.05)',
-  '--dsw-alias-interactive-pressed': 'rgba(15, 23, 42, 0.09)',
-  '--dsw-alias-interactive-selected': 'rgba(47, 111, 235, 0.10)',
-  '--dsw-specific-sidebar-fill': '#f6f8fa',
+  '--dsw-alias-interactive-hover': 'rgba(15, 17, 21, 0.05)',
+  '--dsw-alias-interactive-pressed': 'rgba(15, 17, 21, 0.09)',
+  '--dsw-alias-interactive-selected': 'rgba(15, 17, 21, 0.07)',
+  '--dsw-specific-sidebar-fill': '#f4f4f4',
   '--dsw-specific-button-secondary-fill': '#ffffff',
-  '--dsw-alias-bg-mask-drop-x': 'rgba(15, 23, 42, 0.32)',
+  '--dsw-alias-bg-mask-drop-x': 'rgba(15, 17, 21, 0.32)',
 }
 
+/** Dark monochrome theme: brand is near-white, so charts must not use it either. */
 const DARK_TOKENS: Record<string, string> = {
   '--dsw-alias-bg-base': '#0d1117',
   '--dsw-alias-bg-layer-1': '#161b22',
@@ -69,16 +79,16 @@ const DARK_TOKENS: Record<string, string> = {
   '--dsw-alias-bg-mask-drop': 'rgba(0, 0, 0, 0.55)',
   '--dsw-alias-border-l1': '#232a33',
   '--dsw-alias-border-l2': '#333c47',
-  '--dsw-alias-label-primary': '#e6edf3',
-  '--dsw-alias-label-secondary': '#a7b1bd',
-  '--dsw-alias-label-tertiary': '#7d8894',
-  '--dsw-alias-brand-primary': '#58a6ff',
+  '--dsw-alias-label-primary': '#f5f6f8',
+  '--dsw-alias-label-secondary': '#a6adb8',
+  '--dsw-alias-label-tertiary': '#7c8590',
+  '--dsw-alias-brand-primary': '#f5f6f8',
   '--dsw-alias-state-success-primary': '#3fb950',
   '--dsw-alias-state-error-primary': '#f85149',
   '--dsw-alias-state-warn-primary': '#d29922',
   '--dsw-alias-interactive-hover': 'rgba(255, 255, 255, 0.06)',
   '--dsw-alias-interactive-pressed': 'rgba(255, 255, 255, 0.10)',
-  '--dsw-alias-interactive-selected': 'rgba(88, 166, 255, 0.14)',
+  '--dsw-alias-interactive-selected': 'rgba(245, 246, 248, 0.10)',
   '--dsw-specific-sidebar-fill': '#0d1117',
   '--dsw-specific-button-secondary-fill': '#20262e',
 }
@@ -251,16 +261,32 @@ const changeSet: ChangeSet = {
   ],
 }
 
+type FixtureActionKind =
+  | 'review'
+  | 'address-feedback'
+  | 'merge'
+  | 'fix-ci'
+  | 'fix-conflicts'
+  | 'wait'
+  | 'unknown'
+
 const pullRequest = (input: {
   number: number
   title: string
   author: string
   branch: string
-  state?: 'open' | 'draft'
+  state?: 'open' | 'draft' | 'merged' | 'closed'
   reviewState?: 'approved' | 'changes-requested' | 'review-required' | 'none'
   checksState?: 'success' | 'failure' | 'pending' | 'none'
   mergeable?: boolean | null
-  action?: { kind: 'review' | 'wait' | 'merge' | 'fix-ci'; reason: string }
+  action?: { kind: FixtureActionKind; reason: string }
+  actions?: Array<{ kind: FixtureActionKind; reason: string }>
+  mergedAt?: string
+  closedAt?: string
+  additions?: number
+  deletions?: number
+  changedFiles?: number
+  createdAt?: string
   updatedAt: string
 }) => ({
   schemaVersion: 1 as const,
@@ -274,19 +300,22 @@ const pullRequest = (input: {
   author: { login: input.author },
   branch: input.branch,
   baseBranch: 'main',
-  createdAt: input.updatedAt,
+  createdAt: input.createdAt ?? input.updatedAt,
   updatedAt: input.updatedAt,
+  ...(input.mergedAt === undefined ? {} : { mergedAt: input.mergedAt }),
+  ...(input.closedAt === undefined ? {} : { closedAt: input.closedAt }),
   reviewState: input.reviewState ?? 'none',
   checksState: input.checksState ?? 'none',
   mergeable: input.mergeable ?? null,
   reviews: [],
   checks: [],
   pendingReviewers: [],
-  requestedFromViewer: input.action?.kind === 'review',
-  actions: input.action === undefined ? [] : [input.action],
-  changedFiles: 4,
-  additions: 96,
-  deletions: 24,
+  requestedFromViewer: (input.actions ?? (input.action === undefined ? [] : [input.action]))
+    .some((action) => action.kind === 'review'),
+  actions: input.actions ?? (input.action === undefined ? [] : [input.action]),
+  changedFiles: input.changedFiles ?? 4,
+  additions: input.additions ?? 96,
+  deletions: input.deletions ?? 24,
   commitCount: 3,
   commentCount: 2,
 })
@@ -334,6 +363,182 @@ const pullRequests = {
     }),
   ],
   fetchedAt: '2026-10-27T09:30:00.000Z',
+}
+
+/**
+ * Analytics dashboard fixture: every merge-readiness class the tiles count.
+ *
+ * Loaded 9 PRs with a 30-day merged/closed window and a truncated history cap:
+ * one ready-to-merge, one conflicting, one draft, one change-requested, one
+ * unknown-mergeability, three merged (three different ISO weeks) and one closed.
+ * Four authors carry additions/deletions so the ranking bars are meaningful.
+ */
+const prAnalyticsList = {
+  repositoryId: repository.id,
+  provider: 'github' as const,
+  host: 'github.com',
+  remotePath: 'example/web-console',
+  viewer: 'linwei',
+  authenticated: true,
+  closedWindowDays: 30,
+  historyTruncated: true,
+  pullRequests: [
+    pullRequest({
+      number: 57,
+      title: 'feat: 热点日历与分析看板',
+      author: 'linwei',
+      branch: 'feat/pr-analytics',
+      reviewState: 'approved',
+      checksState: 'success',
+      mergeable: true,
+      action: { kind: 'merge', reason: 'ready-to-merge' },
+      additions: 412,
+      deletions: 96,
+      changedFiles: 9,
+      createdAt: '2026-10-22T08:10:00.000Z',
+      updatedAt: '2026-10-29T02:41:00.000Z',
+    }),
+    pullRequest({
+      number: 56,
+      title: 'fix: 冲突分支的合并顺序',
+      author: 'zhaomin',
+      branch: 'fix/conflict-order',
+      reviewState: 'changes-requested',
+      checksState: 'failure',
+      mergeable: false,
+      actions: [
+        { kind: 'fix-conflicts', reason: 'merge-conflict' },
+        { kind: 'address-feedback', reason: 'changes-requested-by-others' },
+      ],
+      additions: 180,
+      deletions: 74,
+      changedFiles: 6,
+      createdAt: '2026-10-20T09:15:00.000Z',
+      updatedAt: '2026-10-28T17:40:00.000Z',
+    }),
+    pullRequest({
+      number: 55,
+      title: 'docs: 兼容性矩阵与升级说明',
+      author: 'chenyu',
+      branch: 'docs/compat-matrix',
+      state: 'draft',
+      reviewState: 'review-required',
+      mergeable: null,
+      additions: 64,
+      deletions: 12,
+      changedFiles: 3,
+      createdAt: '2026-10-26T06:30:00.000Z',
+      updatedAt: '2026-10-28T11:08:00.000Z',
+    }),
+    pullRequest({
+      number: 54,
+      title: 'refactor: 收敛数据色板 token',
+      author: 'linwei',
+      branch: 'refactor/data-tokens',
+      reviewState: 'changes-requested',
+      checksState: 'success',
+      mergeable: true,
+      action: { kind: 'address-feedback', reason: 'your-pr-has-feedback' },
+      additions: 96,
+      deletions: 24,
+      changedFiles: 5,
+      createdAt: '2026-10-19T03:05:00.000Z',
+      updatedAt: '2026-10-27T15:22:00.000Z',
+    }),
+    pullRequest({
+      number: 53,
+      title: 'feat: PR 分析看板与作者排行',
+      author: 'chenyu',
+      branch: 'feat/pr-dashboard',
+      state: 'merged',
+      reviewState: 'approved',
+      checksState: 'success',
+      mergeable: true,
+      mergedAt: '2026-10-27T09:12:00.000Z',
+      additions: 986,
+      deletions: 219,
+      changedFiles: 12,
+      createdAt: '2026-10-18T10:40:00.000Z',
+      updatedAt: '2026-10-27T09:12:00.000Z',
+    }),
+    pullRequest({
+      number: 52,
+      title: 'fix: 旧版浏览器兼容问题',
+      author: 'zhaomin',
+      branch: 'fix/legacy-browser',
+      state: 'closed',
+      mergeable: null,
+      closedAt: '2026-10-21T10:30:00.000Z',
+      additions: 48,
+      deletions: 90,
+      changedFiles: 4,
+      createdAt: '2026-10-05T07:20:00.000Z',
+      updatedAt: '2026-10-21T10:30:00.000Z',
+    }),
+    pullRequest({
+      number: 51,
+      title: 'chore: 依赖升级与锁文件同步',
+      author: 'sunqi',
+      branch: 'chore/deps',
+      reviewState: 'review-required',
+      checksState: 'pending',
+      mergeable: null,
+      action: { kind: 'wait', reason: 'waiting' },
+      additions: 18,
+      deletions: 14,
+      changedFiles: 2,
+      createdAt: '2026-10-16T02:35:00.000Z',
+      updatedAt: '2026-10-26T09:36:00.000Z',
+    }),
+    pullRequest({
+      number: 50,
+      title: 'feat: 作者贡献卡片',
+      author: 'linwei',
+      branch: 'feat/author-cards',
+      state: 'merged',
+      reviewState: 'approved',
+      checksState: 'success',
+      mergeable: true,
+      mergedAt: '2026-10-14T16:05:00.000Z',
+      additions: 640,
+      deletions: 120,
+      changedFiles: 7,
+      createdAt: '2026-10-02T08:00:00.000Z',
+      updatedAt: '2026-10-14T16:05:00.000Z',
+    }),
+    pullRequest({
+      number: 49,
+      title: 'fix: 日历热力图的边界日期',
+      author: 'zhaomin',
+      branch: 'fix/calendar-edge',
+      state: 'merged',
+      reviewState: 'approved',
+      checksState: 'success',
+      mergeable: true,
+      mergedAt: '2026-09-30T11:20:00.000Z',
+      additions: 220,
+      deletions: 80,
+      changedFiles: 5,
+      createdAt: '2026-09-21T04:50:00.000Z',
+      updatedAt: '2026-09-30T11:20:00.000Z',
+    }),
+  ],
+  fetchedAt: '2026-10-29T05:55:00.000Z',
+}
+
+/**
+ * Anonymous variant: no viewer and no merged/closed window was requested, so
+ * the list carries only active PRs (no history rows) and the merged tile must
+ * say "unavailable" (never a fabricated 0) while the trend card explains that
+ * history was not read.
+ */
+const prAnalyticsAnonymous = {
+  ...prAnalyticsList,
+  viewer: null,
+  authenticated: false,
+  closedWindowDays: undefined,
+  historyTruncated: false,
+  pullRequests: prAnalyticsList.pullRequests.filter((pr) => pr.state === 'open' || pr.state === 'draft'),
 }
 
 const branchCompare = {
@@ -557,26 +762,108 @@ const hotspotReport: HotspotReport = {
     },
   ],
   daily: [
-    { date: '2026-10-22', commits: 4, files: 9, additions: 220, deletions: 96 },
-    { date: '2026-10-23', commits: 6, files: 14, additions: 410, deletions: 180 },
-    { date: '2026-10-24', commits: 3, files: 7, additions: 140, deletions: 72 },
-    { date: '2026-10-25', commits: 8, files: 19, additions: 680, deletions: 240 },
-    { date: '2026-10-26', commits: 5, files: 11, additions: 320, deletions: 130 },
-    { date: '2026-10-27', commits: 9, files: 22, additions: 890, deletions: 410 },
-    { date: '2026-10-28', commits: 7, files: 17, additions: 640, deletions: 260 },
-    { date: '2026-10-29', commits: 4, files: 12, additions: 480, deletions: 190 },
+    // 20 recent UTC days: a realistic weekday/weekend rhythm, one empty day and
+    // one day whose line stats the VCS did not report (churn: null, level 0).
+    { date: '2026-10-10', commits: 3, files: 8, additions: 220, deletions: 90 },
+    { date: '2026-10-11', commits: 1, files: 3, additions: 60, deletions: 20 },
+    { date: '2026-10-12', commits: 6, files: 14, additions: 480, deletions: 160 },
+    { date: '2026-10-13', commits: 8, files: 19, additions: 690, deletions: 240 },
+    { date: '2026-10-14', commits: 4, files: 11, additions: 310, deletions: 120 },
+    { date: '2026-10-15', commits: 7, files: 16, additions: 560, deletions: 190 },
+    { date: '2026-10-16', commits: 5, files: 12, additions: 420, deletions: 150 },
+    { date: '2026-10-17', commits: 2, files: 6, additions: 140, deletions: 60 },
+    { date: '2026-10-18', commits: 0, files: 0, additions: 0, deletions: 0 },
+    { date: '2026-10-19', commits: 9, files: 21, additions: 780, deletions: 260 },
+    { date: '2026-10-20', commits: 6, files: 15, additions: 510, deletions: 180 },
+    { date: '2026-10-21', commits: 5, files: 13 },
+    { date: '2026-10-22', commits: 8, files: 18, additions: 640, deletions: 230 },
+    { date: '2026-10-23', commits: 10, files: 24, additions: 880, deletions: 310 },
+    { date: '2026-10-24', commits: 3, files: 9, additions: 210, deletions: 80 },
+    { date: '2026-10-25', commits: 1, files: 4, additions: 70, deletions: 30 },
+    { date: '2026-10-26', commits: 7, files: 17, additions: 600, deletions: 210 },
+    { date: '2026-10-27', commits: 12, files: 28, additions: 1_100, deletions: 420 },
+    { date: '2026-10-28', commits: 6, files: 15, additions: 520, deletions: 190 },
+    { date: '2026-10-29', commits: 9, files: 22, additions: 810, deletions: 300 },
   ],
   scannedCommits: 187,
   truncated: true,
   scope: {
     branch: 'feature/sidebar-timeline',
     mergesIncluded: true,
-    since: '2026-09-01T00:00:00.000Z',
+    since: '2026-10-01T00:00:00.000Z',
     windowCommits: 500,
   },
   computedAt: '2026-10-29T02:45:00.000Z',
   cached: true,
 }
+
+/**
+ * Push operations for the calendar's `pushes` metric: six successful pushes on
+ * four UTC days plus one failed push on a day that already has a success, so a
+ * wrong filter (counting every push attempt) changes the total from 6 to 7.
+ */
+const hotspotPushes: OperationAttempt[] = [
+  {
+    schemaVersion: 1, id: 'push-2026-10-23-a', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-23T09:12:00.000Z', finishedAt: '2026-10-23T09:12:06.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: 'b5685a0c', afterRevision: '9d2f41ab', exitCode: 0,
+    correlationId: 'corr-push-1023-a', remoteOutcome: 'confirmed-success',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-27-a', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-27T08:40:00.000Z', finishedAt: '2026-10-27T08:40:04.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: '9d2f41ab', afterRevision: '73ac90fe', exitCode: 0,
+    correlationId: 'corr-push-1027-a', remoteOutcome: 'confirmed-success',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-27-b', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-27T14:05:00.000Z', finishedAt: '2026-10-27T14:05:05.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: '73ac90fe', afterRevision: '41ee77c2', exitCode: 0,
+    correlationId: 'corr-push-1027-b', remoteOutcome: 'confirmed-success',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-27-c-failed', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'failed', actor: 'user-via-plugin',
+    startedAt: '2026-10-27T16:30:00.000Z', finishedAt: '2026-10-27T16:30:03.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: '41ee77c2', exitCode: 128, errorCode: 'operation-failed',
+    safeErrorMessage: 'fatal: unable to access remote: Could not resolve host',
+    correlationId: 'corr-push-1027-c', remoteOutcome: 'confirmed-failure',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-28-a', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-28T10:20:00.000Z', finishedAt: '2026-10-28T10:20:07.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: '41ee77c2', afterRevision: 'b5685a0c', exitCode: 0,
+    correlationId: 'corr-push-1028-a', remoteOutcome: 'confirmed-success',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-29-a', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-29T02:41:00.000Z', finishedAt: '2026-10-29T02:41:05.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: 'b5685a0c', afterRevision: '9d2f41ab', exitCode: 0,
+    correlationId: 'corr-push-1029-a', remoteOutcome: 'confirmed-success',
+  },
+  {
+    schemaVersion: 1, id: 'push-2026-10-29-b', repositoryId: repository.id, vcsType: 'git',
+    operation: 'push', state: 'succeeded', actor: 'user-via-plugin',
+    startedAt: '2026-10-29T09:05:00.000Z', finishedAt: '2026-10-29T09:05:04.000Z',
+    requestSummary: 'push feature/sidebar-timeline to origin',
+    beforeRevision: '9d2f41ab', afterRevision: '73ac90fe', exitCode: 0,
+    correlationId: 'corr-push-1029-b', remoteOutcome: 'confirmed-success',
+  },
+]
+
+/** Fixed "now" for the calendar scenarios, so the grid anchor is deterministic. */
+const HOTSPOT_NOW = Date.parse('2026-10-29T06:00:00.000Z')
 
 /** One preview scenario: a state, a theme and the stage size it needs. */
 interface Scenario {
@@ -585,6 +872,8 @@ interface Scenario {
   state: PanelState
   width?: number
   height?: number
+  /** Fixed wall clock for previews whose layout depends on "today" (calendar). */
+  now?: number
 }
 
 const scenarios: Scenario[] = [
@@ -744,6 +1033,21 @@ const scenarios: Scenario[] = [
   { name: 'diagnostics-light', theme: 'light', state: stateWith({ diagnosticsOpen: true }) },
   { name: 'loading-dark', theme: 'dark', state: { ...initial, boot: 'loading' } },
   {
+    name: 'loading-skeleton-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    // First timeline page: the gray layout skeleton with its white sweep.
+    state: stateWith({ timeline: { ...initial.timeline, events: [], loading: true } }),
+  },
+  {
+    name: 'loading-skeleton-dark',
+    theme: 'dark',
+    width: 1600,
+    height: 900,
+    state: stateWith({ timeline: { ...initial.timeline, events: [], loading: true } }),
+  },
+  {
     name: 'empty-repos-light',
     theme: 'light',
     state: { ...initial, boot: 'ready', repositories: [], noWorkspace: false, diagnostics },
@@ -794,6 +1098,109 @@ const scenarios: Scenario[] = [
     state: stateWith({
       source: 'hotspots',
       hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'authors' },
+    }),
+  },
+  {
+    name: 'hotspot-calendar-churn-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'calendar', calendarMetric: 'churn' },
+      audit: { ...initial.audit, operations: hotspotPushes },
+    }),
+  },
+  {
+    name: 'hotspot-calendar-pushes-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'calendar', calendarMetric: 'pushes' },
+      audit: { ...initial.audit, operations: hotspotPushes },
+    }),
+  },
+  {
+    name: 'hotspot-calendar-churn-dark',
+    theme: 'dark',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'calendar', calendarMetric: 'churn' },
+      audit: { ...initial.audit, operations: hotspotPushes },
+    }),
+  },
+  {
+    name: 'hotspot-calendar-sidebar',
+    theme: 'light',
+    width: 420,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'hotspots',
+      hotspots: { ...initial.hotspots, data: hotspotReport, dimension: 'calendar', calendarMetric: 'churn' },
+      audit: { ...initial.audit, operations: hotspotPushes },
+    }),
+  },
+  {
+    name: 'pr-dashboard-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, data: prAnalyticsList, filter: 'all' },
+    }),
+  },
+  {
+    name: 'pr-dashboard-conflicts-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, data: prAnalyticsList, filter: 'conflicts' },
+    }),
+  },
+  {
+    name: 'pr-dashboard-anonymous-light',
+    theme: 'light',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, data: prAnalyticsAnonymous, filter: 'all' },
+    }),
+  },
+  {
+    name: 'pr-dashboard-dark',
+    theme: 'dark',
+    width: 1600,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, data: prAnalyticsList, filter: 'all' },
+    }),
+  },
+  {
+    name: 'pr-dashboard-sidebar',
+    theme: 'light',
+    width: 420,
+    height: 900,
+    now: HOTSPOT_NOW,
+    state: stateWith({
+      source: 'pr',
+      pullRequests: { ...initial.pullRequests, data: prAnalyticsList, filter: 'all' },
     }),
   },
 ]
@@ -859,9 +1266,14 @@ if (demoOnly) {
   console.log('rendering demo stages only (--demo-only)')
 } else {
   for (const scenario of scenarios) {
+    const deps = {
+      t,
+      locale: 'zh-CN',
+      ...(scenario.now === undefined ? {} : { now: () => scenario.now as number }),
+    }
     const panel = unescapeStyleBlocks(renderToStaticMarkup(renderPanelView({
       state: scenario.state,
-      deps: { t, locale: 'zh-CN' },
+      deps,
       handlers: createNoopHandlers(),
     })))
     const tokens = scenario.theme === 'dark' ? DARK_TOKENS : LIGHT_TOKENS
@@ -882,7 +1294,9 @@ await writeFile(resolve(outDir, 'render.md'), [
   '',
   '这些页面由 `scripts/render-preview.ts` 用**固定示例数据**渲染真实的面板组件，',
   '用于检查密度、层级与明暗主题（400px 侧栏宽度，以及 1600px 对话区宽度）。',
-  '它们不是运行时截图：颜色使用近似 DSH 主题 token 的调色板，实际运行时颜色来自宿主 `--dsw-*` token。',
+  '它们不是运行时截图：亮/暗 token 取自安装的 DSH 单色主题——`--dsw-alias-brand-primary` 是单色',
+  '`#0f1115`（亮）/ `#f5f6f8`（暗），不是蓝色强调色；图表与热力的蓝紫色只来自面板样式表里的',
+  '`--dvt-data-blue` / `--dvt-data-purple`，因此两套 token 下数据色保持一致。',
   '',
   '截图前会把 SSR 生成的 `<style>` 内容反转义（React 服务端渲染会转义文本，而 `<style>` 是原始文本元素，',
   '不反转义的话 `[data-*="…"]` 属性选择器与子选择器会在预览样式表里静默失效）。',
@@ -901,6 +1315,17 @@ await writeFile(resolve(outDir, 'render.md'), [
   '`hotspot-activity-light` 三个维度各一个亮色场景，外加 `hotspot-authors-dark` 验证暗色 token；',
   '固定报告里包含 20 个文件的 churn 长尾、6 位贡献者（含一位 churn 未知）、10 条近期提交（含合并、',
   '文件列表被截断与纯二进制提交）。',
+  '',
+  '活动日历（热点默认维度）：`hotspot-calendar-churn-light`（1600×900，代码修改量热力）、',
+  '`hotspot-calendar-pushes-light`（推送次数热力，审计 fixture 含 6 次成功推送 + 1 次失败推送）、',
+  '`hotspot-calendar-churn-dark`（暗色）与 `hotspot-calendar-sidebar`（420×900，单列 + 日历横向滚动）。',
+  '固定日数据覆盖最近 20 个 UTC 日（含一个零提交日与一个未提供行级统计的日），窗口外与未来格分别淡显。',
+  '',
+  'PR 分析看板（`source: pr`，1600×900）：`pr-dashboard-light`（filter=all）、',
+  '`pr-dashboard-conflicts-light`（filter=conflicts，只保留冲突行）、`pr-dashboard-anonymous-light`',
+  '（`authenticated:false`，合并数显示不可用并给诚实提示）、`pr-dashboard-dark` 与',
+  '`pr-dashboard-sidebar`（420×900，单列）。fixture 含可合并 / 冲突 / 草稿 / 修改意见 / 已合并（mergedAt）/',
+  '已关闭 / 可合并性未知的 PR、4 位作者与 30 天合并窗口（`historyTruncated:true`）。',
   '',
   '另外两个场景渲染独立演示页 `SwimlaneDemo`（`src/client/ui/swimlane.ts`，自带样式与 MOCK 数据）：',
   '`swimlane-wide`（1440×900，260px 文件树 + 页头/工具栏 + 多轨道泳道）与',

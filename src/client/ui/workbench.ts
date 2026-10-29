@@ -164,10 +164,12 @@ function PendingActions(state: PanelState, deps: PanelDeps, handlers: PanelHandl
 }
 
 /** The grouped dirty-file list (left column). */
-function PendingList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement {
+function PendingList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers): React.ReactElement | null {
   const { t } = deps
   const repository = selectedRepository(state)
-  if (state.boot === 'loading') return h(SkeletonRows, { rows: 6 })
+  // First load of the workbench: the composition root's SkeletonSwap paints the
+  // three-column skeleton, so the list itself renders nothing.
+  if (state.boot === 'loading') return null
   if (repository === null) {
     return h(EmptyState, {
       icon: IconDiff,
@@ -184,7 +186,7 @@ function PendingList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers
       hint: tool === 'svn' ? t('addRepo.svnHint') : t('error.vcs-not-installed'),
     })
   }
-  if (state.statusLoading && state.status === null) return h(SkeletonRows, { rows: 6 })
+  if (state.statusLoading && state.status === null) return null
   if (state.statusError !== null) {
     return h(EmptyState, {
       icon: IconError,
@@ -195,7 +197,7 @@ function PendingList(state: PanelState, deps: PanelDeps, handlers: PanelHandlers
     })
   }
   const status = state.status
-  if (status === null) return h(SkeletonRows, { rows: 6 })
+  if (status === null) return null
   const groups = groupPendingEntries(state)
   if (groups.length === 0) {
     return h(EmptyState, {

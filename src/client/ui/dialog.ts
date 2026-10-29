@@ -206,7 +206,9 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
   const commitMissing = dialog.operation === 'commit' && dialog.message.trim() === ''
   const commitBlockedByChecks = dialog.operation === 'commit' && hasBlocking(dialog) && !dialog.acknowledged
   const busy = dialog.phase === 'previewing' || dialog.phase === 'executing'
+  const updating = dialog.updating === true
   const canConfirm = dialog.phase === 'previewed'
+    && !updating
     && preview !== null
     && preview.allowed
     && !expired
@@ -263,6 +265,16 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
   sections.push(h(ChecksSection, { key: 'checks', dialog, deps, handlers }))
   if (dialog.phase === 'executing') {
     sections.push(h(Progress, { key: 'executing', label: t('op.executing') }))
+  }
+  if (updating) {
+    // Keep the previous preview on screen and explain the pending refresh
+    // instead of swapping in a pulsing skeleton (that flash was the dialog
+    // "blinking" while typing a commit message).
+    sections.push(h('div', {
+      key: 'updating',
+      className: 'dvt-dialog-note',
+      style: { padding: '0 10px 6px' },
+    }, t('op.updating')))
   }
   if (dialog.previewError !== null) {
     sections.push(h('div', { key: 'preview-error', className: 'dvt-dialog-section' },
@@ -332,7 +344,7 @@ export function renderDialog(state: PanelState, deps: PanelDeps, handlers: Panel
     ),
     h('div', { className: 'dvt-dialog-body' }, sections),
     h('div', { className: 'dvt-dialog-foot' },
-      h('span', { className: 'dvt-dialog-note' }, t('op.neverRetry')),
+      h('span', { className: 'dvt-dialog-note' }, updating ? t('op.updating') : t('op.neverRetry')),
       actions,
     ),
     ),

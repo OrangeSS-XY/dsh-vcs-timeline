@@ -3,8 +3,10 @@
  *
  * GitLab speaks one REST dialect for both paths: `GET {webBase}/api/v4/projects/
  * {url-encoded project path}/merge_requests` with a `PRIVATE-TOKEN` header when
- * the Host authenticated, and without one for public projects. The detail page
- * adds `/merge_requests/{iid}` (description, pipeline) and `/merge_requests/
+ * the Host authenticated, and without one for public projects. The history read
+ * the analytics view opts into adds one call for `state=merged` and one for
+ * `state=closed`, bounded by `updated_after` and the same page cap. The detail
+ * page adds `/merge_requests/{iid}` (description, pipeline) and `/merge_requests/
  * {iid}/diffs` (changed files).
  *
  * GitLab's merge-request JSON carries no review verdict (approvals need a
@@ -24,10 +26,16 @@ import type {
   PullRequestReviewState,
   PullRequestState,
 } from '../../shared/contracts.ts'
-import { MAX_PULL_REQUESTS } from '../../shared/contracts.ts'
+import {
+  DEFAULT_PR_HISTORY_DAYS,
+  MAX_CLOSED_PULL_REQUESTS,
+  MAX_PR_HISTORY_DAYS,
+  MAX_PULL_REQUESTS,
+} from '../../shared/contracts.ts'
 import { deriveActions, reviewRequestedFrom } from './actions.ts'
 import {
   asArray,
+  asOptionalIso,
   asRecord,
   pickArray,
   pickBoolean,
@@ -40,7 +48,8 @@ import type { RemoteInfo } from './remote.ts'
 import type {
   FetchLike,
   ProviderDetailResult,
-  ProviderListResult,
+  ProviderFailure,
+  ProviderListData,
 } from './transport.ts'
 import { requestJson, USER_AGENT } from './transport.ts'
 
@@ -69,12 +78,39 @@ export interface GitLabListInput {
   token: string | null
   repositoryId: string
   fetchedAt: string
+  /**
+   * Also read recently merged/closed merge requests. Off unless the caller
+   * asks for it: the plain MR tab needs only the open page.
+   */
+  includeClosed?: boolean
+  /** How far back the merged/closed read filters, in days. */
+  windowDays?: number
 }
 
 /** One detail read. */
 export interface GitLabDetailInput extends GitLabListInput {
   number: number
 }
+
+/** Normalized list payload plus the closed-history fact the service surfaces. */
+export interface GitLabListData extends ProviderListData {
+  /** True when the provider cap cut the merged/closed side of the list. */
+  historyTruncated?: boolean
+}
+
+/** Result of one GitLab list read. */
+export type GitLabListResult = { ok: true; value: GitLabListData } | { ok: false; error: ProviderFailure }
+
+/** One mapped merge-request page plus what the mapper could not read. */
+interface GitLabPage {
+  pullRequests: PullRequest[]
+  warnings: string[]
+  /** Raw entries the provider returned before mapping. */
+  returned: number
+}
+
+/** Result of one merge-request page mapping. */
+type GitLabPageResult = { ok: true; value: GitLabPage } | { ok: false; error: ProviderFailure }
 
 /** The API base of one GitLab host. */
 export function gitlabApiBase(remote: RemoteInfo): string {
@@ -226,6 +262,8 @@ export function mapMergeRequest(node: unknown, context: GitLabMapContext): PullR
   }
   const changedFiles = changedFileCount(record)
   const commentCount = pickNumber(record, 'user_notes_count')
+  const mergedAt = asOptionalIso(record.merged_at)
+  const closedAt = asOptionalIso(record.closed_at)
   return {
     schemaVersion: 1,
     id: `${context.repositoryId}!${number}`,
@@ -240,6 +278,8 @@ export function mapMergeRequest(node: unknown, context: GitLabMapContext): PullR
     baseBranch: pickString(record, 'target_branch') ?? '',
     createdAt: pickIso(record, 'created_at', context.fetchedAt),
     updatedAt: pickIso(record, 'updated_at', context.fetchedAt),
+    ...(mergedAt === undefined ? {} : { mergedAt }),
+    ...(closedAt === undefined ? {} : { closedAt }),
     reviewState,
     checksState,
     mergeable,
@@ -286,65 +326,180 @@ async function fetchGitLabViewer(
   return pickString(asRecord(result.value), 'username') ?? null
 }
 
+/** Build one merge-request list URL with explicit query parameters. */
+function mergeRequestsUrl(remote: RemoteInfo, params: Record<string, string>): string {
+  const query = new URLSearchParams(params)
+  return `${gitlabApiBase(remote)}/projects/${projectPath(remote)}/merge_requests?${query.toString()}`
+}
+
 /**
- * Read the open merge requests of one GitLab project.
+ * Map one merge-request page.
  *
- * When a token is present the viewer is resolved with a second, concurrent
- * request; a failed viewer lookup only costs the viewer login (with a warning)
- * because the merge requests themselves were still read.
- * @param input - transport seam, parsed remote, token and repository id.
+ * An array that maps to nothing is a malformed payload, not an empty page;
+ * unmappable individual entries are dropped with a warning.
+ */
+function mapMergeRequestPage(payload: unknown, context: GitLabMapContext, limit: number): GitLabPageResult {
+  if (!Array.isArray(payload)) {
+    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned an unexpected merge-request list' } }
+  }
+  const pullRequests: PullRequest[] = []
+  for (const node of payload) {
+    const mapped = mapMergeRequest(node, context)
+    if (mapped !== null) pullRequests.push(mapped)
+  }
+  if (payload.length > 0 && pullRequests.length === 0) {
+    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned merge requests this plugin could not read' } }
+  }
+  const warnings: string[] = []
+  const dropped = payload.length - pullRequests.length
+  if (dropped > 0) warnings.push(`${dropped} merge request(s) could not be read`)
+  return {
+    ok: true,
+    value: { pullRequests: pullRequests.slice(0, limit), warnings, returned: payload.length },
+  }
+}
+
+/** How many days of merged/closed history one read covers. */
+function historyWindowDays(input: GitLabListInput): number {
+  const requested = input.windowDays
+  if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_PR_HISTORY_DAYS
+  return Math.max(1, Math.min(MAX_PR_HISTORY_DAYS, Math.trunc(requested)))
+}
+
+/** Oldest instant the merged/closed read keeps, in epoch milliseconds. */
+function historyStartMs(fetchedAt: string, windowDays: number): number {
+  const base = Date.parse(fetchedAt)
+  const fetchedMs = Number.isNaN(base) ? Date.now() : base
+  return fetchedMs - windowDays * 86_400_000
+}
+
+/** Whether one merged/closed merge request still belongs to the history window. */
+function withinHistoryWindow(pullRequest: PullRequest, startMs: number): boolean {
+  const raw = pullRequest.mergedAt ?? pullRequest.closedAt ?? pullRequest.updatedAt
+  const at = Date.parse(raw)
+  return !Number.isNaN(at) && at >= startMs
+}
+
+/**
+ * Read the merge requests of one GitLab project.
+ *
+ * The open page is read exactly as before; when `includeClosed` is set, the
+ * recently merged and recently closed pages are read concurrently, bounded by
+ * `updated_after` and the history cap, then window-filtered and appended after
+ * the open entries (open first, deduped by number). A failed history read never
+ * fails the list: the open entries stay and a warning marks the partial view.
+ * When a token is present the viewer is resolved concurrently; a failed viewer
+ * lookup only costs the viewer login (with a warning).
+ * @param input - transport seam, parsed remote, token, repository id and
+ *   optional history flags.
  * @returns the normalized list or a provider failure.
  */
-export async function fetchGitLabList(input: GitLabListInput): Promise<ProviderListResult> {
-  const query = new URLSearchParams({
+export async function fetchGitLabList(input: GitLabListInput): Promise<GitLabListResult> {
+  const headers = gitlabHeaders(input.token)
+  const warnings: string[] = []
+  const openUrl = mergeRequestsUrl(input.remote, {
     state: 'opened',
     per_page: String(MAX_PULL_REQUESTS),
     order_by: 'updated_at',
     sort: 'desc',
   })
-  const url = `${gitlabApiBase(input.remote)}/projects/${projectPath(input.remote)}/merge_requests?${query.toString()}`
-  const warnings: string[] = []
-  let viewer: string | null = null
-  let listResult: Awaited<ReturnType<typeof requestJson>>
-  if (input.token === null) {
-    listResult = await requestJson(input.fetchImpl, { url, headers: gitlabHeaders(null) })
-  } else {
-    const [requests, viewerLogin] = await Promise.all([
-      requestJson(input.fetchImpl, { url, headers: gitlabHeaders(input.token) }),
-      fetchGitLabViewer(input.fetchImpl, input.remote, input.token),
-    ])
-    listResult = requests
-    viewer = viewerLogin
-    if (viewer === null) warnings.push('the authenticated GitLab viewer could not be resolved')
+  if (input.includeClosed !== true) {
+    let viewer: string | null = null
+    let listResult: Awaited<ReturnType<typeof requestJson>>
+    if (input.token === null) {
+      listResult = await requestJson(input.fetchImpl, { url: openUrl, headers })
+    } else {
+      const [requests, viewerLogin] = await Promise.all([
+        requestJson(input.fetchImpl, { url: openUrl, headers }),
+        fetchGitLabViewer(input.fetchImpl, input.remote, input.token),
+      ])
+      listResult = requests
+      viewer = viewerLogin
+      if (viewer === null) warnings.push('the authenticated GitLab viewer could not be resolved')
+    }
+    if (!listResult.ok) return listResult
+    const context: GitLabMapContext = {
+      repositoryId: input.repositoryId,
+      fetchedAt: input.fetchedAt,
+      authenticated: input.token !== null,
+      viewer,
+    }
+    const page = mapMergeRequestPage(listResult.value, context, MAX_PULL_REQUESTS)
+    if (!page.ok) return page
+    return {
+      ok: true,
+      value: {
+        viewer,
+        pullRequests: page.value.pullRequests,
+        warnings: [...warnings, ...page.value.warnings],
+      },
+    }
   }
-  if (!listResult.ok) return listResult
-  if (!Array.isArray(listResult.value)) {
-    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned an unexpected merge-request list' } }
+
+  const startMs = historyStartMs(input.fetchedAt, historyWindowDays(input))
+  const historyParams = {
+    per_page: String(MAX_CLOSED_PULL_REQUESTS),
+    order_by: 'updated_at',
+    sort: 'desc',
+    updated_after: new Date(startMs).toISOString(),
   }
+  const mergedUrl = mergeRequestsUrl(input.remote, { state: 'merged', ...historyParams })
+  const closedUrl = mergeRequestsUrl(input.remote, { state: 'closed', ...historyParams })
+  const viewerPromise: Promise<string | null> = input.token === null
+    ? Promise.resolve(null)
+    : fetchGitLabViewer(input.fetchImpl, input.remote, input.token)
+  const [openResult, mergedResult, closedResult, viewerLogin] = await Promise.all([
+    requestJson(input.fetchImpl, { url: openUrl, headers }),
+    requestJson(input.fetchImpl, { url: mergedUrl, headers }),
+    requestJson(input.fetchImpl, { url: closedUrl, headers }),
+    viewerPromise,
+  ])
+  if (!openResult.ok) return openResult
+  const viewer = viewerLogin
+  if (input.token !== null && viewer === null) warnings.push('the authenticated GitLab viewer could not be resolved')
   const context: GitLabMapContext = {
     repositoryId: input.repositoryId,
     fetchedAt: input.fetchedAt,
     authenticated: input.token !== null,
     viewer,
   }
-  const pullRequests: PullRequest[] = []
-  for (const node of listResult.value) {
-    const mapped = mapMergeRequest(node, context)
-    if (mapped !== null) pullRequests.push(mapped)
+  const openPage = mapMergeRequestPage(openResult.value, context, MAX_PULL_REQUESTS)
+  if (!openPage.ok) return openPage
+  warnings.push(...openPage.value.warnings)
+  const history: PullRequest[] = []
+  let historyTruncated = false
+  const historyReads: Array<{ label: string; result: Awaited<ReturnType<typeof requestJson>> }> = [
+    { label: 'merged', result: mergedResult },
+    { label: 'closed', result: closedResult },
+  ]
+  for (const read of historyReads) {
+    const page = read.result.ok
+      ? mapMergeRequestPage(read.result.value, context, MAX_CLOSED_PULL_REQUESTS)
+      : read.result
+    if (!page.ok) {
+      warnings.push(`the recently ${read.label} merge requests could not be read`)
+      continue
+    }
+    warnings.push(...page.value.warnings)
+    if (page.value.returned >= MAX_CLOSED_PULL_REQUESTS) historyTruncated = true
+    for (const pullRequest of page.value.pullRequests) {
+      if (withinHistoryWindow(pullRequest, startMs)) history.push(pullRequest)
+    }
   }
-  if (pullRequests.length === 0 && listResult.value.length > 0) {
-    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned merge requests this plugin could not read' } }
+  history.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  // GitLab has no single "merged or closed" state filter, so two capped pages
+  // are read; the combined history still honours the contract's single cap.
+  const openNumbers = new Set(openPage.value.pullRequests.map(pullRequest => pullRequest.number))
+  const freshHistory = history.filter(pullRequest => !openNumbers.has(pullRequest.number))
+  const keptHistory = freshHistory.slice(0, MAX_CLOSED_PULL_REQUESTS)
+  if (freshHistory.length > keptHistory.length) historyTruncated = true
+  const value: GitLabListData = {
+    viewer,
+    pullRequests: [...openPage.value.pullRequests, ...keptHistory],
+    warnings,
+    ...(historyTruncated ? { historyTruncated } : {}),
   }
-  const dropped = listResult.value.length - pullRequests.length
-  if (dropped > 0) warnings.push(`${dropped} merge request(s) could not be read`)
-  return {
-    ok: true,
-    value: {
-      viewer,
-      pullRequests: pullRequests.slice(0, MAX_PULL_REQUESTS),
-      warnings,
-    },
-  }
+  return { ok: true, value }
 }
 
 /** Read one merge request plus its diffs. */

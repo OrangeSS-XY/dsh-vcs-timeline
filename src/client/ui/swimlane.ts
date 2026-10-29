@@ -1334,12 +1334,16 @@ export const SWIMLANE_STYLES = `
   --swl-ink-3: var(--dsw-alias-label-tertiary, hsl(215 14% 55%));
   --swl-line: var(--dsw-alias-border-l1, hsl(214 22% 91%));
   --swl-line-2: var(--dsw-alias-border-l2, hsl(214 18% 84%));
-  --swl-accent: var(--dsw-alias-brand-primary, hsl(217 82% 56%));
+  /* The host brand token is monochrome (near-black in light, near-white in
+     dark). The panel's accent must stay the designed blue, so it is pinned to
+     an explicit value that works in both themes; the plugin root provides
+     --dvt-data-blue, and the fallback keeps the standalone demo self-sufficient. */
+  --swl-accent: var(--dvt-data-blue, hsl(217 82% 56%));
   --swl-ok: var(--dsw-alias-state-success-primary, hsl(152 58% 36%));
   --swl-bad: var(--dsw-alias-state-error-primary, hsl(347 74% 50%));
   --swl-warn: var(--dsw-alias-state-warn-primary, hsl(38 92% 38%));
   --swl-hover: var(--dsw-alias-interactive-hover, hsl(215 22% 96%));
-  --swl-sel: var(--dsw-alias-interactive-selected, hsl(217 82% 56% / .09));
+  --swl-sel: color-mix(in srgb, var(--swl-accent) 10%, transparent);
   --swl-main: hsl(217 82% 56%);
   --swl-feat: hsl(262 83% 62%);
   --swl-hotfix: hsl(347 77% 58%);
@@ -1369,7 +1373,9 @@ export const SWIMLANE_STYLES = `
   container-name: swl;
 }
 .swl-page *, .swl-page *::before, .swl-page *::after { box-sizing: border-box; }
-.swl-page button, .swl-page input, .swl-page select { font: inherit; color: inherit; }
+/* :where() keeps this reset at 0,0,1 so the primary button's white label is not
+   overridden by an inherited dark colour on the dark brand button. */
+:where(.swl-page) button, :where(.swl-page) input, :where(.swl-page) select { font: inherit; color: inherit; }
 .swl-page :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--swl-accent) 60%, transparent);
   outline-offset: 1px;

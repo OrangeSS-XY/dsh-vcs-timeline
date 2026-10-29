@@ -19,13 +19,17 @@ import type {
   PullRequestList,
   PullRequestQuery,
 } from '../../shared/contracts.ts'
-import { PULL_REQUEST_CACHE_MS } from '../../shared/contracts.ts'
+import {
+  DEFAULT_PR_HISTORY_DAYS,
+  MAX_PR_HISTORY_DAYS,
+  PULL_REQUEST_CACHE_MS,
+} from '../../shared/contracts.ts'
 import type { Runner } from '../adapters/types.ts'
 import { truncateUtf8 } from '../security.ts'
 import { ServiceError, type RepositoryResolver } from '../services/timeline-service.ts'
 import { redact, resolveAuthToken } from './auth.ts'
-import { fetchGitHubDetail, fetchGitHubList } from './github.ts'
-import { fetchGitLabDetail, fetchGitLabList } from './gitlab.ts'
+import { fetchGitHubDetail, fetchGitHubList, type GitHubListResult } from './github.ts'
+import { fetchGitLabDetail, fetchGitLabList, type GitLabListResult } from './gitlab.ts'
 import { readOriginRemote, type RemoteInfo } from './remote.ts'
 import {
   createLimiter,
@@ -34,7 +38,6 @@ import {
   type FetchLike,
   type ProviderDetailResult,
   type ProviderFailure,
-  type ProviderListResult,
 } from './transport.ts'
 
 /** Largest description/body the Host keeps from a detail read. */
@@ -70,6 +73,23 @@ function positiveNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   if (!Number.isInteger(value) || value <= 0 || value > 1_000_000_000) return null
   return value
+}
+
+/**
+ * Clamp a requested merged/closed history window to the contract bounds.
+ *
+ * A missing or unusable value falls back to {@link DEFAULT_PR_HISTORY_DAYS}; a
+ * valid value is kept inside [1, {@link MAX_PR_HISTORY_DAYS}] so the provider
+ * read never reaches further back than the contract allows.
+ */
+function historyWindowDays(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_PR_HISTORY_DAYS
+  return Math.max(1, Math.min(MAX_PR_HISTORY_DAYS, Math.trunc(value)))
+}
+
+/** Cache key of one list read: the repository plus the history facts it asked for. */
+function listCacheKey(repositoryId: string, includeClosed: boolean, windowDays: number): string {
+  return `${repositoryId}|${includeClosed ? 'history' : 'open'}|${windowDays}`
 }
 
 /** Map a provider failure to a stable, secret-free service error. */
@@ -196,13 +216,17 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
     repositoryId: string,
     token: string | null,
     fetchedAt: string,
-  ): Promise<ProviderListResult> => {
+    includeClosed: boolean,
+    windowDays: number,
+  ): Promise<GitHubListResult | GitLabListResult> => {
     const input = {
       fetchImpl,
       remote,
       token,
       repositoryId,
       fetchedAt,
+      includeClosed,
+      windowDays,
     }
     return remote.provider === 'github' ? fetchGitHubList(input) : fetchGitLabList(input)
   }
@@ -231,14 +255,26 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
         throw new ServiceError({ code: 'invalid-request', message: 'query is required' })
       }
       const resolved = await resolveRepository(resolveDeps, query.repositoryId)
+      // The analytics dashboard needs merged/closed history by default; a
+      // plain open-only read is an explicit opt-out.
+      const includeClosed = query.includeClosed !== false
+      const windowDays = historyWindowDays(query.windowDays)
+      const cacheKey = listCacheKey(resolved.repositoryId, includeClosed, windowDays)
       const currentMs = now().getTime()
-      const cached = cache.get(resolved.repositoryId)
+      const cached = cache.get(cacheKey)
       if (query.refresh !== true && cached !== undefined && currentMs < cached.expiresAt) return cached.value
 
       const remote = await readProviderRemote(resolveDeps, resolved.root)
       const token = await resolveToken(remote)
       const fetchedAt = now().toISOString()
-      const result = await readList(remote, resolved.repositoryId, token, fetchedAt)
+      const result = await readList(
+        remote,
+        resolved.repositoryId,
+        token,
+        fetchedAt,
+        includeClosed,
+        windowDays,
+      )
       if (!result.ok) throw providerFailure(result.error, token !== null)
       const value: PullRequestList = {
         repositoryId: resolved.repositoryId,
@@ -248,12 +284,14 @@ export function createPullRequestService(deps: PullRequestServiceDeps): PullRequ
         viewer: result.value.viewer,
         authenticated: token !== null,
         pullRequests: result.value.pullRequests,
+        ...(includeClosed ? { closedWindowDays: windowDays } : {}),
+        ...(result.value.historyTruncated === true ? { historyTruncated: true } : {}),
         ...(result.value.warnings.length === 0
           ? {}
           : { warnings: result.value.warnings, partial: true }),
         fetchedAt,
       }
-      cache.set(resolved.repositoryId, { value, expiresAt: currentMs + PULL_REQUEST_CACHE_MS })
+      cache.set(cacheKey, { value, expiresAt: currentMs + PULL_REQUEST_CACHE_MS })
       return value
     },
 

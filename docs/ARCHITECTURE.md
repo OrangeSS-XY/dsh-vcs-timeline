@@ -69,12 +69,16 @@ POST vcs/changeset / vcs/diff / vcs/status
 ```
 
 ```
-POST vcs/pr/list {repositoryId, refresh?}
+POST vcs/pr/list {repositoryId, refresh?, includeClosed?, windowDays?}
   → registry.gate(repositoryId) → 读取 origin 远端（git config，凭据剥离）
   → 识别 provider（github/gitlab）→ 凭据链（env → ~/.git-credentials → pr-auth.json → 匿名）
   → 有令牌：GitHub GraphQL 一次调用拿到 viewer/PR/评审/CI/可合并；无令牌：匿名 REST 基础字段
+  → includeClosed（默认 true）时并发再读最近 MERGED/CLOSED 历史（默认 30 天、clamp 到 90 天、
+    最多 40 条），映射 mergedAt/closedAt，按窗口过滤、按 number 去重（open 优先）；
+    历史读失败只降级为 open + warning，不失败整个列表
   → 纯函数 deriveActions(PR 事实, viewer) → 「需要我做什么」
-  → 60s 列表缓存；令牌永不出现在返回值/错误/日志中
+  → 60s 列表缓存（key 含 includeClosed+windowDays，open-only 与洞察读不会互相污染）；
+    令牌永不出现在返回值/错误/日志中
 ```
 
 ```
@@ -147,11 +151,14 @@ UI 侧（`panel.ts` 状态编排）：
 - 待处理工作台是三栏派生视图：左列直接由 `WorkingTreeStatus.entries` 分组（冲突优先于暂存/未暂存/
   未跟踪，SVN 无 staged 字段时归入未暂存），中列即时 Diff，右列体检/会话归因/分支洞察三张卡；
   左列顶部是「提交已暂存 / 暂存全部 / 取消暂存全部」，没有已暂存文件时提交按钮禁用并说明原因。
-- 热点来源是**多维度数据看板**（`ui/hotspots.ts`）：顶部胶囊分段控制器切换三个展示主体，
-  三者共用同一扫描窗口但**渲染完全不同的 body**——`files` 是 churn 文件榜（蓝色 √ 比例微条）、
+- 热点来源是**多维度数据看板**（`ui/hotspots.ts`）：顶部胶囊分段控制器切换四个展示主体，
+  四者共用同一扫描窗口但**渲染完全不同的 body**——`calendar` 是 26 周日历热力图（按 UTC 日桶，
+  指标可切代码修改量 / 推送次数）、`files` 是 churn 文件榜（蓝色 √ 比例微条）、
   `authors` 是贡献者榜（深底白字头像 + 派生角色 + 紫色微条）、`activity` 是 GitHub 风格活动流
-  （无进度条，头像 + 竖轴 + 操作描述 + 文件路径胶囊 + 时间/hash/±行）。`daily` 只用于
-  「窗口内 N 天有提交」这一句口径，不再渲染日历热力；维度是 `hotspots.dimension` 状态。
+  （无进度条，头像 + 竖轴 + 操作描述 + 文件路径胶囊 + 时间/hash/±行）。日历的推送次数来自
+  **本插件审计**里成功的 `push` 操作（git 无本地推送日志，失败/进行中不计）；代码修改量来自
+  `HotspotReport.daily` 的 numstat 汇总。维度是 `hotspots.dimension`，日历指标是
+  `hotspots.calendarMetric`，两者都只是纯渲染状态。
 - 提交确认框里 Host 的 `blockedReason` 经 `blockedReasonLabel` 映射成本地化句子，
   未识别的理由回退原文（不隐藏原因）。
 - 体检结果同时出现在提交确认框：存在 `blocking` 项时确认按钮禁用，必须勾选「我已确认上述风险」；
@@ -187,6 +194,7 @@ beforeState / planOperation`。各自保留语义：
 | 远端解析 | `https://github.com/owner/repo(.git)`、`git@github.com:owner/repo.git`、`ssh://…` | 同上，host 含 gitlab |
 | 列表（有令牌） | GraphQL `repository.pullRequests` 一次调用：评审决策、评审请求、review 列表、CI rollup、可合并、行数/文件数/提交数 | REST `/merge_requests`（PRIVATE-TOKEN），评审/CI 只取能如实映射的字段 |
 | 列表（匿名） | REST `/repos/{owner}/{repo}/pulls`，只映射基础字段；评审/CI 为空、可合并未知 | 私有项目 → auth-required；公开项目基础字段 |
+| 合并历史（洞察） | `includeClosed`：第二次 GraphQL（`states:[MERGED,CLOSED]`，`UPDATED_AT DESC`，first 40）或匿名 REST `state=closed`；映射 `mergedAt/closedAt`，窗口内去重合并 | `state=merged` + `state=closed` 两次列表（`updated_after=<窗口起始>`，per_page 40）；映射 `merged_at/closed_at`，合并后受本地 40 条上限约束 |
 | 详情 | PR 描述 + `/pulls/{n}/files`（≤100 文件） | `/merge_requests/{iid}` + `/diffs` |
 | 凭据 | `GITHUB_TOKEN`/`GH_TOKEN` → `~/.git-credentials` → `<dataDir>/pr-auth.json` → 匿名 | `GITLAB_TOKEN`/`GL_TOKEN` 同上 |
 | 失败映射 | 401/403（非限流）→ auth-required；限流 → rate-limited（附 resetAt）；网络/超时 → network-unknown；>1MiB → output-too-large | 同左 |
@@ -194,6 +202,10 @@ beforeState / planOperation`。各自保留语义：
 - **动作推导是纯函数**（`src/host/pr/actions.ts`）：只依据真实读到的评审请求、评审决策、CI、可合并性
   给出 review / address-feedback / merge / fix-ci / fix-conflicts / wait / unknown 之一；
   未认证时只给 `unknown` + `needs-auth`，绝不猜测。
+- **合并洞察也是纯函数**（`src/client/ui/pr.ts`）：`mergeReadiness` 只把「open 且 mergeable=true 且
+  无 changes-requested/CI 失败」算作可合并；`summarizePullRequests` 从 Host 返回的 open+历史列表
+  计算开放/可合并/冲突/待处理/已合并、作者榜与 8 周趋势。历史未返回时 `merged` 标记 unavailable，
+  不把"没读到"渲染成 0；`historyTruncated`/匿名状态都在界面上标注。
 - **安全**：令牌只进入请求头；不写日志、不返回、不进缓存；错误文本经 `redact`；
   fetch 有 10s 超时、1 MiB 响应上限、2 并发闸门。
 - **本机事实**：Host 进程出网到 api.github.com 超时（直接 node 进程可通），匿名也无令牌可用，
@@ -333,10 +345,12 @@ dvt-root (flex column, 100%, overflow hidden)
 - **v1.1 待处理工作台**：`ui/workbench.ts` 三栏（分组脏文件 | 即时 Diff | 体检/会话/分支洞察），
   分组直接来自 `WorkingTreeStatus.entries` 的 `staged`/`worktreeStatus`/`conflicts`，
   不额外发明一套「待处理」数据源；未选中文件时中列给出选择提示而不是空白。
-- **v1.3 热点数据看板**：`ui/hotspots.ts` 的三个维度由 `hotspots.dimension` 驱动，Host 的
-  `HotspotReport` 同时携带 `files` / `authors` / `recent`（同一窗口、同一次扫描），
-  条长统一用 `sqrt(value)/sqrt(max)` 压缩长尾；角色不落库，由窗口内提交占比在客户端推导，
-  避免第二份会漂移的事实源。数据口径（窗口/分支/截断/缓存/活跃天数）固定在头部，
+- **v1.3 / v1.4 热点数据看板**：`ui/hotspots.ts` 的四个维度由 `hotspots.dimension` 驱动，Host 的
+  `HotspotReport` 同时携带 `files` / `authors` / `recent` / `daily`（同一窗口、同一次扫描），
+  条长与日历分档统一用 `sqrt(value)/sqrt(max)` 压缩长尾；角色不落库，由窗口内提交占比在客户端推导，
+  避免第二份会漂移的事实源。活动日历的「推送次数」单独来自已加载的插件审计操作
+  （只计 `state === 'succeeded'` 的 push，覆盖条数写进口径），所以零推送是可解释的零，
+  而不是把提交数冒充推送数。数据口径（窗口/分支/截断/缓存/活跃天数）固定在头部，
   文件行可跳回时间线定位。
 - **v1.1 审计混排**：提交行与审计节点共用同一竖轴与日期分组，但节点图标、卡片样式（虚线）、
   状态徽标与日计数都独立，点击打开审计详情，不改变提交计数与泳道。
@@ -350,7 +364,96 @@ dvt-root (flex column, 100%, overflow hidden)
   拷到任意 React 18 应用即可运行（样式自带 `hsl()` token 回退）。
 
 
-## 7. 关键不变量
+## 7. 动态加载与热加载（v1.5）
+
+目标：点开面板时不要先看到骨架屏。数据在插件加载后就被后台刷进**页面内存**，打开面板先渲染
+缓存快照，再静默 revalidate；只有确实没有缓存时才显示加载动画。详细行业对照与验收步骤见
+[docs/DYNAMIC-LOADING.md](DYNAMIC-LOADING.md)。
+
+### 7.1 模块
+
+| 模块 | 职责 |
+| --- | --- |
+| `client/cache.ts` | 页面生命周期内存缓存：按 workspace 存仓库列表，按 repository 存时间线第一页/status/audit/hotspots/session/checks/PR/compare；每条带 `savedAt`，仓库 LRU 上限 8；`timelineQueryKey()` 让不同筛选的页面互不复用 |
+| `client/sync.ts` | 后台预热服务（每插件激活一个实例）：首轮 1.2s，之后 30s；面板打开时暂停，关闭 800ms 后补一轮；失败指数退避 30→60→120→240s；`hydrate()` 把缓存映射成 `HydrationSnapshot`；`remember*` 接收面板回写的成功结果 |
+| `client/panel.ts` | 首帧 `hydratePanelState()` 水合；每次首屏加载在已有数据时走静默分支（不清列表、不设 `loading`）；10s `status` 指纹探测 + 30s 完整静默刷新 + visibility/focus 刷新；`sync.refreshing` 由计数器驱动，被新请求取代的请求会 `cancelRefresh()` 释放，进度条不会卡死 |
+| `client/ui/toolbar.ts` | 唯一可见反馈：3px 不确定进度条（零高度定位槽，不推动布局）、旋转刷新图标、`role=status` live region；后台刷新失败且旧数据仍在时显示 stale Banner |
+| `client/index.ts` | 插件激活即 `sync.start()`，卸载时 `sync.stop()`；把 `sync` 注入面板依赖 |
+
+### 7.2 时序
+
+```text
+插件激活
+  └─ sync.start()
+       ├─ +1.2s 首次 warm（仅页面可见、面板未打开）
+       └─ 每 30s warm：repos/list → status + timeline 第一页 + audit 第一页 → 写缓存
+
+用户点开面板
+  ├─ hydratePanelState(cache)         ← 第一帧就有历史/状态（无骨架）
+  ├─ sync.setPanelOpen(true)          ← 暂停重型预热
+  ├─ 立即静默 revalidate 可见数据      ← 有数据的分支不清空列表
+  └─ 每 10s status 指纹 / 每 30s 全量静默刷新 / visibility·focus 立即刷新
+
+关闭面板
+  ├─ sync.setPanelOpen(false)
+  └─ +800ms 补一轮 warm，随后恢复 30s 节奏
+```
+
+### 7.3 刷新触发源
+
+| 触发 | 频率/时机 | 条件 | 行为 |
+| --- | --- | --- | --- |
+| 后台 warm | 首次 1.2s，之后 30s | 页面可见且面板未打开 | 拉仓库列表 + 目标仓库 status/timeline/audit 第一页写缓存；仓库列表在 2 分钟内复用（发现要扫描工作区，比重读切片贵） |
+| 面板打开 | 每次 mount | 有缓存 | 先水合再静默刷新 |
+| 工作区探测 | 10s | 面板可见、已选仓库 | `status` 的 HEAD/分支/脏文件指纹变化才重拉历史 |
+| 完整刷新 | 30s | 面板可见 | 静默刷新当前页签的源 |
+| 页面恢复可见 / 窗口聚焦 | 立即 | 可见 | 探测 + 静默刷新（聚焦 5s 节流） |
+| 页面隐藏 | 立即 | — | 停掉面板轮询；后台 warm 也只在可见时执行 |
+| 写操作完成 | 立即 | 有仓库 | 走已有 `refreshTick/statusTick`，因有数据而自动静默 |
+| 手动刷新 | 用户点击 | — | 刷新仓库列表与当前源；刷新中按钮仍可用 |
+
+### 7.4 无感规则（stale-while-revalidate）
+
+- **有数据 → 不清空**：首屏加载只在无缓存时设置 `loading`；有缓存时保持列表、详情、选中项、
+  滚动位置，仅把 `sync.refreshing` 置为 true。
+- **原位合并**：静默刷新第一页时把新提交/新审计记录合并到顶部，已“加载更多”的旧页保留，
+  `cursor` 与 `hasMore` 以已加载为准；只有查询条件变化（ticket 不同）才整体替换。
+- **失败保留旧数据**：静默失败只置 `sync.lastError`，不把 `timeline.error` 写进有数据的列表；
+  chrome 显示“后台刷新失败，当前显示的是上次的数据”，冷启动失败仍走原错误态。
+- **查询键隔离**：缓存页面带 `timelineQueryKey`，不同搜索/作者/分支/时间范围的页面不会互相命中。
+
+### 7.5 边界
+
+- 缓存不落盘、不跨页面刷新、不跨窗口；`F5` 后重新预热。
+- 后台只预热“当前/上次看过的仓库”，PR 与热点不预热（网络/重扫描成本）。
+- 面板开关是布尔值而非实例计数：右侧栏与对话区两个实例同时存在时，任一关闭会恢复预热；
+  当前桌面端只暴露对话区入口（见 README 已知限制）。
+- 全部逻辑在浏览器半，未新增 Host 路由，`F5` 即生效，Host 无需重启。
+
+### 7.6 骨架屏与交叉淡入淡出（v1.5.1）
+
+- **模块**：`client/ui/skeleton.ts` 提供 `SkeletonBlock/Line`、按 source 的
+  `SkeletonCardList / SkeletonTimelineList / SkeletonTree / SkeletonHotspots / SkeletonWorkbench`，
+  由 `SkeletonContent` 分派；唯一的**有状态**组件是 `SkeletonSwap`。
+- **何时出现**：`isContentLoading(state)` 是唯一判定——boot loading，或当前 source 首次加载且
+  **没有任何已显示数据**。有数据的静默刷新永远不出骨架（由 3px 进度条反馈）。该谓词同时被
+  `components.ts`（决定是否包 SkeletonSwap/树骨架）、`toolbar.ts`（冷启动隐藏同步文案）、
+  `status.ts`（状态栏换灰块）复用，避免三处判断漂移。
+- **布局一致**：骨架按真实布局画灰块——时间线 140px 泳道占位 + 64px 行、卡片列表头像/两行/胶囊、
+  文件树标题/搜索/缩进行、热点 18×7 热力网格、待办三栏；块尺寸贴近内容，切换来源时不会“骨架 A 变成
+  内容 B”的二次跳变。
+- **动效**：`.dvt-skel-block::after` 用 90° 白色渐变 + `translateX(-100%→100%)` 循环扫光，负延迟保证
+  首帧可见；`SkeletonSwap` 用 grid 两层同格叠放，loading 落下时骨架保留 `SKELETON_FADE_MS = 260ms`
+  播放 `dvt-skel-out`，内容同帧挂载播放 `dvt-content-in`（0.28s，opacity + 4px 位移）。骨架层
+  `pointer-events:none`，淡出期间内容即可交互。容器撑满内容区，因此骨架→内容不会推动布局。
+- **无文字/无品牌**：骨架 DOM 全部 `aria-hidden`，容器只在加载中 `aria-busy="true"`；冷启动不渲染
+  进度条、“正在更新…”胶囊与 live 文案，状态栏也换成灰块。
+- **减少动效**：`prefers-reduced-motion: reduce` 时 JS 侧跳过淡出（同帧切换），CSS 侧关闭扫光与淡入
+  淡出，最终状态不变。
+- **局部加载**：详情/Diff/体检/会话/PR 详情继续用 `SkeletonRows` 的紧凑灰块，不参与主内容交叉淡入，
+  避免同一屏出现两层动画。
+
+## 8. 关键不变量
 
 1. 只读与写操作彻底分离；写操作必须经过预览 + 单次 token。
 2. 审计先于执行落盘；失败也保留记录；远端结果不确定时记为 `unknown`，不伪装成成功/失败。
@@ -366,6 +469,14 @@ dvt-root (flex column, 100%, overflow hidden)
 9. 体检只对真实 diff 的字节下结论；未跟踪文件、被截断的 diff、SVN 的缺失能力都以警告/规则项
    显式说明，不输出「全部通过」的假安心。
 10. 会话归因只读活动会话且只认成功的写文件工具调用；路径必须落在仓库根内；结果一律标注推断。
-11. 热点看板三个维度只展示可解释分项（文件 churn / 作者提交与行数贡献 / 最近提交），
+11. 热点看板四个维度只展示可解释分项（活动日历 / 文件 churn / 作者提交与行数贡献 / 最近提交），
     全部共用同一扫描窗口并写出扫描口径（窗口/分支/截断/缓存/活跃天数），不出现单一神秘分数；
-    角色由提交占比推导并在悬停说明；SVN 没有行级统计时显示不可用，不补零。
+    角色由提交占比推导并在悬停说明；推送次数只来自插件审计里成功的 push；SVN 没有行级统计时
+    显示不可用，不补零。
+12. 图表颜色不复用 `--dsw-alias-brand-primary`：宿主该 token 是单色（浅色近黑、深色近白），
+    数据可视化统一用 `--dvt-data-blue` / `--dvt-data-purple`，保证深浅主题下日历热力、进度条与
+    悬浮指示线仍是设计色；中性面仍使用主题 token。
+13. 缓存只复用同一个查询键的结果：筛选条件变化后绝不把旧筛选的页面当作新结果展示；
+    静默刷新失败时保留最后一次成功的数据并明确标注，不把失败伪装成最新。
+14. 后台刷新只读、不写仓库；预热/轮询不发写操作、不产生审计记录，也不在面板关闭时拉取
+    需要网络凭据的数据（PR）或重扫描统计（热点）。

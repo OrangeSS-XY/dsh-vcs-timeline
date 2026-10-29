@@ -3,11 +3,13 @@
  *
  * Two read paths, both bounded by the transport:
  * - authenticated: ONE GraphQL POST for the list (viewer, review decision,
- *   rollup, requested reviewers, counts, labels) and one GraphQL POST plus one
- *   REST files call for the detail;
+ *   rollup, requested reviewers, counts, labels) plus, when the analytics
+ *   view asks for it, a second GraphQL POST for recently merged/closed pull
+ *   requests; one GraphQL POST plus one REST files call for the detail;
  * - anonymous: the public REST list and detail endpoints, which carry no
  *   review or CI facts, so those fields stay honestly empty/none and the
- *   actions become `unknown`/`needs-auth`.
+ *   actions become `unknown`/`needs-auth`; opting into history adds one more
+ *   REST list call with `state=closed`.
  *
  * Mapping is pure: payload tests feed recorded JSON and never touch the
  * network. Provider text quoted in an error is redacted and bounded.
@@ -24,7 +26,12 @@ import type {
   PullRequestReviewState,
   PullRequestState,
 } from '../../shared/contracts.ts'
-import { MAX_PULL_REQUESTS } from '../../shared/contracts.ts'
+import {
+  DEFAULT_PR_HISTORY_DAYS,
+  MAX_CLOSED_PULL_REQUESTS,
+  MAX_PR_HISTORY_DAYS,
+  MAX_PULL_REQUESTS,
+} from '../../shared/contracts.ts'
 import { deriveActions, reviewRequestedFrom } from './actions.ts'
 import { redact } from './auth.ts'
 import {
@@ -64,7 +71,8 @@ const BASE_HEADERS: Record<string, string> = {
 }
 
 /** Fields every mapped list node needs; kept identical to the contract facts. */
-const PULL_REQUEST_FIELDS = `
+function pullRequestFields(includeTeams: boolean): string {
+  return `
   number
   title
   url
@@ -77,7 +85,7 @@ const PULL_REQUEST_FIELDS = `
   reviewDecision
   mergeable
   reviewRequests(first: 20) {
-    nodes { requestedReviewer { ... on User { login } ... on Team { name } } }
+    nodes { requestedReviewer { ... on User { login }${includeTeams ? ' ... on Team { name }' : ''} } }
   }
   latestReviews(first: 20) {
     nodes { author { login } state submittedAt }
@@ -90,30 +98,88 @@ const PULL_REQUEST_FIELDS = `
   statusCheckRollup { state }
   labels(first: 10) { nodes { name } }
 `
+}
 
-/** List query: open pull requests, newest activity first. */
-export const GITHUB_LIST_QUERY = `query TimelinePullRequests($owner: String!, $name: String!, $first: Int!) {
+/** Full field set: user and team review requests. */
+const PULL_REQUEST_FIELDS = pullRequestFields(true)
+/**
+ * Same facts without team reviewer names.
+ *
+ * `Team.name` requires the `read:org` (or `read:discussion`) scope, which a
+ * classic token scoped to `repo` does not have. Team *review requests* are a
+ * nice-to-have fact: dropping just that selection keeps private-repository PR
+ * reading working instead of failing the whole query.
+ */
+const PULL_REQUEST_FIELDS_REDUCED = pullRequestFields(false)
+
+/** Lifecycle facts the history read and the detail read ask for. */
+const PULL_REQUEST_LIFECYCLE_FIELDS = `
+  state
+  mergedAt
+  closedAt
+`
+
+/** Build one list query with the given field set. */
+function listQuery(fields: string): string {
+  return `query TimelinePullRequests($owner: String!, $name: String!, $first: Int!) {
   rateLimit { remaining resetAt }
   viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequests(first: $first, states: [OPEN], orderBy: { field: UPDATED_AT, direction: DESC }) {
-      nodes {${PULL_REQUEST_FIELDS}}
+      nodes {${fields}}
     }
   }
 }`
+}
 
-/** Detail query: one pull request with its lifecycle state and description. */
-export const GITHUB_DETAIL_QUERY = `query TimelinePullRequestDetail($owner: String!, $name: String!, $number: Int!) {
+/** Build one merged/closed history query with the given field set. */
+function closedQuery(fields: string): string {
+  return `query TimelineClosedPullRequests($owner: String!, $name: String!, $first: Int!) {
+  rateLimit { remaining resetAt }
+  viewer { login }
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: $first, states: [MERGED, CLOSED], orderBy: { field: UPDATED_AT, direction: DESC }) {
+      nodes {${fields}${PULL_REQUEST_LIFECYCLE_FIELDS}}
+    }
+  }
+}`
+}
+
+/** Build one detail query with the given field set. */
+function detailQuery(fields: string): string {
+  return `query TimelinePullRequestDetail($owner: String!, $name: String!, $number: Int!) {
   rateLimit { remaining resetAt }
   viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      ${PULL_REQUEST_FIELDS}
-      state
+      ${fields}
+      ${PULL_REQUEST_LIFECYCLE_FIELDS}
       body
     }
   }
 }`
+}
+
+/** List query: open pull requests, newest activity first. */
+export const GITHUB_LIST_QUERY = listQuery(PULL_REQUEST_FIELDS)
+/** Reduced-scope variant of {@link GITHUB_LIST_QUERY}. */
+const GITHUB_LIST_QUERY_REDUCED = listQuery(PULL_REQUEST_FIELDS_REDUCED)
+
+/**
+ * History query: recently merged/closed pull requests, newest activity first.
+ *
+ * It reuses {@link PULL_REQUEST_FIELDS} so the mapped contract facts stay
+ * identical to the open read, and adds the lifecycle facts (`state`,
+ * `mergedAt`, `closedAt`) the analytics view reports.
+ */
+export const GITHUB_CLOSED_QUERY = closedQuery(PULL_REQUEST_FIELDS)
+/** Reduced-scope variant of {@link GITHUB_CLOSED_QUERY}. */
+const GITHUB_CLOSED_QUERY_REDUCED = closedQuery(PULL_REQUEST_FIELDS_REDUCED)
+
+/** Detail query: one pull request with its lifecycle state and description. */
+export const GITHUB_DETAIL_QUERY = detailQuery(PULL_REQUEST_FIELDS)
+/** Reduced-scope variant of {@link GITHUB_DETAIL_QUERY}. */
+const GITHUB_DETAIL_QUERY_REDUCED = detailQuery(PULL_REQUEST_FIELDS_REDUCED)
 
 /** Context shared by every mapping call. */
 export interface GitHubMapContext {
@@ -133,12 +199,40 @@ export interface GitHubListInput {
   token: string | null
   repositoryId: string
   fetchedAt: string
+  /**
+   * Also read recently merged/closed pull requests. Off unless the caller asks
+   * for it: the plain PR tab needs only the open page, and the history read
+   * costs one more provider request.
+   */
+  includeClosed?: boolean
+  /** How far back the merged/closed read filters, in days. */
+  windowDays?: number
 }
 
 /** One detail read. */
 export interface GitHubDetailInput extends GitHubListInput {
   number: number
 }
+
+/** Normalized list payload plus the closed-history fact the service surfaces. */
+export interface GitHubListData extends ProviderListData {
+  /** True when the provider cap cut the merged/closed side of the list. */
+  historyTruncated?: boolean
+}
+
+/** Result of one GitHub list read. */
+export type GitHubListResult = { ok: true; value: GitHubListData } | { ok: false; error: ProviderFailure }
+
+/** Mapped merged/closed page plus what the mapper could not read. */
+interface GitHubClosedPage {
+  pullRequests: PullRequest[]
+  warnings: string[]
+  /** True when the provider filled the history cap, so older entries exist. */
+  truncated: boolean
+}
+
+/** Result of one merged/closed history read. */
+type GitHubClosedResult = { ok: true; value: GitHubClosedPage } | { ok: false; error: ProviderFailure }
 
 /** A GitHub owner/repository pair, or null when the remote is not one. */
 export function githubTarget(remote: RemoteInfo): { owner: string; name: string } | null {
@@ -320,6 +414,8 @@ export function mapGraphQLPullRequest(node: unknown, context: GitHubMapContext):
     pendingReviewers,
     requestedFromViewer,
   })
+  const mergedAt = asOptionalIso(record.mergedAt)
+  const closedAt = asOptionalIso(record.closedAt)
   const pullRequest: PullRequest = {
     schemaVersion: 1,
     id: `${context.repositoryId}#${number}`,
@@ -334,6 +430,8 @@ export function mapGraphQLPullRequest(node: unknown, context: GitHubMapContext):
     baseBranch: pickString(record, 'baseRefName') ?? '',
     createdAt: pickIso(record, 'createdAt', context.fetchedAt),
     updatedAt: pickIso(record, 'updatedAt', context.fetchedAt),
+    ...(mergedAt === undefined ? {} : { mergedAt }),
+    ...(closedAt === undefined ? {} : { closedAt }),
     reviewState,
     checksState,
     mergeable,
@@ -392,6 +490,8 @@ export function mapRestPullRequest(node: unknown, context: GitHubMapContext): Pu
   const deletions = pickNumber(record, 'deletions')
   const commentCount = pickNumber(record, 'comments')
   const commitCount = pickNumber(record, 'commits')
+  const mergedAt = asOptionalIso(record.merged_at)
+  const closedAt = asOptionalIso(record.closed_at)
   return {
     schemaVersion: 1,
     id: `${context.repositoryId}#${number}`,
@@ -406,6 +506,8 @@ export function mapRestPullRequest(node: unknown, context: GitHubMapContext): Pu
     baseBranch: pickString(pickRecord(record, 'base'), 'ref') ?? '',
     createdAt: pickIso(record, 'created_at', context.fetchedAt),
     updatedAt: pickIso(record, 'updated_at', context.fetchedAt),
+    ...(mergedAt === undefined ? {} : { mergedAt }),
+    ...(closedAt === undefined ? {} : { closedAt }),
     reviewState,
     checksState,
     mergeable,
@@ -461,6 +563,74 @@ function graphqlResetAt(payload: unknown): string | undefined {
 }
 
 /**
+ * Warning appended when a query had to drop team-reviewer names.
+ *
+ * The list is still complete for open/closed facts; only "requested team
+ * reviewers" is not reported, so the UI says so instead of pretending the set
+ * of pending reviewers is complete.
+ */
+const REDUCED_SCOPE_WARNING = 'team review requests were omitted: the token lacks the read:org scope'
+
+/** Whether a GraphQL payload failed only because the token lacks a scope. */
+function isInsufficientScopes(payload: unknown): boolean {
+  const root = asRecord(payload)
+  if (root === null) return false
+  for (const entry of asArray(root.errors)) {
+    const record = asRecord(entry)
+    if (record === null) continue
+    const type = (pickString(record, 'type') ?? '').toUpperCase()
+    if (type === 'INSUFFICIENT_SCOPES') return true
+    const message = pickString(record, 'message') ?? ''
+    if (/required scopes|read:org|read:discussion/i.test(message)) return true
+  }
+  return false
+}
+
+/** One GraphQL POST; the token only ever travels in the authorization header. */
+function postGraphQL(
+  fetchImpl: FetchLike,
+  token: string | null,
+  query: string,
+  variables: Record<string, unknown>,
+): ReturnType<typeof requestJson> {
+  const headers: Record<string, string> = { ...BASE_HEADERS, 'content-type': 'application/json' }
+  if (token !== null && token !== '') headers.authorization = `bearer ${token}`
+  return requestJson(fetchImpl, {
+    url: GITHUB_GRAPHQL_URL,
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  })
+}
+
+/** One GraphQL attempt plus whether the reduced-scope query was needed. */
+interface ScopedGraphQLResult {
+  result: Awaited<ReturnType<typeof requestJson>>
+  reduced: boolean
+}
+
+/**
+ * Run one authenticated GraphQL query, retrying once without team fields when
+ * GitHub rejects the first attempt for missing `read:org`.
+ *
+ * Only the scope rejection is retried: a rate limit, a bad credential or a
+ * malformed payload must surface as the real failure instead of being masked by
+ * a second request. Tokens that do have the scope keep the richer query.
+ */
+async function postGraphQLWithScopeFallback(
+  fetchImpl: FetchLike,
+  token: string | null,
+  fullQuery: string,
+  reducedQuery: string,
+  variables: Record<string, unknown>,
+): Promise<ScopedGraphQLResult> {
+  const first = await postGraphQL(fetchImpl, token, fullQuery, variables)
+  if (!first.ok || !isInsufficientScopes(first.value)) return { result: first, reduced: false }
+  const second = await postGraphQL(fetchImpl, token, reducedQuery, variables)
+  return { result: second, reduced: true }
+}
+
+/**
  * Map GraphQL `errors` to a provider failure, or null when there are none.
  *
  * Rate limiting is its own failure so the service can surface the reset hint;
@@ -500,7 +670,11 @@ function graphqlFailure(payload: unknown): ProviderFailure | null {
  * silently shrinking the list (an all-unreadable page is a malformed payload,
  * not an empty result).
  */
-function mapGraphQLNodes(nodes: unknown[], context: GitHubMapContext): { pullRequests: PullRequest[]; warnings: string[] } {
+function mapGraphQLNodes(
+  nodes: unknown[],
+  context: GitHubMapContext,
+  limit: number = MAX_PULL_REQUESTS,
+): { pullRequests: PullRequest[]; warnings: string[] } {
   const pullRequests: PullRequest[] = []
   for (const node of nodes) {
     const mapped = mapGraphQLPullRequest(node, context)
@@ -515,24 +689,19 @@ function mapGraphQLNodes(nodes: unknown[], context: GitHubMapContext): { pullReq
         : `${dropped} pull request(s) could not be read`,
     )
   }
-  return { pullRequests: pullRequests.slice(0, MAX_PULL_REQUESTS), warnings }
+  return { pullRequests: pullRequests.slice(0, limit), warnings }
 }
 
-/** Authenticated list: one GraphQL call. */
+/** Authenticated list: one GraphQL call (with a scope-safe retry). */
 async function authenticatedList(input: GitHubListInput, owner: string, name: string): Promise<ProviderListResult> {
-  const result = await requestJson(input.fetchImpl, {
-    url: GITHUB_GRAPHQL_URL,
-    method: 'POST',
-    headers: {
-      ...BASE_HEADERS,
-      'content-type': 'application/json',
-      authorization: `bearer ${input.token ?? ''}`,
-    },
-    body: JSON.stringify({
-      query: GITHUB_LIST_QUERY,
-      variables: { owner, name, first: MAX_PULL_REQUESTS },
-    }),
-  })
+  const scoped = await postGraphQLWithScopeFallback(
+    input.fetchImpl,
+    input.token,
+    GITHUB_LIST_QUERY,
+    GITHUB_LIST_QUERY_REDUCED,
+    { owner, name, first: MAX_PULL_REQUESTS },
+  )
+  const result = scoped.result
   if (!result.ok) return result
   const failure = graphqlFailure(result.value)
   if (failure !== null) return { ok: false, error: failure }
@@ -552,7 +721,8 @@ async function authenticatedList(input: GitHubListInput, owner: string, name: st
     authenticated: true,
     viewer,
   })
-  const value: ProviderListData = { viewer, pullRequests: mapped.pullRequests, warnings: mapped.warnings }
+  const warnings = scoped.reduced ? [...mapped.warnings, REDUCED_SCOPE_WARNING] : mapped.warnings
+  const value: ProviderListData = { viewer, pullRequests: mapped.pullRequests, warnings }
   return { ok: true, value }
 }
 
@@ -598,12 +768,150 @@ async function anonymousList(input: GitHubListInput, owner: string, name: string
   }
 }
 
+/** Authenticated history: one GraphQL call for merged/closed pull requests. */
+async function authenticatedClosedList(
+  input: GitHubListInput,
+  owner: string,
+  name: string,
+): Promise<GitHubClosedResult> {
+  const scoped = await postGraphQLWithScopeFallback(
+    input.fetchImpl,
+    input.token,
+    GITHUB_CLOSED_QUERY,
+    GITHUB_CLOSED_QUERY_REDUCED,
+    { owner, name, first: MAX_CLOSED_PULL_REQUESTS },
+  )
+  const result = scoped.result
+  if (!result.ok) return result
+  const failure = graphqlFailure(result.value)
+  if (failure !== null) return { ok: false, error: failure }
+  const repository = pickRecord(pickRecord(asRecord(result.value), 'data'), 'repository')
+  if (repository === null) {
+    return {
+      ok: false,
+      error: { kind: 'unauthorized', status: 403, message: 'the provider did not return the repository' },
+    }
+  }
+  const viewer = graphqlViewer(result.value)
+  const nodes = pickArray(pickRecord(repository, 'pullRequests'), 'nodes')
+  const mapped = mapGraphQLNodes(
+    nodes,
+    {
+      repositoryId: input.repositoryId,
+      fetchedAt: input.fetchedAt,
+      authenticated: true,
+      viewer,
+    },
+    MAX_CLOSED_PULL_REQUESTS,
+  )
+  return {
+    ok: true,
+    value: {
+      pullRequests: mapped.pullRequests,
+      warnings: scoped.reduced ? [...mapped.warnings, REDUCED_SCOPE_WARNING] : mapped.warnings,
+      truncated: nodes.length >= MAX_CLOSED_PULL_REQUESTS,
+    },
+  }
+}
+
+/** Anonymous history: the public REST endpoint with `state=closed`. */
+async function anonymousClosedList(
+  input: GitHubListInput,
+  owner: string,
+  name: string,
+): Promise<GitHubClosedResult> {
+  const query = new URLSearchParams({
+    state: 'closed',
+    per_page: String(MAX_CLOSED_PULL_REQUESTS),
+    sort: 'updated',
+    direction: 'desc',
+  })
+  const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls?${query.toString()}`
+  const result = await requestJson(input.fetchImpl, { url, headers: BASE_HEADERS })
+  if (!result.ok) return result
+  if (!Array.isArray(result.value)) {
+    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned an unexpected pull-request list' } }
+  }
+  const context: GitHubMapContext = {
+    repositoryId: input.repositoryId,
+    fetchedAt: input.fetchedAt,
+    authenticated: false,
+    viewer: null,
+  }
+  const nodes = asArray(result.value)
+  const pullRequests: PullRequest[] = []
+  for (const node of nodes) {
+    const mapped = mapRestPullRequest(node, context)
+    if (mapped !== null) pullRequests.push(mapped)
+  }
+  if (nodes.length > 0 && pullRequests.length === 0) {
+    return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned an unexpected pull-request list' } }
+  }
+  const warnings: string[] = []
+  const dropped = nodes.length - pullRequests.length
+  if (dropped > 0) warnings.push(`${dropped} pull request(s) could not be read`)
+  return {
+    ok: true,
+    value: {
+      pullRequests: pullRequests.slice(0, MAX_CLOSED_PULL_REQUESTS),
+      warnings,
+      truncated: nodes.length >= MAX_CLOSED_PULL_REQUESTS,
+    },
+  }
+}
+
+/** How many days of merged/closed history one read covers. */
+function historyWindowDays(input: GitHubListInput): number {
+  const requested = input.windowDays
+  if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_PR_HISTORY_DAYS
+  return Math.max(1, Math.min(MAX_PR_HISTORY_DAYS, Math.trunc(requested)))
+}
+
+/** Oldest instant the merged/closed read keeps, in epoch milliseconds. */
+function historyStartMs(fetchedAt: string, windowDays: number): number {
+  const base = Date.parse(fetchedAt)
+  const fetchedMs = Number.isNaN(base) ? Date.now() : base
+  return fetchedMs - windowDays * 86_400_000
+}
+
 /**
- * Read the open pull requests of one GitHub repository.
- * @param input - transport seam, parsed remote, token and repository id.
+ * Whether one merged/closed pull request still belongs to the history window.
+ *
+ * The lifecycle timestamp is preferred over `updatedAt`, so an old merge that
+ * merely received a late comment is still reported as history rather than as
+ * a fresh merge.
+ */
+function withinHistoryWindow(pullRequest: PullRequest, startMs: number): boolean {
+  const raw = pullRequest.mergedAt ?? pullRequest.closedAt ?? pullRequest.updatedAt
+  const at = Date.parse(raw)
+  return !Number.isNaN(at) && at >= startMs
+}
+
+/** Append closed-history entries after the open page, one entry per number. */
+function withClosedHistory(open: PullRequest[], closed: PullRequest[]): PullRequest[] {
+  const seen = new Set(open.map(pullRequest => pullRequest.number))
+  const combined = [...open]
+  for (const pullRequest of closed) {
+    if (seen.has(pullRequest.number)) continue
+    seen.add(pullRequest.number)
+    combined.push(pullRequest)
+  }
+  return combined
+}
+
+/**
+ * Read the pull requests of one GitHub repository.
+ *
+ * The open page is read exactly as before; when `includeClosed` is set, the
+ * recently merged/closed page is read concurrently, window-filtered, appended
+ * after the open entries (open first, deduped by number) and its cap reported
+ * as `historyTruncated`. A failed history read never fails the list: the open
+ * entries stay and a warning marks the partial view.
+ * @param input - transport seam, parsed remote, token, repository id and
+ *   optional history flags.
  * @returns the normalized list or a provider failure.
  */
-export async function fetchGitHubList(input: GitHubListInput): Promise<ProviderListResult> {
+export async function fetchGitHubList(input: GitHubListInput): Promise<GitHubListResult> {
   const target = githubTarget(input.remote)
   if (target === null) {
     return {
@@ -611,8 +919,43 @@ export async function fetchGitHubList(input: GitHubListInput): Promise<ProviderL
       error: { kind: 'unsupported-remote', message: 'this GitHub remote path is not an owner/repository pair' },
     }
   }
-  if (input.token !== null) return authenticatedList(input, target.owner, target.name)
-  return anonymousList(input, target.owner, target.name)
+  const authenticated = input.token !== null
+  const readOpen = async (): Promise<ProviderListResult> => authenticated
+    ? authenticatedList(input, target.owner, target.name)
+    : anonymousList(input, target.owner, target.name)
+  if (input.includeClosed !== true) {
+    const open = await readOpen()
+    if (!open.ok) return open
+    return {
+      ok: true,
+      value: { viewer: open.value.viewer, pullRequests: open.value.pullRequests, warnings: open.value.warnings },
+    }
+  }
+  const startMs = historyStartMs(input.fetchedAt, historyWindowDays(input))
+  const [open, closed] = await Promise.all([
+    readOpen(),
+    authenticated
+      ? authenticatedClosedList(input, target.owner, target.name)
+      : anonymousClosedList(input, target.owner, target.name),
+  ])
+  if (!open.ok) return open
+  const warnings = [...open.value.warnings]
+  let history: PullRequest[] = []
+  let historyTruncated = false
+  if (closed.ok) {
+    warnings.push(...closed.value.warnings)
+    history = closed.value.pullRequests.filter(pullRequest => withinHistoryWindow(pullRequest, startMs))
+    historyTruncated = closed.value.truncated
+  } else {
+    warnings.push('the recently merged/closed pull requests could not be read')
+  }
+  const value: GitHubListData = {
+    viewer: open.value.viewer,
+    pullRequests: withClosedHistory(open.value.pullRequests, history),
+    warnings,
+    ...(historyTruncated ? { historyTruncated } : {}),
+  }
+  return { ok: true, value }
 }
 
 /** Read the changed-file list of one pull request over REST. */
@@ -636,20 +979,17 @@ async function fetchFiles(
 
 /** Authenticated detail: one GraphQL call plus one REST files call. */
 async function authenticatedDetail(input: GitHubDetailInput, owner: string, name: string): Promise<ProviderDetailResult> {
-  const token = input.token ?? ''
-  const [graphqlResult, filesResult] = await Promise.all([
-    requestJson(input.fetchImpl, {
-      url: GITHUB_GRAPHQL_URL,
-      method: 'POST',
-      headers: {
-        ...BASE_HEADERS,
-        'content-type': 'application/json',
-        authorization: `bearer ${token}`,
-      },
-      body: JSON.stringify({ query: GITHUB_DETAIL_QUERY, variables: { owner, name, number: input.number } }),
-    }),
+  const [scoped, filesResult] = await Promise.all([
+    postGraphQLWithScopeFallback(
+      input.fetchImpl,
+      input.token,
+      GITHUB_DETAIL_QUERY,
+      GITHUB_DETAIL_QUERY_REDUCED,
+      { owner, name, number: input.number },
+    ),
     fetchFiles(input.fetchImpl, input.token, owner, name, input.number),
   ])
+  const graphqlResult = scoped.result
   if (!graphqlResult.ok) return graphqlResult
   const failure = graphqlFailure(graphqlResult.value)
   if (failure !== null) return { ok: false, error: failure }
@@ -672,6 +1012,7 @@ async function authenticatedDetail(input: GitHubDetailInput, owner: string, name
     return { ok: false, error: { kind: 'invalid-json', message: 'the provider returned a pull request this plugin could not read' } }
   }
   const warnings: string[] = []
+  if (scoped.reduced) warnings.push(REDUCED_SCOPE_WARNING)
   let files: PullRequestFile[] = []
   if (filesResult.ok) files = filesResult.files
   else warnings.push('the changed files of this pull request could not be read')

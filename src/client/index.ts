@@ -12,6 +12,7 @@ import * as React from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createVcsApi } from './api.ts'
 import { createTimelinePanel } from './panel.ts'
+import { createDataSync } from './sync.ts'
 import { en, interpolate, normalizeLocale, zh } from './i18n.ts'
 import type { Locale } from './i18n.ts'
 import type { PanelProps } from './types.ts'
@@ -146,11 +147,23 @@ export function apply(ctx: ClientContext): void {
   // One client + panel factory per plugin activation; both are side-effect free
   // until the panel mounts.
   const api = createVcsApi((url, init) => fetch(url, init))
+
+  // Dynamic loading: the memory cache starts warming as soon as the plugin
+  // loads (idle delay, then every 30 s while the page is visible), so the first
+  // click into the panel paints from cache. Host restarts are not involved:
+  // this is the browser half only.
+  const sync = createDataSync({ api })
+  ctx.effect(() => {
+    sync.start()
+    return () => { sync.stop() }
+  }, 'dsh-vcs-timeline: dynamic loading')
+
   const Panel = createTimelinePanel({
     api,
     t: translate,
     locale: detectLocale(),
     resolveWorkspacePath: (props: PanelProps) => resolveCwd(ctx, sessionIdFor(props)),
+    sync,
   })
   const panelComponent = (attributes?: unknown): React.ReactElement =>
     React.createElement(Panel, (attributes ?? {}) as unknown as PanelProps)

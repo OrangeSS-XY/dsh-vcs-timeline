@@ -36,7 +36,6 @@ import {
   fileCountLabel,
   IconButton,
   LineStats,
-  SkeletonRows,
   StateBadge,
 } from './primitives.ts'
 import {
@@ -469,13 +468,15 @@ export function renderHistory(
   handlers: PanelHandlers,
   view: TimelineView,
   graph: GraphModel,
-): React.ReactElement {
+): React.ReactElement | null {
   const { t } = deps
   const repository = selectedRepository(state)
   const timeline = state.timeline
   const now = Date.now()
 
-  if (state.boot === 'loading') return h(SkeletonRows, { rows: 6 })
+  // First load of this source: the composition root paints the layout skeleton
+  // (SkeletonSwap) over the content slot, so the view itself renders nothing.
+  if (state.boot === 'loading') return null
   if (state.boot === 'error') {
     return h(EmptyState, {
       icon: IconError,
@@ -515,7 +516,10 @@ export function renderHistory(
       actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshRepositories }, t('common.retry')),
     })
   }
-  if (timeline.loading) return h(SkeletonRows, { rows: 6 })
+  // A non-quiet first page clears the list and sets `loading`; the composition
+  // root's SkeletonSwap then owns the surface. With rows still on screen this
+  // falls through and keeps painting them (never a skeleton over real data).
+  if (timeline.loading && timeline.events.length === 0) return null
   if (timeline.error !== null) {
     return h(EmptyState, {
       icon: IconError,

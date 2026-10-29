@@ -17,6 +17,7 @@ import {
   IconWarning,
   type IconProps,
 } from './icons.ts'
+import { SkeletonBlock, SkeletonLine } from './skeleton.ts'
 
 const h = React.createElement
 
@@ -108,14 +109,14 @@ export function EmptyState(props: EmptyStateProps): React.ReactElement {
   )
 }
 
-/** Loading skeleton shaped like history rows. */
+/** Loading skeleton shaped like a compact detail list (gray blocks, no text). */
 export function SkeletonRows(props: { rows?: number }): React.ReactElement {
   const rows = props.rows ?? 5
-  return h('div', { className: 'dvt-skeleton', 'aria-busy': 'true' },
+  return h('div', { className: 'dvt-skeleton dvt-skel-rows', 'aria-busy': 'true', 'aria-hidden': 'true' },
     Array.from({ length: rows }, (_, index) => h('div', { key: index, className: 'dvt-skel-row' },
-      h('span', { className: 'dvt-skel-dot' }),
-      h('span', { className: 'dvt-skel-line' }),
-      h('span', { className: 'dvt-skel-line short' }),
+      h(SkeletonBlock, { width: 9, height: 9, radius: '50%' }),
+      h(SkeletonLine, { width: index % 2 === 0 ? '72%' : '58%', height: 9 }),
+      h(SkeletonLine, { width: 34, height: 9 }),
     )),
   )
 }

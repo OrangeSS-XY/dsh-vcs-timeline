@@ -14,8 +14,11 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Repository } from '../shared/contracts.ts'
 import {
+  DEFAULT_PR_HISTORY_DAYS,
   isPullRequestDetail,
   isPullRequestList,
+  MAX_CLOSED_PULL_REQUESTS,
+  MAX_PR_HISTORY_DAYS,
   MAX_PULL_REQUESTS,
   PULL_REQUEST_CACHE_MS,
 } from '../shared/contracts.ts'
@@ -195,6 +198,22 @@ function remoteInfo(overrides: Partial<RemoteInfo> = {}): RemoteInfo {
     webBase: 'https://github.com',
     ...overrides,
   }
+}
+
+/** The GraphQL query text of one recorded call (empty when it is not GraphQL). */
+function graphqlQueryOf(call: FakeCall | undefined): string {
+  if (call === undefined || call.url !== GITHUB_GRAPHQL_URL) return ''
+  try {
+    const body = JSON.parse(call.body ?? '{}') as { query?: unknown }
+    return typeof body.query === 'string' ? body.query : ''
+  } catch {
+    return ''
+  }
+}
+
+/** Whether a recorded call is the merged/closed history read, not the open list. */
+function isClosedHistoryCall(call: FakeCall): boolean {
+  return graphqlQueryOf(call).includes('states: [MERGED, CLOSED]')
 }
 
 // ---------------------------------------------------------------------------
@@ -617,6 +636,63 @@ test('github GraphQL list maps draft, review, rollup, reviewers, mergeable and l
   assert.ok(!JSON.stringify(result.value).includes('tok-secret'))
 })
 
+test('github list retries without team fields when the token lacks read:org', async () => {
+  let graphqlCalls = 0
+  const fetchImpl = createFakeFetch((call) => {
+    if (call.url === GITHUB_GRAPHQL_URL) {
+      graphqlCalls += 1
+      if (graphqlCalls === 1) {
+        return {
+          body: {
+            errors: [{
+              type: 'INSUFFICIENT_SCOPES',
+              message: "Your token has not been granted the required scopes to execute this query. The 'name' field requires one of the following scopes: ['read:org', 'read:discussion']",
+            }],
+          },
+        }
+      }
+    }
+    return { body: graphqlListPayload([graphqlNode()]) }
+  })
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-repo-scope',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.pullRequests.length, 1)
+  assert.ok(result.value.warnings.some((warning) => warning.includes('read:org')))
+  assert.equal(graphqlCalls, 2, 'the scope rejection is retried exactly once')
+  const first = graphqlQueryOf(fetchImpl.calls[0])
+  const second = graphqlQueryOf(fetchImpl.calls[1])
+  assert.ok(first.includes('... on Team { name }'), 'the first attempt keeps team reviewer names')
+  assert.ok(!second.includes('on Team'), 'the retry must not ask for team names')
+  assert.ok(second.includes('states: [OPEN]'))
+})
+
+test('github does not retry a rate-limited GraphQL query as a scope problem', async () => {
+  const fetchImpl = createFakeFetch(() => ({
+    body: {
+      errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }],
+      data: { rateLimit: { remaining: 0, resetAt: '2026-01-03T00:00:00Z' } },
+    },
+  }))
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+  })
+  assert.equal(result.ok, false)
+  if (result.ok) return
+  assert.equal(result.error.kind, 'rate-limited')
+  assert.equal(fetchImpl.calls.length, 1, 'a rate limit is a real failure, not a scope fallback')
+})
+
 test('github lists open-only, draft-first REST payloads anonymously without review facts', async () => {
   const fetchImpl = createFakeFetch(() => ({
     body: [
@@ -693,6 +769,187 @@ test('github mapping helpers map the provider enums honestly', () => {
   assert.equal(mapRestFileStatus('weird'), 'unknown')
 })
 
+test('github GraphQL history read maps mergedAt/closedAt, dedupes open-first and filters the window', async () => {
+  const fetchImpl = createFakeFetch(call => {
+    if (isClosedHistoryCall(call)) {
+      return {
+        body: graphqlListPayload([
+          graphqlNode({
+            number: 50,
+            state: 'MERGED',
+            mergedAt: '2026-01-02T10:00:00Z',
+            closedAt: '2026-01-02T10:00:00Z',
+          }),
+          graphqlNode({
+            number: 51,
+            state: 'CLOSED',
+            mergedAt: null,
+            closedAt: '2026-01-02T11:00:00Z',
+          }),
+          // Older than the 30-day window: must not appear in the history side.
+          graphqlNode({
+            number: 52,
+            state: 'MERGED',
+            mergedAt: '2025-11-01T00:00:00Z',
+            closedAt: '2025-11-01T00:00:00Z',
+            updatedAt: '2025-11-01T00:00:00Z',
+          }),
+        ]),
+      }
+    }
+    return { body: graphqlListPayload([graphqlNode()]) }
+  })
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-secret',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+    includeClosed: true,
+    windowDays: 30,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.deepEqual(result.value.pullRequests.map(pr => pr.number), [42, 50, 51])
+  const merged = result.value.pullRequests.find(pr => pr.number === 50)
+  const closed = result.value.pullRequests.find(pr => pr.number === 51)
+  assert.ok(merged !== undefined && closed !== undefined)
+  assert.equal(merged.state, 'merged')
+  assert.equal(merged.mergedAt, '2026-01-02T10:00:00.000Z')
+  assert.equal(merged.closedAt, '2026-01-02T10:00:00.000Z')
+  assert.equal(closed.state, 'closed')
+  assert.equal(closed.mergedAt, undefined)
+  assert.equal(closed.closedAt, '2026-01-02T11:00:00.000Z')
+  assert.equal(result.value.historyTruncated, undefined)
+  assert.ok(!result.value.pullRequests.some(pr => pr.number === 52))
+
+  assert.equal(fetchImpl.calls.length, 2)
+  const openCall = fetchImpl.calls.find(call => !isClosedHistoryCall(call))
+  assert.ok(openCall !== undefined)
+  assert.ok(graphqlQueryOf(openCall).includes('states: [OPEN]'))
+  const closedCall = fetchImpl.calls.find(isClosedHistoryCall)
+  assert.ok(closedCall !== undefined)
+  assert.equal(closedCall.method, 'POST')
+  assert.equal(closedCall.headers.authorization, 'bearer tok-secret')
+  const closedBody = JSON.parse(closedCall.body ?? '{}') as { variables?: unknown }
+  assert.deepEqual(closedBody.variables, { owner: 'octo', name: 'repo', first: MAX_CLOSED_PULL_REQUESTS })
+  // The history read asks for BOTH lifecycle states, never just one.
+  assert.ok(graphqlQueryOf(closedCall).includes('states: [MERGED, CLOSED]'))
+  assert.ok(!JSON.stringify(result.value).includes('tok-secret'))
+})
+
+test('github anonymous history read maps merged_at/closed_at and reads state=closed over REST', async () => {
+  const restNode = (number: number, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    number,
+    title: `Public pull request ${number}`,
+    html_url: `https://github.com/octo/repo/pull/${number}`,
+    state: 'open',
+    user: { login: 'anon-author' },
+    head: { ref: 'topic' },
+    base: { ref: 'main' },
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-20T00:00:00Z',
+    ...extra,
+  })
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url.includes('state=closed')) {
+      return {
+        body: [
+          // Same number as an open PR: the open entry wins and stays first.
+          restNode(8, { state: 'closed', merged_at: '2026-01-21T00:00:00Z', closed_at: '2026-01-21T00:00:00Z' }),
+          // Closed before the window started: dropped.
+          restNode(9, {
+            state: 'closed',
+            merged_at: null,
+            closed_at: '2025-12-01T00:00:00Z',
+            updated_at: '2025-12-02T00:00:00Z',
+          }),
+          restNode(10, { state: 'closed', merged_at: '2026-01-15T00:00:00Z', closed_at: '2026-01-15T00:00:00Z' }),
+        ],
+      }
+    }
+    return { body: [restNode(7), restNode(8)] }
+  })
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: null,
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-31T00:00:00.000Z',
+    includeClosed: true,
+    windowDays: 30,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.deepEqual(result.value.pullRequests.map(pr => pr.number), [7, 8, 10])
+  const reopened = result.value.pullRequests.find(pr => pr.number === 8)
+  assert.ok(reopened !== undefined)
+  assert.equal(reopened.state, 'open')
+  const merged = result.value.pullRequests.find(pr => pr.number === 10)
+  assert.ok(merged !== undefined)
+  assert.equal(merged.state, 'merged')
+  assert.equal(merged.mergedAt, '2026-01-15T00:00:00.000Z')
+  assert.equal(merged.closedAt, '2026-01-15T00:00:00.000Z')
+  assert.ok(!result.value.pullRequests.some(pr => pr.number === 9), 'out-of-window history is dropped')
+  assert.equal(result.value.historyTruncated, undefined)
+
+  const openCall = fetchImpl.calls.find(call => call.url.includes('state=open'))
+  const closedCall = fetchImpl.calls.find(call => call.url.includes('state=closed'))
+  assert.ok(openCall !== undefined && closedCall !== undefined)
+  assert.ok(closedCall.url.startsWith(`${GITHUB_API_BASE}/repos/octo/repo/pulls?`))
+  assert.ok(closedCall.url.includes('per_page=40'))
+  assert.ok(closedCall.url.includes('sort=updated'))
+  assert.ok(closedCall.url.includes('direction=desc'))
+  assert.equal(closedCall.headers.authorization, undefined)
+  assert.equal(closedCall.headers['private-token'], undefined)
+})
+
+test('github history read reports historyTruncated when the provider filled the cap', async () => {
+  const closedNodes = Array.from({ length: MAX_CLOSED_PULL_REQUESTS }, (_, index) => graphqlNode({
+    number: 100 + index,
+    state: 'MERGED',
+    title: `Merged ${index}`,
+    mergedAt: '2026-01-02T00:00:00Z',
+    closedAt: '2026-01-02T00:00:00Z',
+  }))
+  const fetchImpl = createFakeFetch(call => ({
+    body: isClosedHistoryCall(call) ? graphqlListPayload(closedNodes) : graphqlListPayload([graphqlNode()]),
+  }))
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-secret',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+    includeClosed: true,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.pullRequests.length, 1 + MAX_CLOSED_PULL_REQUESTS)
+  assert.equal(result.value.historyTruncated, true)
+})
+
+test('github keeps the open list and warns when only the history read fails', async () => {
+  const fetchImpl = createFakeFetch(call => {
+    if (isClosedHistoryCall(call)) return { status: 500, body: { message: 'SECRET-PROVIDER-BODY' } }
+    return { body: graphqlListPayload([graphqlNode()]) }
+  })
+  const result = await fetchGitHubList({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-secret',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+    includeClosed: true,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.deepEqual(result.value.pullRequests.map(pr => pr.number), [42])
+  assert.equal(result.value.historyTruncated, undefined)
+  assert.ok(result.value.warnings.some(warning => warning.includes('merged/closed')))
+  assert.ok(!JSON.stringify(result.value).includes('SECRET-PROVIDER-BODY'))
+})
+
 test('github authenticated detail maps files, description and lifecycle state', async () => {
   const fetchImpl = createFakeFetch(call => {
     if (call.url === GITHUB_GRAPHQL_URL) {
@@ -732,6 +989,42 @@ test('github authenticated detail maps files, description and lifecycle state', 
   ])
   assert.equal(fetchImpl.calls.length, 2)
   for (const call of fetchImpl.calls) assert.equal(call.headers.authorization, 'bearer tok-secret')
+})
+
+test('github detail also falls back to the reduced query when team names need a scope', async () => {
+  let graphqlCalls = 0
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url === GITHUB_GRAPHQL_URL) {
+      graphqlCalls += 1
+      if (graphqlCalls === 1) {
+        return {
+          body: {
+            errors: [{
+              type: 'INSUFFICIENT_SCOPES',
+              message: "The 'name' field requires one of the following scopes: ['read:org']",
+            }],
+          },
+        }
+      }
+      return { body: graphqlDetailPayload(graphqlNode({ number: 42, state: 'OPEN', body: 'ok' })) }
+    }
+    if (call.url.includes('/files')) return { body: REST_FILES }
+    return { status: 404, body: { message: 'not found' } }
+  })
+  const result = await fetchGitHubDetail({
+    fetchImpl,
+    remote: remoteInfo(),
+    token: 'tok-repo-scope',
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-03T00:00:00.000Z',
+    number: 42,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.pullRequest.number, 42)
+  assert.ok(result.value.warnings.some((warning) => warning.includes('read:org')))
+  assert.equal(graphqlCalls, 2)
+  assert.ok(!graphqlQueryOf(fetchImpl.calls[1]).includes('on Team'))
 })
 
 test('github anonymous detail maps a closed pull request and degrades a failed files read', async () => {
@@ -865,6 +1158,155 @@ test('gitlab list reads public projects anonymously', async () => {
   assert.equal(fetchImpl.calls[0]?.headers['private-token'], undefined)
 })
 
+test('gitlab history read maps merged_at/closed_at, dedupes and filters the window', async () => {
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url.includes('state=merged')) {
+      return {
+        body: [
+          mergeRequest({
+            iid: 6,
+            state: 'merged',
+            merged_at: '2026-01-15T00:00:00Z',
+            closed_at: '2026-01-15T00:00:00Z',
+            updated_at: '2026-01-16T00:00:00Z',
+          }),
+          // Already on the open page: deduped, the open entry wins.
+          mergeRequest({ iid: 5, state: 'merged', merged_at: '2026-01-10T00:00:00Z' }),
+        ],
+      }
+    }
+    if (call.url.includes('state=closed')) {
+      return {
+        body: [
+          mergeRequest({
+            iid: 7,
+            state: 'closed',
+            merged_at: null,
+            closed_at: '2026-01-20T00:00:00Z',
+            updated_at: '2026-01-20T00:00:00Z',
+          }),
+          // Closed before the window started: dropped.
+          mergeRequest({
+            iid: 8,
+            state: 'closed',
+            merged_at: null,
+            closed_at: '2025-12-01T00:00:00Z',
+            updated_at: '2025-12-01T00:00:00Z',
+          }),
+        ],
+      }
+    }
+    return { body: [mergeRequest()] }
+  })
+  const result = await fetchGitLabList({
+    fetchImpl,
+    remote: remoteInfo({ provider: 'gitlab', host: 'gitlab.com', remotePath: 'group/repo', webBase: 'https://gitlab.com' }),
+    token: null,
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-31T00:00:00.000Z',
+    includeClosed: true,
+    windowDays: 30,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  // Open first, then recent history newest-updated first.
+  assert.deepEqual(result.value.pullRequests.map(pr => pr.number), [5, 7, 6])
+  const merged = result.value.pullRequests.find(pr => pr.number === 6)
+  const closed = result.value.pullRequests.find(pr => pr.number === 7)
+  assert.ok(merged !== undefined && closed !== undefined)
+  assert.equal(merged.state, 'merged')
+  assert.equal(merged.mergedAt, '2026-01-15T00:00:00.000Z')
+  assert.equal(merged.closedAt, '2026-01-15T00:00:00.000Z')
+  assert.equal(closed.state, 'closed')
+  assert.equal(closed.mergedAt, undefined)
+  assert.equal(closed.closedAt, '2026-01-20T00:00:00.000Z')
+  assert.ok(!result.value.pullRequests.some(pr => pr.number === 8), 'out-of-window history is dropped')
+  assert.equal(result.value.historyTruncated, undefined)
+
+  const listCalls = fetchImpl.calls.filter(call => call.url.includes('/merge_requests?'))
+  assert.equal(listCalls.length, 3, 'open, merged and closed pages are requested')
+  const openCall = listCalls.find(call => call.url.includes('state=opened'))
+  const mergedCall = listCalls.find(call => call.url.includes('state=merged'))
+  const closedCall = listCalls.find(call => call.url.includes('state=closed'))
+  assert.ok(openCall !== undefined && mergedCall !== undefined && closedCall !== undefined)
+  for (const call of [mergedCall, closedCall]) {
+    assert.ok(call.url.includes('per_page=40'))
+    assert.ok(call.url.includes('updated_after=2026-01-01T00%3A00%3A00.000Z'))
+    assert.equal(call.headers['private-token'], undefined)
+  }
+})
+
+test('gitlab keeps the open list and warns when one history read fails', async () => {
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url.includes('state=merged')) return { status: 500, body: { message: 'boom' } }
+    if (call.url.includes('state=closed')) {
+      return {
+        body: [mergeRequest({
+          iid: 7,
+          state: 'closed',
+          merged_at: null,
+          closed_at: '2026-01-20T00:00:00Z',
+          updated_at: '2026-01-20T00:00:00Z',
+        })],
+      }
+    }
+    return { body: [mergeRequest()] }
+  })
+  const result = await fetchGitLabList({
+    fetchImpl,
+    remote: remoteInfo({ provider: 'gitlab', host: 'gitlab.com', remotePath: 'group/repo', webBase: 'https://gitlab.com' }),
+    token: null,
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-31T00:00:00.000Z',
+    includeClosed: true,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.deepEqual(result.value.pullRequests.map(pr => pr.number), [5, 7])
+  assert.equal(result.value.historyTruncated, undefined)
+  assert.ok(result.value.warnings.some(warning => warning.includes('merged')))
+  assert.ok(!result.value.warnings.some(warning => warning.includes('closed merge requests')))
+})
+
+test('gitlab history side honours the merged/closed cap and reports truncation', async () => {
+  const mergedNodes = Array.from({ length: MAX_CLOSED_PULL_REQUESTS }, (_, index) => mergeRequest({
+    iid: 300 + index,
+    state: 'merged',
+    merged_at: '2026-01-15T00:00:00Z',
+    closed_at: '2026-01-15T00:00:00Z',
+    updated_at: '2026-01-16T00:00:00Z',
+  }))
+  const fetchImpl = createFakeFetch(call => {
+    if (call.url.includes('state=merged')) return { body: mergedNodes }
+    if (call.url.includes('state=closed')) {
+      return {
+        body: [mergeRequest({
+          iid: 400,
+          state: 'closed',
+          merged_at: null,
+          closed_at: '2026-01-20T00:00:00Z',
+          updated_at: '2026-01-20T00:00:00Z',
+        })],
+      }
+    }
+    return { body: [mergeRequest()] }
+  })
+  const result = await fetchGitLabList({
+    fetchImpl,
+    remote: remoteInfo({ provider: 'gitlab', host: 'gitlab.com', remotePath: 'group/repo', webBase: 'https://gitlab.com' }),
+    token: null,
+    repositoryId: REPO_ID,
+    fetchedAt: '2026-01-31T00:00:00.000Z',
+    includeClosed: true,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.value.historyTruncated, true)
+  assert.equal(result.value.pullRequests.length, 1 + MAX_CLOSED_PULL_REQUESTS)
+  // The newest closed entry survives the combined cap.
+  assert.equal(result.value.pullRequests[1]?.number, 400)
+})
+
 test('gitlab detail maps the pipeline check state, diffs and description', async () => {
   const fetchImpl = createFakeFetch(call => {
     if (call.url.endsWith('/user')) return { body: { username: 'gl-viewer' } }
@@ -962,21 +1404,153 @@ test('service list caches per repository for the TTL and refresh bypasses it', a
     now: () => new Date(clock),
   })
   const first = await service.list({ repositoryId: REPO_ID })
-  assert.equal(fetches, 1)
+  assert.equal(fetches, 2, 'the open read plus the merged/closed read')
   assert.equal(runner.calls.length, 1)
 
   const second = await service.list({ repositoryId: REPO_ID })
-  assert.equal(fetches, 1, 'a fresh cache entry performs no provider call')
+  assert.equal(fetches, 2, 'a fresh cache entry performs no provider call')
   assert.equal(runner.calls.length, 1, 'a fresh cache entry does not re-read the remote')
+  assert.equal(second, first, 'the cached list is reused')
   assert.equal(second.fetchedAt, first.fetchedAt)
 
   clock += PULL_REQUEST_CACHE_MS + 1
   const third = await service.list({ repositoryId: REPO_ID })
-  assert.equal(fetches, 2, 'an expired cache entry refetches')
+  assert.equal(fetches, 4, 'an expired cache entry refetches both pages')
   assert.notEqual(third.fetchedAt, first.fetchedAt)
 
   await service.list({ repositoryId: REPO_ID, refresh: true })
-  assert.equal(fetches, 3, 'refresh bypasses the cache')
+  assert.equal(fetches, 6, 'refresh bypasses the cache')
+})
+
+test('service list reads merged/closed history by default and surfaces the window', async () => {
+  const fetchImpl = createFakeFetch(call => ({
+    body: isClosedHistoryCall(call)
+      ? graphqlListPayload([
+        graphqlNode({
+          number: 50,
+          state: 'MERGED',
+          mergedAt: '2026-01-02T00:00:00Z',
+          closedAt: '2026-01-02T00:00:00Z',
+        }),
+      ])
+      : graphqlListPayload([graphqlNode()]),
+  }))
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-secret' },
+    now: () => new Date('2026-01-03T00:00:00Z'),
+  })
+  const list = await service.list({ repositoryId: REPO_ID })
+  assert.equal(isPullRequestList(list), true)
+  assert.equal(list.closedWindowDays, DEFAULT_PR_HISTORY_DAYS)
+  assert.equal(list.historyTruncated, undefined)
+  assert.equal(list.partial, undefined)
+  assert.deepEqual(list.pullRequests.map(pr => pr.number), [42, 50])
+  const merged = list.pullRequests.find(pr => pr.number === 50)
+  assert.ok(merged !== undefined)
+  assert.equal(merged.state, 'merged')
+  assert.equal(merged.mergedAt, '2026-01-02T00:00:00.000Z')
+  assert.equal(merged.closedAt, '2026-01-02T00:00:00.000Z')
+  assert.equal(fetchImpl.calls.length, 2)
+  assert.ok(!JSON.stringify(list).includes('tok-secret'))
+})
+
+test('service clamps windowDays into the contract range', async () => {
+  const fetchImpl = createFakeFetch(call => ({
+    body: isClosedHistoryCall(call) ? graphqlListPayload([]) : graphqlListPayload([graphqlNode()]),
+  }))
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-secret' },
+    now: () => new Date('2026-01-03T00:00:00Z'),
+  })
+  const wide = await service.list({ repositoryId: REPO_ID, windowDays: 500 })
+  assert.equal(wide.closedWindowDays, MAX_PR_HISTORY_DAYS)
+  const narrow = await service.list({ repositoryId: REPO_ID, windowDays: 0 })
+  assert.equal(narrow.closedWindowDays, 1)
+  const unusable = await service.list({ repositoryId: REPO_ID, windowDays: Number.NaN })
+  assert.equal(unusable.closedWindowDays, DEFAULT_PR_HISTORY_DAYS)
+})
+
+test('service cache separates includeClosed and windowDays lists', async () => {
+  let clock = Date.parse('2026-01-03T00:00:00Z')
+  let fetches = 0
+  const fetchImpl = createFakeFetch(call => {
+    fetches += 1
+    return { body: isClosedHistoryCall(call) ? graphqlListPayload([]) : graphqlListPayload([graphqlNode()]) }
+  })
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-secret' },
+    now: () => new Date(clock),
+  })
+  const withHistory = await service.list({ repositoryId: REPO_ID })
+  assert.equal(fetches, 2, 'the default read fetches open + history')
+  assert.equal(withHistory.closedWindowDays, DEFAULT_PR_HISTORY_DAYS)
+
+  assert.equal(await service.list({ repositoryId: REPO_ID }), withHistory, 'the cached history list is reused')
+  assert.equal(fetches, 2, 'the cached history list performs no provider call')
+
+  const openOnly = await service.list({ repositoryId: REPO_ID, includeClosed: false })
+  assert.equal(fetches, 3, 'open-only is its own cache entry and reads one page')
+  assert.equal(openOnly.closedWindowDays, undefined)
+  assert.equal(openOnly.historyTruncated, undefined)
+  assert.equal(await service.list({ repositoryId: REPO_ID, includeClosed: false }), openOnly)
+  assert.equal(fetches, 3)
+
+  const narrow = await service.list({ repositoryId: REPO_ID, windowDays: 7 })
+  assert.equal(fetches, 5, 'the window is part of the cache key')
+  assert.equal(narrow.closedWindowDays, 7)
+  assert.notEqual(narrow, withHistory)
+
+  assert.equal(await service.list({ repositoryId: REPO_ID }), withHistory)
+  assert.equal(fetches, 5, 'a different flag combination cannot poison the default entry')
+
+  clock += PULL_REQUEST_CACHE_MS + 1
+  await service.list({ repositoryId: REPO_ID })
+  assert.equal(fetches, 7, 'expired entries refetch both pages')
+})
+
+test('service keeps the open list and flags partial when only the history read fails', async () => {
+  const fetchImpl = createFakeFetch(call => {
+    if (isClosedHistoryCall(call)) return { status: 500, body: { message: 'SECRET-PROVIDER-BODY' } }
+    return { body: graphqlListPayload([graphqlNode()]) }
+  })
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-secret' },
+    now: () => new Date('2026-01-03T00:00:00Z'),
+  })
+  const list = await service.list({ repositoryId: REPO_ID })
+  assert.equal(list.pullRequests.length, 1)
+  assert.equal(list.partial, true)
+  assert.equal(list.closedWindowDays, DEFAULT_PR_HISTORY_DAYS)
+  assert.equal(list.historyTruncated, undefined)
+  assert.ok(list.warnings?.some(warning => warning.includes('merged/closed')))
+  assert.ok(!JSON.stringify(list).includes('SECRET-PROVIDER-BODY'))
+  assert.ok(fetchImpl.calls.some(isClosedHistoryCall))
+})
+
+test('service surfaces historyTruncated from the provider cap', async () => {
+  const closedNodes = Array.from({ length: MAX_CLOSED_PULL_REQUESTS }, (_, index) => graphqlNode({
+    number: 200 + index,
+    title: `Merged ${index}`,
+    state: 'MERGED',
+    mergedAt: '2026-01-02T00:00:00Z',
+    closedAt: '2026-01-02T00:00:00Z',
+  }))
+  const fetchImpl = createFakeFetch(call => ({
+    body: isClosedHistoryCall(call) ? graphqlListPayload(closedNodes) : graphqlListPayload([graphqlNode()]),
+  }))
+  const { service } = createServiceHarness({
+    fetchImpl,
+    env: { GITHUB_TOKEN: 'tok-secret' },
+    now: () => new Date('2026-01-03T00:00:00Z'),
+  })
+  const list = await service.list({ repositoryId: REPO_ID })
+  assert.equal(list.historyTruncated, true)
+  assert.equal(list.closedWindowDays, DEFAULT_PR_HISTORY_DAYS)
+  assert.equal(list.pullRequests.length, 1 + MAX_CLOSED_PULL_REQUESTS)
 })
 
 test('service maps provider failures to stable API errors without provider text', async () => {
@@ -1138,7 +1712,8 @@ test('service keeps at most two provider requests in flight', async () => {
   ])
   assert.equal(lists.length, 3)
   assert.ok(maxActive <= 2, `expected at most 2 concurrent provider calls, saw ${maxActive}`)
-  assert.equal(fetchImpl.calls.length, 3)
+  // Each uncached list now reads an open page plus a merged/closed page.
+  assert.equal(fetchImpl.calls.length, 6)
 })
 
 // ---------------------------------------------------------------------------

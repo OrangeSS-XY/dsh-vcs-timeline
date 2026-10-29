@@ -270,8 +270,8 @@ test('the pending workbench shows the selected untracked file as a whole-file di
   assert.ok(html.includes('hello'))
 })
 
-test('the hotspot dashboard switches between file churn, contributors and activity', () => {
-  const base = { ...createInitialState().hotspots, data: hotspots }
+test('the hotspot dashboard switches between calendar, file churn, contributors and activity', () => {
+  const base = { ...createInitialState().hotspots, data: hotspots, dimension: 'files' as const }
   const files = render(ready({ source: 'hotspots', hotspots: base }))
   assert.ok(files.includes(t('hotspot.dashboard.title')))
   assert.ok(files.includes('dvt-hs-seg'))
@@ -315,6 +315,55 @@ test('the hotspot dashboard switches between file churn, contributors and activi
   // Timeline feed: no micro bars on this tab.
   assert.ok(!activity.includes('dvt-hs-meter'))
   assert.ok(!activity.includes('dvt-hs-row-file'))
+})
+
+test('the calendar heatmap shows daily churn and plugin-audited pushes', () => {
+  const base = { ...createInitialState().hotspots, data: hotspots }
+  const pushed: OperationAttempt = {
+    ...attempt,
+    id: 'op-push-1',
+    operation: 'push',
+    state: 'succeeded',
+    startedAt: '2026-01-02T10:00:00.000Z',
+    requestSummary: 'push main',
+  }
+  const failedPush: OperationAttempt = {
+    ...attempt,
+    id: 'op-push-2',
+    operation: 'push',
+    state: 'failed',
+    startedAt: '2026-01-01T10:00:00.000Z',
+    requestSummary: 'push main',
+  }
+  const audit = { ...createInitialState().audit, operations: [pushed, failedPush] }
+  const calendar = render(ready({
+    source: 'hotspots',
+    hotspots: { ...base, dimension: 'calendar', calendarMetric: 'churn' },
+    audit,
+  }))
+  assert.ok(calendar.includes(t('hotspot.dim.calendar')))
+  assert.ok(calendar.includes('dvt-hs-cal-grid'))
+  assert.ok(calendar.includes('dvt-hs-heat-churn-4'), 'the busiest day is the darkest bucket')
+  // 26 weeks × 7 days = 182 measured-or-future cells.
+  assert.equal((calendar.match(/data-date="/g) ?? []).length, 182)
+  // daily fixture: (11+3) + (1+1) = 16 churn lines over two active days.
+  assert.ok(calendar.includes(t('hotspot.calendar.total.churn', { count: 16 })))
+  assert.ok(calendar.includes(t('hotspot.calendar.activeDays', { count: 2 })))
+  assert.ok(calendar.includes(t('hotspot.calendar.metric.churn')))
+  assert.ok(calendar.includes(t('hotspot.calendar.metric.pushes')))
+  assert.ok(!calendar.includes('dvt-hs-row-file'), 'the calendar is not a file list')
+  assert.ok(!calendar.includes('dvt-hs-feed'))
+
+  const pushes = render(ready({
+    source: 'hotspots',
+    hotspots: { ...base, dimension: 'calendar', calendarMetric: 'pushes' },
+    audit,
+  }))
+  // Only the succeeded push counts; the failed one is not activity.
+  assert.ok(pushes.includes(t('hotspot.calendar.total.pushes', { count: 1 })))
+  assert.ok(pushes.includes('dvt-hs-heat-pushes-4'))
+  assert.ok(pushes.includes(t('hotspot.calendar.pushSource', { count: 2 })))
+  assert.ok(!pushes.includes(t('hotspot.calendar.cell.future', { date: '2026-01-01' })))
 })
 
 test('an unavailable hotspot report says why instead of showing fake zeros', () => {
@@ -429,7 +478,8 @@ test('the new state slices and filters start empty and the tab strip exposes the
     sessionLoading: false,
     sessionError: null,
   })
-  assert.equal(state.hotspots.dimension, 'files')
+  assert.equal(state.hotspots.dimension, 'calendar')
+  assert.equal(state.hotspots.calendarMetric, 'churn')
   assert.equal(state.filters.branch, '')
   assert.equal(state.filters.branchScope, 'current')
   assert.equal(state.filters.auditInTimeline, false)

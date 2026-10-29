@@ -10,10 +10,11 @@
  */
 
 import * as React from 'react'
+import { MAX_CLOSED_PULL_REQUESTS } from '../../shared/contracts.ts'
 import type { OperationState } from '../../shared/contracts.ts'
-import type { PullRequest, PullRequestAction, PullRequestActionKind } from '../../shared/contracts.ts'
+import type { PullRequest, PullRequestAction, PullRequestActionKind, PullRequestList } from '../../shared/contracts.ts'
 import * as F from '../format.ts'
-import type { PanelDeps, PanelHandlers, PanelState } from '../types.ts'
+import type { PanelDeps, PanelHandlers, PanelState, PullRequestFilter } from '../types.ts'
 import { IconClock, IconError, IconPr, IconRefresh, IconUpload } from './icons.ts'
 import {
   Banner,
@@ -47,6 +48,294 @@ export function actionNeedsAttention(action: PullRequestAction): boolean {
 /** Whether any of the suggested actions needs the viewer now. */
 export function needsAttention(actions: readonly PullRequestAction[]): boolean {
   return actions.some(actionNeedsAttention)
+}
+
+/* ------------------------------------------------------- analytics helpers */
+
+/** Pull requests the merged-history trend chart covers. */
+export const MERGED_TREND_WEEKS = 8
+
+/** One UTC day in milliseconds. */
+const DAY_MS = 86_400_000
+
+/**
+ * How close one pull request is to being mergeable, from reported facts only.
+ *
+ * - `ready`: open, the provider says mergeable, no change request and CI has
+ *   not failed. A pending/none CI state is not a failure and stays `ready`.
+ * - `conflicts`: open and the provider explicitly says it is not mergeable.
+ * - `blocked`: everything else, including draft/merged/closed PRs and an
+ *   unknown (`null`) mergeability. "Unknown" must never be counted as ready.
+ */
+export type MergeReadiness = 'ready' | 'conflicts' | 'blocked'
+
+/** Classify one pull request's merge readiness. */
+export function mergeReadiness(
+  pr: Pick<PullRequest, 'state' | 'mergeable' | 'reviewState' | 'checksState'>,
+): MergeReadiness {
+  if (pr.state !== 'open') return 'blocked'
+  if (pr.mergeable === false) return 'conflicts'
+  if (pr.mergeable !== true) return 'blocked'
+  if (pr.reviewState === 'changes-requested') return 'blocked'
+  if (pr.checksState === 'failure') return 'blocked'
+  return 'ready'
+}
+
+/** Whether one pull request is still active (open or draft, not merged/closed). */
+export function isActivePullRequest(pr: Pick<PullRequest, 'state'>): boolean {
+  return pr.state === 'open' || pr.state === 'draft'
+}
+
+/**
+ * Whether one loaded pull request needs the viewer now.
+ *
+ * Merged/closed rows are history: their stale action list must not be counted
+ * as outstanding work, so only active PRs qualify.
+ */
+export function pullRequestNeedsAttention(pr: Pick<PullRequest, 'state' | 'actions'>): boolean {
+  return isActivePullRequest(pr) && needsAttention(pr.actions)
+}
+
+/** One author of the loaded pull-request list, ranked for the dashboard. */
+export interface PullRequestAuthorSummary {
+  /** Provider login, the grouping key. */
+  login: string
+  /** Human name when the provider exposes one, else the login. */
+  displayName: string
+  /** Every loaded PR authored by this person (all states). */
+  total: number
+  /** Still-open (non-draft) PRs. */
+  open: number
+  /** Merged PRs. */
+  merged: number
+  /** Additions across PRs that reported them; null when none did. */
+  additions: number | null
+  /** Deletions across PRs that reported them; null when none did. */
+  deletions: number | null
+  /** additions + deletions when at least one side was reported; else null. */
+  lines: number | null
+}
+
+/** One ISO week (Monday start) of the merged mini chart. */
+export interface MergedWeek {
+  /** Monday of the week, `YYYY-MM-DD` (UTC). */
+  weekStart: string
+  /** Merged PRs whose `mergedAt` falls in this week. */
+  count: number
+  /** False when the week starts before the measured history window. */
+  inWindow: boolean
+}
+
+/** Aggregate facts the pull-request dashboard renders, all from the list. */
+export interface PullRequestSummary {
+  /** PRs in state `open` (drafts are counted separately). */
+  open: number
+  /** PRs in state `draft`. */
+  draft: number
+  /** Open PRs whose readiness is `ready`. */
+  mergeReady: number
+  /** Open PRs whose readiness is `conflicts`. */
+  conflicts: number
+  /** Active PRs whose suggested actions need the viewer. */
+  attention: number
+  /** PRs in state `merged`. */
+  merged: number
+  /** PRs in state `closed`. */
+  closed: number
+  /** Open PRs whose mergeability the provider did not report. */
+  unknownMergeable: number
+  /**
+   * False when the list did not request closed/merged history
+   * (`closedWindowDays` absent): the merged count is then unknown, not zero.
+   */
+  mergedAvailable: boolean
+  /** Days of merged/closed history the list covers, when reported. */
+  windowDays: number | null
+  /** True when the provider cap cut the merged/closed side of the list. */
+  historyTruncated: boolean
+  /** Authors ranked by merged count then total PRs. */
+  authors: PullRequestAuthorSummary[]
+  /** Last {@link MERGED_TREND_WEEKS} ISO weeks, oldest first. */
+  mergedByWeek: MergedWeek[]
+  /** True when at least one loaded PR reported line counts. */
+  authorLinesAvailable: boolean
+}
+
+/** UTC Monday of the ISO week containing one date. */
+export function isoWeekStart(date: Date): Date {
+  const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const mondayOffset = (day.getUTCDay() + 6) % 7
+  return new Date(day.getTime() - mondayOffset * DAY_MS)
+}
+
+/**
+ * Aggregate one pulled list into the dashboard's facts.
+ *
+ * Every number is derived from the list the Host returned. The merged side is
+ * only counted as zero when the list actually requested that history
+ * (`closedWindowDays` present); otherwise {@link PullRequestSummary.mergedAvailable}
+ * stays false and the UI shows "unavailable" instead of a fabricated 0.
+ * @param list - the loaded pull-request list.
+ * @param now - clock used to anchor the 8-week trend and the history window.
+ * @param windowDays - requested history window; used only as a fallback when
+ * the list did not report `closedWindowDays`.
+ */
+export function summarizePullRequests(
+  list: PullRequestList,
+  now: number,
+  windowDays?: number,
+): PullRequestSummary {
+  const reportedWindow = typeof list.closedWindowDays === 'number'
+    && Number.isFinite(list.closedWindowDays)
+    && list.closedWindowDays > 0
+    ? list.closedWindowDays
+    : null
+  const requestedWindow = typeof windowDays === 'number' && Number.isFinite(windowDays) && windowDays > 0
+    ? windowDays
+    : null
+  const effectiveWindow = reportedWindow ?? requestedWindow
+  const clock = Number.isFinite(now) ? now : Date.now()
+
+  let open = 0
+  let draft = 0
+  let mergeReady = 0
+  let conflicts = 0
+  let attention = 0
+  let merged = 0
+  let closed = 0
+  let unknownMergeable = 0
+  let authorLinesAvailable = false
+  const authorRows = new Map<string, PullRequestAuthorSummary>()
+
+  const currentWeek = isoWeekStart(new Date(clock))
+  const weeks: MergedWeek[] = []
+  const weekIndex = new Map<string, number>()
+  for (let offset = MERGED_TREND_WEEKS - 1; offset >= 0; offset -= 1) {
+    const weekStart = new Date(currentWeek.getTime() - offset * 7 * DAY_MS).toISOString().slice(0, 10)
+    weekIndex.set(weekStart, weeks.length)
+    weeks.push({ weekStart, count: 0, inWindow: true })
+  }
+  const windowStart = effectiveWindow === null ? null : clock - effectiveWindow * DAY_MS
+  for (const week of weeks) {
+    week.inWindow = windowStart === null || Date.parse(`${week.weekStart}T00:00:00.000Z`) >= windowStart
+  }
+
+  for (const pr of list.pullRequests) {
+    const login = pr.author.login !== '' ? pr.author.login : (pr.author.displayName ?? '')
+    const displayName = pr.author.displayName !== undefined && pr.author.displayName !== ''
+      ? pr.author.displayName
+      : login
+    let author = authorRows.get(login)
+    if (author === undefined) {
+      author = {
+        login,
+        displayName,
+        total: 0,
+        open: 0,
+        merged: 0,
+        additions: null,
+        deletions: null,
+        lines: null,
+      }
+      authorRows.set(login, author)
+    } else if (author.displayName === login && displayName !== login) {
+      // Prefer the human name once any PR of this author reports one.
+      author.displayName = displayName
+    }
+    author.total += 1
+    if (typeof pr.additions === 'number' && Number.isFinite(pr.additions)) {
+      author.additions = (author.additions ?? 0) + pr.additions
+      authorLinesAvailable = true
+    }
+    if (typeof pr.deletions === 'number' && Number.isFinite(pr.deletions)) {
+      author.deletions = (author.deletions ?? 0) + pr.deletions
+      authorLinesAvailable = true
+    }
+
+    if (pullRequestNeedsAttention(pr)) attention += 1
+    if (pr.state === 'open') {
+      open += 1
+      author.open += 1
+      const readiness = mergeReadiness(pr)
+      if (readiness === 'ready') mergeReady += 1
+      else if (readiness === 'conflicts') conflicts += 1
+      if (pr.mergeable === null) unknownMergeable += 1
+      continue
+    }
+    if (pr.state === 'draft') {
+      draft += 1
+      continue
+    }
+    if (pr.state === 'closed') {
+      closed += 1
+      continue
+    }
+    merged += 1
+    author.merged += 1
+    if (typeof pr.mergedAt === 'string' && pr.mergedAt !== '') {
+      const mergedAt = Date.parse(pr.mergedAt)
+      if (Number.isFinite(mergedAt)) {
+        const bucket = weekIndex.get(isoWeekStart(new Date(mergedAt)).toISOString().slice(0, 10))
+        if (bucket !== undefined) {
+          const week = weeks[bucket]
+          if (week !== undefined) week.count += 1
+        }
+      }
+    }
+  }
+
+  for (const author of authorRows.values()) {
+    author.lines = author.additions === null && author.deletions === null
+      ? null
+      : (author.additions ?? 0) + (author.deletions ?? 0)
+  }
+  const authors = [...authorRows.values()].sort((left, right) => (
+    right.merged - left.merged
+    || right.total - left.total
+    || left.login.localeCompare(right.login)
+  ))
+
+  return {
+    open,
+    draft,
+    mergeReady,
+    conflicts,
+    attention,
+    merged,
+    closed,
+    unknownMergeable,
+    mergedAvailable: reportedWindow !== null,
+    windowDays: reportedWindow,
+    historyTruncated: list.historyTruncated === true,
+    authors,
+    mergedByWeek: weeks,
+    authorLinesAvailable,
+  }
+}
+
+/**
+ * Apply one dashboard filter to the loaded pull requests.
+ *
+ * The result keeps the Host's order (newest activity first), so a filter never
+ * silently re-sorts the list. `all` returns every loaded row, including the
+ * merged/closed history the dashboard counted.
+ */
+export function filterPullRequests(
+  pullRequests: readonly PullRequest[],
+  filter: PullRequestFilter,
+): PullRequest[] {
+  switch (filter) {
+    case 'merge-ready':
+      return pullRequests.filter((pr) => mergeReadiness(pr) === 'ready')
+    case 'conflicts':
+      return pullRequests.filter((pr) => mergeReadiness(pr) === 'conflicts')
+    case 'merged':
+      return pullRequests.filter((pr) => pr.state === 'merged')
+    case 'attention':
+      return pullRequests.filter((pr) => pullRequestNeedsAttention(pr))
+    default:
+      return [...pullRequests]
+  }
 }
 
 /** One small status badge; the text always names the state, color is secondary. */
@@ -253,16 +542,280 @@ export function renderLocalInsight(
   )
 }
 
+/* ------------------------------------------------------- dashboard pieces */
+
+/** Author rows the dashboard ranks before it stops. */
+export const PR_AUTHOR_ROWS = 5
+
+/**
+ * Proportional CSS width of one author's line bar.
+ *
+ * Unlike the hotspot churn ranking this is a linear share of the largest line
+ * total in the visible ranking: the bar answers "who contributed more lines",
+ * so a null/unknown value stays an empty bar instead of a fabricated nib.
+ */
+export function lineShareWidth(value: number | null | undefined, max: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return '0%'
+  if (!(max > 0) || !Number.isFinite(max)) return '0%'
+  return `${Math.max(2, Math.round(Math.min(1, value / max) * 1000) / 10)}%`
+}
+
+/** Dark circular initial avatar with a stable hue per author. */
+function DashAvatar(props: { name: string }): React.ReactElement {
+  return h('span', {
+    className: 'dvt-pr-dash-avatar',
+    'aria-hidden': 'true',
+    style: { '--dvt-pr-hue': String(F.authorHue(props.name)) } as unknown as React.CSSProperties,
+  }, F.authorInitials(props.name))
+}
+
+/** One stat tile; the whole tile is the filter button. */
+function DashTile(props: {
+  filter: PullRequestFilter
+  label: string
+  value: string
+  hint: string
+  active: PullRequestFilter
+  muted?: boolean
+  onSelect(filter: PullRequestFilter): void
+}): React.ReactElement {
+  return h('button', {
+    type: 'button',
+    className: 'dvt-pr-dash-tile',
+    'aria-pressed': props.active === props.filter,
+    'data-filter': props.filter,
+    'data-count': props.value,
+    title: props.hint,
+    onClick: () => props.onSelect(props.filter),
+  },
+  h('span', { className: 'dvt-pr-dash-tile-label' }, props.label),
+  h('span', {
+    className: `dvt-pr-dash-tile-value dvt-mono${props.muted === true ? ' dvt-pr-dash-tile-value-muted' : ''}`,
+  }, props.value),
+  )
+}
+
+/** Top-author ranking: dark avatar, merged/total counts, ± lines, purple share bar. */
+function AuthorRanking(props: { summary: PullRequestSummary; deps: PanelDeps }): React.ReactElement {
+  const { summary, deps } = props
+  const { t } = deps
+  const rows = summary.authors.slice(0, PR_AUTHOR_ROWS)
+  if (rows.length === 0) {
+    return h('p', { className: 'dvt-pr-dash-empty' }, t('pr.dash.authors.empty'))
+  }
+  const maxLines = summary.authors.reduce((best, author) => Math.max(best, author.lines ?? 0), 0)
+  return h('ol', { className: 'dvt-pr-dash-author-list' },
+    rows.map((author) => h('li', {
+      key: author.login,
+      className: 'dvt-pr-dash-author',
+      'data-author': author.login,
+    },
+    h(DashAvatar, { name: author.displayName === '' ? author.login : author.displayName }),
+    h('span', { className: 'dvt-pr-dash-author-main' },
+      h('span', { className: 'dvt-pr-dash-author-name dvt-clip', title: author.displayName }, author.displayName),
+      h('span', { className: 'dvt-pr-dash-author-meta dvt-mono' },
+        t('pr.dash.author.meta', { total: author.total, merged: author.merged }),
+      ),
+    ),
+    author.lines === null
+      ? h('span', { className: 'dvt-pr-dash-lines dvt-mono dvt-pr-dash-lines-muted' },
+        t('pr.dash.author.noLines'))
+      : h('span', {
+        className: 'dvt-pr-dash-lines dvt-mono',
+        title: t('pr.dash.author.linesTitle', { count: author.lines }),
+      },
+      h('span', { className: 'dvt-stat-add' }, `+${author.additions ?? 0}`),
+      h('span', { className: 'dvt-stat-del' }, `−${author.deletions ?? 0}`),
+      ),
+    h('span', { className: 'dvt-pr-dash-bar', 'aria-hidden': 'true' },
+      h('span', {
+        className: 'dvt-pr-dash-bar-fill',
+        style: { width: lineShareWidth(author.lines, maxLines) },
+      }),
+    ),
+    )),
+  )
+}
+
+/** Eight-week merged mini chart; bars carry their value in the title. */
+function MergedTrend(props: { summary: PullRequestSummary; deps: PanelDeps }): React.ReactElement {
+  const { summary, deps } = props
+  const { t } = deps
+  if (!summary.mergedAvailable) {
+    return h('p', { className: 'dvt-pr-dash-empty' }, t('pr.dash.note.noHistory'))
+  }
+  const weeks = summary.mergedByWeek
+  const total = weeks.reduce((sum, week) => sum + week.count, 0)
+  if (total === 0) {
+    return h('p', { className: 'dvt-pr-dash-empty' }, t('pr.dash.trend.none'))
+  }
+  const max = weeks.reduce((best, week) => Math.max(best, week.count), 0)
+  return h('div', {
+    className: 'dvt-pr-dash-chart',
+    role: 'img',
+    'aria-label': t('pr.dash.trend.title'),
+  },
+  weeks.map((week) => h('div', {
+    key: week.weekStart,
+    className: `dvt-pr-dash-week${week.inWindow ? '' : ' dvt-pr-dash-week-out'}`,
+    'data-week': week.weekStart,
+    'data-count': String(week.count),
+    title: week.inWindow
+      ? t('pr.dash.trend.weekTitle', { week: week.weekStart, count: week.count })
+      : t('pr.dash.trend.outside', { week: week.weekStart }),
+  },
+  h('span', { className: 'dvt-pr-dash-week-value dvt-mono' }, String(week.count)),
+  h('span', { className: 'dvt-pr-dash-week-track', 'aria-hidden': 'true' },
+    week.count <= 0 || max <= 0
+      ? null
+      : h('span', {
+        className: 'dvt-pr-dash-week-fill',
+        style: { height: `${Math.max(6, Math.round((week.count / max) * 100))}%` },
+      }),
+  ),
+  h('span', { className: 'dvt-pr-dash-week-label' }, week.weekStart.slice(5).replace('-', '/')),
+  )),
+  )
+}
+
+/**
+ * The compact analytics banner above the list.
+ *
+ * Five tiles answer "how much work is ready / conflicted / waiting / merged";
+ * two cards rank the authors and chart mergers over the last eight ISO weeks.
+ * Tiles and chips set the same filter, and every honest-unknown note (anonymous
+ * provider, unknown mergeability, truncated history, unrequested history) is
+ * stated instead of folded into a zero.
+ */
+function PrDashboard(props: {
+  list: PullRequestList
+  summary: PullRequestSummary
+  filter: PullRequestFilter
+  deps: PanelDeps
+  handlers: PanelHandlers
+}): React.ReactElement {
+  const { list, summary, filter, deps, handlers } = props
+  const { t } = deps
+  const select = handlers.onSetPullRequestFilter
+  const mergedDays = summary.windowDays ?? 0
+  const mergedTile = summary.mergedAvailable
+    ? h(DashTile, {
+      filter: 'merged',
+      label: t('pr.dash.tile.merged', { days: mergedDays }),
+      value: String(summary.merged),
+      hint: t('pr.dash.tile.merged.hint', { days: mergedDays }),
+      active: filter,
+      onSelect: select,
+    })
+    : h(DashTile, {
+      filter: 'merged',
+      label: t('pr.dash.tile.mergedNoWindow'),
+      value: t('pr.dash.unavailable'),
+      hint: t('pr.dash.tile.mergedNoWindow.hint'),
+      muted: true,
+      active: filter,
+      onSelect: select,
+    })
+  const notes: React.ReactElement[] = []
+  if (!list.authenticated) {
+    notes.push(h('p', { key: 'anonymous', className: 'dvt-pr-dash-note' }, t('pr.dash.note.unauthenticated')))
+  }
+  if (summary.unknownMergeable > 0) {
+    notes.push(h('p', { key: 'mergeable', className: 'dvt-pr-dash-note' },
+      t('pr.dash.note.unknownMergeable', { count: summary.unknownMergeable })))
+  }
+  if (summary.historyTruncated && summary.windowDays !== null) {
+    notes.push(h('p', { key: 'truncated', className: 'dvt-pr-dash-note' },
+      t('pr.dash.note.historyTruncated', {
+        days: summary.windowDays,
+        limit: MAX_CLOSED_PULL_REQUESTS,
+      })))
+  }
+  const chip = (value: PullRequestFilter, label: string): React.ReactElement => h('button', {
+    key: value,
+    type: 'button',
+    className: 'dvt-pr-chip',
+    'aria-pressed': filter === value,
+    'data-filter': value,
+    onClick: () => select(value),
+  }, label)
+  return h('section', { className: 'dvt-pr-dash', 'aria-label': t('pr.dash.title') },
+    h('div', { className: 'dvt-pr-dash-head' },
+      h('div', { className: 'dvt-pr-dash-titles' },
+        h('div', { className: 'dvt-pr-dash-title' }, t('pr.dash.title')),
+        h('div', { className: 'dvt-pr-dash-hint' }, t('pr.dash.hint')),
+      ),
+    ),
+    h('div', { className: 'dvt-pr-dash-tiles' },
+      h(DashTile, {
+        filter: 'all',
+        label: t('pr.dash.tile.open'),
+        value: String(summary.open + summary.draft),
+        hint: t('pr.dash.tile.open.hint', { open: summary.open, draft: summary.draft }),
+        active: filter,
+        onSelect: select,
+      }),
+      h(DashTile, {
+        filter: 'merge-ready',
+        label: t('pr.dash.tile.merge-ready'),
+        value: String(summary.mergeReady),
+        hint: t('pr.dash.tile.merge-ready.hint'),
+        active: filter,
+        onSelect: select,
+      }),
+      h(DashTile, {
+        filter: 'conflicts',
+        label: t('pr.dash.tile.conflicts'),
+        value: String(summary.conflicts),
+        hint: t('pr.dash.tile.conflicts.hint'),
+        active: filter,
+        onSelect: select,
+      }),
+      h(DashTile, {
+        filter: 'attention',
+        label: t('pr.dash.tile.attention'),
+        value: String(summary.attention),
+        hint: t('pr.dash.tile.attention.hint'),
+        active: filter,
+        onSelect: select,
+      }),
+      mergedTile,
+    ),
+    h('div', { className: 'dvt-pr-dash-grid' },
+      h('section', { className: 'dvt-pr-dash-card dvt-pr-dash-authors' },
+        h('div', { className: 'dvt-pr-dash-card-title' }, t('pr.dash.authors.title')),
+        h('p', { className: 'dvt-pr-dash-card-hint' }, t('pr.dash.authors.hint')),
+        h(AuthorRanking, { summary, deps }),
+      ),
+      h('section', { className: 'dvt-pr-dash-card dvt-pr-dash-trend' },
+        h('div', { className: 'dvt-pr-dash-card-title' }, t('pr.dash.trend.title')),
+        h('p', { className: 'dvt-pr-dash-card-hint' }, t('pr.dash.trend.hint')),
+        h(MergedTrend, { summary, deps }),
+      ),
+    ),
+    notes.length === 0 ? null : h('div', { className: 'dvt-pr-dash-notes' }, notes),
+    h('div', { className: 'dvt-pr-chips', role: 'group', 'aria-label': t('pr.dash.filter.label') },
+      chip('all', t('pr.dash.filter.all')),
+      chip('merge-ready', t('pr.dash.filter.merge-ready')),
+      chip('conflicts', t('pr.dash.filter.conflicts')),
+      chip('merged', t('pr.dash.filter.merged')),
+      chip('attention', t('pr.dash.filter.attention')),
+    ),
+  )
+}
+
 /** The pull-request list body. */
 export function renderPullRequests(
   state: PanelState,
   deps: PanelDeps,
   handlers: PanelHandlers,
-): React.ReactElement {
+): React.ReactElement | null {
   const { t } = deps
   const repository = selectedRepository(state)
   const slice = state.pullRequests
-  if (state.boot === 'loading') return h(SkeletonRows, { rows: 5 })
+  // First load of this source: the composition root's SkeletonSwap owns the
+  // loading surface, so the view returns no element of its own.
+  if (state.boot === 'loading') return null
   if (state.boot === 'error') {
     return h(EmptyState, {
       icon: IconError,
@@ -275,12 +828,7 @@ export function renderPullRequests(
   if (repository === null) {
     return h(EmptyState, { icon: IconPr, title: t('state.noRepositories.title'), hint: t('state.noRepositories.hint') })
   }
-  if (slice.loading && slice.data === null) {
-    return h('div', { className: 'dvt-col dvt-pr-view' },
-      h(SkeletonRows, { rows: 4 }),
-      renderLocalInsight(state, deps, handlers, false),
-    )
-  }
+  if (slice.loading && slice.data === null) return null
   if (slice.error !== null) {
     const code = slice.error.code
     const title = code === 'auth-required'
@@ -319,21 +867,27 @@ export function renderPullRequests(
   }
   const data = slice.data
   if (data === null) {
-    return h('div', { className: 'dvt-col dvt-pr-view' },
-      renderLocalInsight(state, deps, handlers, false) ?? h(SkeletonRows, { rows: 5 }),
-    )
+    // No provider data and no first load in flight: keep the offline branch
+    // insight if it exists, otherwise let the root render its own state.
+    const insight = renderLocalInsight(state, deps, handlers, false)
+    return insight === null ? null : h('div', { className: 'dvt-col dvt-pr-view' }, insight)
   }
-  const mine = data.pullRequests.filter((pr) => needsAttention(pr.actions))
-  const others = data.pullRequests.filter((pr) => !needsAttention(pr.actions))
+  const now = deps.now?.() ?? Date.now()
+  const stats = summarizePullRequests(data, now, data.closedWindowDays)
+  const visible = filterPullRequests(data.pullRequests, slice.filter)
+  const activeRows = visible.filter(isActivePullRequest)
+  const mine = activeRows.filter((pr) => needsAttention(pr.actions))
+  const others = activeRows.filter((pr) => !needsAttention(pr.actions))
+  const historyRows = visible.filter((pr) => !isActivePullRequest(pr))
   const selected = slice.selectedNumber
-  const summary = h('div', { className: 'dvt-pr-summary' },
+  const summaryBar = h('div', { className: 'dvt-pr-summary' },
     h('span', { className: 'dvt-pr-summary-counts' }, t('pr.summary', {
-      open: data.pullRequests.length,
-      mine: mine.length,
+      open: stats.open + stats.draft,
+      mine: stats.attention,
     })),
     h('span', { className: 'dvt-pr-summary-remote' },
       h('span', { className: 'dvt-pr-provider' }, data.provider === 'gitlab' ? 'GitLab' : data.provider === 'github' ? 'GitHub' : t('pr.provider.unknown')),
-      h('span', { className: 'dvt-pr-path dvt-mono' }, data.remotePath),
+      h('span', { className: 'dvt-pr-path dvt-mono', title: data.remotePath }, data.remotePath),
       h('span', { className: data.authenticated ? 'dvt-pr-authstate dvt-pr-authstate-ok' : 'dvt-pr-authstate' },
         data.authenticated && data.viewer !== null ? t('pr.authenticated', { viewer: data.viewer }) : t('pr.anonymous'),
       ),
@@ -357,28 +911,50 @@ export function renderPullRequests(
       })),
     ),
   )
+  const body = data.pullRequests.length === 0
+    ? h('div', { className: 'dvt-col dvt-pr-empty' },
+      h(EmptyState, {
+        icon: IconPr,
+        title: t('pr.empty'),
+        hint: t('pr.empty.hint'),
+        actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('common.retry')),
+      }),
+      renderLocalInsight(state, deps, handlers, false),
+    )
+    : h('div', { className: 'dvt-col' },
+      h(PrDashboard, {
+        list: data,
+        summary: stats,
+        filter: slice.filter,
+        deps,
+        handlers,
+      }),
+      renderLocalInsight(state, deps, handlers, true),
+      visible.length === 0
+        ? h('div', { className: 'dvt-col dvt-pr-filtered-empty' },
+          h(EmptyState, {
+            icon: IconPr,
+            title: t('pr.dash.filteredEmpty'),
+            hint: t('pr.dash.filteredEmpty.hint'),
+            actions: h('button', {
+              type: 'button',
+              className: 'dvt-btn dvt-btn-sm',
+              onClick: () => handlers.onSetPullRequestFilter('all'),
+            }, t('pr.dash.filter.all')),
+          }),
+        )
+        : h('div', { className: 'dvt-pr-sections' },
+          mine.length > 0 ? section(t('pr.section.mine'), mine) : null,
+          others.length > 0 ? section(t('pr.section.others'), others) : null,
+          historyRows.length > 0 ? section(t('pr.section.history'), historyRows) : null,
+        ),
+    )
   return h('div', { className: 'dvt-col dvt-pr-view' },
-    summary,
+    summaryBar,
     data.partial === true
       ? h(Banner, { kind: 'warn', title: t('state.partial.title'), text: (data.warnings ?? []).join('; ') || t('pr.detail.partial') })
       : null,
-    data.pullRequests.length === 0
-      ? h('div', { className: 'dvt-col dvt-pr-empty' },
-        h(EmptyState, {
-          icon: IconPr,
-          title: t('pr.empty'),
-          hint: t('pr.empty.hint'),
-          actions: h('button', { type: 'button', className: 'dvt-btn dvt-btn-sm', onClick: handlers.onRefreshPullRequests }, t('common.retry')),
-        }),
-        renderLocalInsight(state, deps, handlers, false),
-      )
-      : h('div', { className: 'dvt-col' },
-        renderLocalInsight(state, deps, handlers, true),
-        h('div', { className: 'dvt-pr-sections' },
-          mine.length > 0 ? section(t('pr.section.mine'), mine) : null,
-          others.length > 0 ? section(t('pr.section.others'), others) : null,
-        ),
-      ),
+    body,
     !data.authenticated ? h(AuthHint, { deps }) : null,
   )
 }

@@ -33,12 +33,13 @@ import { renderDiagnostics, renderStatusBar } from './ui/status.ts'
 import { SwimlaneShell } from './ui/swimlane.ts'
 import { renderChrome } from './ui/toolbar.ts'
 import { renderPendingWorkbench } from './ui/workbench.ts'
+import { isContentLoading, SkeletonContent, SkeletonSwap, SkeletonTree } from './ui/skeleton.ts'
 
 const h = React.createElement
 
 /** One list/detail pane pair for the sources that do not use the file tree. */
 function renderPane(
-  list: React.ReactElement,
+  list: React.ReactElement | null,
   detail: { header: React.ReactElement; body: React.ReactElement } | null,
 ): React.ReactElement {
   return h('div', { className: 'dvt-pane' },
@@ -62,13 +63,16 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
   const pr = state.source === 'pr'
   const pending = state.source === 'pending'
   const hotspots = state.source === 'hotspots'
+  const timelineSource = state.source === 'timeline'
   // Both timeline panes derive from the same loaded history page and filters.
-  const view = buildTimelineView(state.timeline.events, {
+  // The live panel passes memoized values; the preview/test harness may omit
+  // them, in which case a pure render still computes them once.
+  const view = props.view ?? buildTimelineView(state.timeline.events, {
     query: state.filters.treeQuery,
     status: state.filters.fileStatus,
     selectedPath: state.selectedFilePath,
   })
-  const graph = computeGraph(state.timeline.events)
+  const graph = props.graph ?? computeGraph(state.timeline.events)
 
   // Detail pane content: diff > commit > audit record > pull request.
   let detail: { header: React.ReactElement; body: React.ReactElement } | null = null
@@ -82,7 +86,7 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     detail = { header: prDetailHeader(state, deps, handlers), body: prDetailBody(state, deps, handlers) }
   }
 
-  let list: React.ReactElement
+  let list: React.ReactElement | null
   if (pr) {
     list = renderPullRequests(state, deps, handlers)
   } else if (audit) {
@@ -95,7 +99,7 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
   // and the info column answers "who touched it, when, how much" beside it.
   const fileMode = !audit && !pr && state.selectedFilePath !== null
   const pane = renderPane(list, detail)
-  let bodyElement: React.ReactElement
+  let bodyElement: React.ReactElement | null
   if (audit || pr) {
     bodyElement = pane
   } else if (pending) {
@@ -111,8 +115,10 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
           h('div', { key: 'body', className: 'dvt-scroll' }, detail.body),
         ],
     )
+    // The tree lives in the shell sidebar for the whole timeline source, so
+    // selecting a file no longer unmounts/remounts it here (that remount was
+    // the visible lag + scroll loss when opening a file).
     bodyElement = h('div', { key: 'split', className: 'dvt-split dvt-file-split' },
-      renderFileTree(state, deps, handlers, view),
       diffPane,
       renderFileInfo(state, deps, handlers, view),
     )
@@ -122,10 +128,28 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     bodyElement = pane
   }
 
-  // The tree is page navigation only for the timeline list. The per-file view
-  // embeds it as its own column, and the other sources have no tree at all.
-  const timelineList = state.source === 'timeline' && !fileMode
-  const sidebar = timelineList ? renderFileTree(state, deps, handlers, view) : null
+  // A skeleton is only for a surface with nothing to show yet: the cold boot,
+  // or the first load of the active source. A quiet revalidation of data that
+  // is already painted must never flash a skeleton over it.
+  const contentLoading = isContentLoading(state)
+
+  // One stateful wrapper owns the skeleton → content cross-fade, so a finished
+  // first load keeps the skeleton's box for a beat instead of collapsing it.
+  const content = h(SkeletonSwap, {
+    key: 'content',
+    loading: contentLoading,
+    skeleton: h(SkeletonContent, { source: state.source, boot: state.boot }),
+  }, bodyElement)
+
+  // The tree is page navigation for the whole timeline source (list and file
+  // view alike); other sources have no tree at all. While the first history
+  // page is loading there are no paths yet, so the sidebar keeps its two-column
+  // shape with a tree skeleton instead of flashing a text-heavy empty state.
+  const sidebar = timelineSource
+    ? contentLoading
+      ? h(SkeletonTree, { key: 'tree-skeleton', rows: 10 })
+      : renderFileTree(state, deps, handlers, view)
+    : null
 
   return h('div', {
     className: 'dvt-root',
@@ -142,9 +166,9 @@ export function renderPanelView(props: PanelViewProps): React.ReactElement {
     // toggle and its aria label), so it gets the same dictionary-driven labels
     // as the timeline instead of the demo page's Chinese defaults.
     labels: swimlaneLabels(deps),
-    sidebarCount: timelineList ? view.visibleFiles.length : undefined,
+    sidebarCount: timelineSource && !contentLoading ? view.visibleFiles.length : undefined,
     chrome: renderChrome(state, deps, handlers),
-    content: bodyElement,
+    content,
   }),
   renderDiagnostics(state, deps),
   renderStatusBar(state, deps, handlers),
